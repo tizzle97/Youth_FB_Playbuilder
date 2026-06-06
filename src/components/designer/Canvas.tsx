@@ -128,6 +128,22 @@ function strokeRoute(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, lw
   ctx.restore();
 }
 
+/** Draw connected straight-line segments through pts (sharp angles). */
+function strokeStraight(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, lw = ROUTE_LINE_WIDTH) {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'miter';
+  ctx.miterLimit = 10;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Draw a filled triangle arrowhead at the end of pts. */
 function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string) {
   if (pts.length < 2) return;
@@ -261,38 +277,47 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       paths.forEach((p, i) => { if (p.startIconIndex !== undefined) lastByIcon.set(p.startIconIndex, i); });
 
       paths.forEach((p, i) => {
-        const smoothed = p.mode === 'freehand' ? smoothPoints(p.points, 1) : p.points;
-        strokeRoute(ctx, smoothed, p.color);
-        // Draw arrowhead on the last segment of each icon's route
-        if (p.startIconIndex !== undefined && lastByIcon.get(p.startIconIndex) === i) {
-          drawArrowhead(ctx, smoothed, p.color);
-        } else if (p.startIconIndex === undefined) {
-          // Standalone routes always get arrowhead
-          drawArrowhead(ctx, smoothed, p.color);
+        const rendered = p.mode === 'straight'
+          ? p.points
+          : p.mode === 'freehand'
+            ? smoothPoints(p.points, 1)
+            : p.points; // waypoint: already smooth enough
+        if (p.mode === 'straight') {
+          strokeStraight(ctx, rendered, p.color);
+        } else {
+          strokeRoute(ctx, rendered, p.color);
         }
+        // Arrowhead on the last segment of each icon's route chain
+        const isLast = p.startIconIndex !== undefined
+          ? lastByIcon.get(p.startIconIndex) === i
+          : true;
+        if (isLast) drawArrowhead(ctx, rendered, p.color);
       });
 
-      // Draw waypoint preview
+      // Draw waypoint / straight-segment in-progress preview
       if (waypointPoints.length >= 1) {
-        strokeRoute(ctx, waypointPoints, waypointColor);
-        // Draw dot at each waypoint
-        waypointPoints.forEach((pt) => {
-          ctx.save();
-          ctx.fillStyle = waypointColor;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        });
+        if (drawMode === 'straight') {
+          strokeStraight(ctx, waypointPoints, waypointColor);
+          // Small dot at each corner to show the angle joints
+          waypointPoints.slice(1).forEach((pt) => {
+            ctx.save();
+            ctx.fillStyle = waypointColor;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          });
+        } else {
+          strokeRoute(ctx, waypointPoints, waypointColor);
+        }
+        // Live arrowhead at current end
+        if (waypointPoints.length >= 2) drawArrowhead(ctx, waypointPoints, waypointColor);
       }
 
-      // Draw in-progress stroke preview
+      // Draw in-progress freehand stroke preview (freehand drag only)
       if (extraPoints && extraPoints.length >= 2 && extraColor) {
-        const pts = extraMode === 'straight'
-          ? [extraPoints[0], extraPoints[extraPoints.length - 1]]
-          : smoothPoints(extraPoints, 1);
+        const pts = smoothPoints(extraPoints, 1);
         strokeRoute(ctx, pts, extraColor, ROUTE_LINE_WIDTH * 0.8);
-        // Live arrowhead preview
         drawArrowhead(ctx, pts, extraColor);
       }
 
@@ -355,6 +380,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       draw();
     }, [width, height, draw]);
 
+    // Clear in-progress segments when switching draw modes
+    useEffect(() => {
+      setWaypointPoints([]);
+      setWaypointIconIndex(null);
+      setCurrentPoints([]);
+      setIsDrawing(false);
+      setHoveredIconIndex(null);
+    }, [drawMode]);
+
     // ------------------------------------------
     // Imperative handle
     // ------------------------------------------
@@ -413,8 +447,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const finishRoute = useCallback((pts: Pt[], color: string, iconIdx: number | null, mode: DrawMode) => {
       if (pts.length < 2) return;
       pushSnapshot();
-      const finalPts = mode === 'straight' ? [pts[0], pts[pts.length - 1]] : pts;
-      const newPath: PathItem = { points: finalPts, color, startIconIndex: iconIdx ?? undefined, mode };
+      // All modes keep all points — straight mode renders as connected segments
+      const newPath: PathItem = { points: pts, color, startIconIndex: iconIdx ?? undefined, mode };
       setPaths((prev) => [...prev, newPath]);
       if (onDrawingComplete) onDrawingComplete(finalPts);
     }, [pushSnapshot, onDrawingComplete]);
@@ -424,11 +458,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ------------------------------------------
     const finishWaypoint = useCallback(() => {
       if (waypointPoints.length >= 2) {
-        finishRoute(waypointPoints, waypointColor, waypointIconIndex, 'waypoint');
+        // Use the active drawMode so straight segments are stored as 'straight'
+        finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode);
       }
       setWaypointPoints([]);
       setWaypointIconIndex(null);
-    }, [waypointPoints, waypointColor, waypointIconIndex, finishRoute]);
+      setHoveredIconIndex(null);
+    }, [waypointPoints, waypointColor, waypointIconIndex, drawMode, finishRoute]);
 
     // ------------------------------------------
     // Pointer events
@@ -450,8 +486,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Waypoint mode — click to add points, double-tap/click to finish
-      if (drawingMode && drawMode === 'waypoint') {
+      // Straight + Waypoint modes — click-to-add-segments flow
+      if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
         const isDoubleTap = now - lastTapRef.current < 350;
         lastTapRef.current = now;
@@ -463,30 +499,31 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         if (waypointPoints.length === 0) {
           if (clicked >= 0) {
-            // User clicked directly on a player icon — lock it in as the route origin
+            // User clicked a player icon — lock it as the route origin
             const icon = playerIcons[clicked];
             setWaypointColor(icon.color);
             setWaypointIconIndex(clicked);
             setWaypointPoints([{ x: icon.x, y: icon.y }]);
             setHoveredIconIndex(null);
           }
-          // Tapped away from any icon with no origin selected — do nothing.
-          // The hover highlight guides the user to tap a player first.
+          // Clicked canvas without selecting a player — do nothing.
+          // Hover highlight guides the user to tap a player first.
         } else {
-          // Origin already selected — add next waypoint
+          // Origin locked — add the next segment endpoint
           setWaypointPoints((prev) => [...prev, p]);
         }
         return;
       }
 
-      // Freehand / straight mode
-      if (drawingMode) {
+      // Freehand mode — drag to draw
+      if (drawingMode && drawMode === 'freehand') {
         if (clicked >= 0) {
           const icon = playerIcons[clicked];
           setCurrentColor(icon.color);
           setActiveIconIndex(clicked);
           setIsDrawing(true);
           setCurrentPoints([{ x: icon.x, y: icon.y }]);
+          setHoveredIconIndex(null);
         } else {
           setCurrentColor('#e05a1e');
           setActiveIconIndex(null);
@@ -581,8 +618,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           className="block bg-white touch-none"
           style={{ width: '100%', height: '100%' }}
         />
-        {/* Waypoint finish button */}
-        {drawingMode && drawMode === 'waypoint' && waypointPoints.length >= 2 && (
+        {/* Finish button for straight + waypoint modes */}
+        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 2 && (
           <button
             onPointerDown={(e) => { e.stopPropagation(); finishWaypoint(); }}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-primary text-white rounded-full shadow-lg font-semibold text-sm z-10 flex items-center gap-2"
