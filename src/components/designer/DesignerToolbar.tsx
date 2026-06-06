@@ -1,10 +1,13 @@
 import React from 'react';
-import { MousePointer, Pencil, Undo, Redo, Eraser, Route } from 'lucide-react';
+import { MousePointer, Pencil, Undo, Redo, Eraser, Minus, GitBranch } from 'lucide-react';
 import { PlayerToolbar } from './PlayerToolbar';
+import type { DrawMode } from './Canvas';
 
 interface DesignerToolbarProps {
   drawingMode: boolean;
   setDrawingMode: (mode: boolean) => void;
+  drawMode: DrawMode;
+  setDrawMode: (mode: DrawMode) => void;
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean } | null) => void;
   onUndo: () => void;
@@ -18,6 +21,8 @@ interface DesignerToolbarProps {
 export function DesignerToolbar({
   drawingMode,
   setDrawingMode,
+  drawMode,
+  setDrawMode,
   selectedPlayer,
   onSelectPlayer,
   onUndo,
@@ -25,105 +30,115 @@ export function DesignerToolbar({
   onClear,
   onClearRoutes,
   canUndo,
-  canRedo
+  canRedo,
 }: DesignerToolbarProps) {
-  const handleSelectMode = () => {
-    setDrawingMode(false);
-    onSelectPlayer(null);
-  };
+  const activeDraw = drawingMode ? drawMode : null;
 
-  const handleDrawingMode = () => {
+  const selectMode = () => { setDrawingMode(false); onSelectPlayer(null); };
+
+  const pickDraw = (mode: DrawMode) => {
     setDrawingMode(true);
+    setDrawMode(mode);
     onSelectPlayer(null);
   };
 
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean } | null) => {
-    try {
-      if (player) {
-        setDrawingMode(false);
-        // Only pass the necessary data to avoid potential circular references
-        onSelectPlayer({
-          letter: player.letter,
-          color: player.color,
-          isSquare: Boolean(player.isSquare)
-        });
-      } else {
-        onSelectPlayer(null);
-      }
-    } catch (error) {
-      console.error('Error in handlePlayerSelect:', error);
-      // Ensure we always have a valid state
-      onSelectPlayer(null);
-    }
+    if (player) { setDrawingMode(false); onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare) }); }
+    else onSelectPlayer(null);
   };
 
+  const btnBase = 'flex items-center justify-center rounded-lg transition-colors shrink-0';
+  const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
+  const active = 'bg-primary/20 text-primary';
+
   return (
-    <div className="flex flex-wrap items-center gap-2 bg-board rounded-lg border border-chalk/10 p-2">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1 w-full">
+      {/* Row 1: tools */}
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide pb-0.5">
+
+        {/* Select */}
         <button
-          onClick={handleSelectMode}
-          className={`p-2 ${!drawingMode && !selectedPlayer ? 'bg-primary/20 text-primary' : 'text-chalk/70 hover:text-chalk hover:bg-board-light'} rounded-md transition-colors`}
-          title="Select Mode"
+          onClick={selectMode}
+          title="Select / Move"
+          className={`${btnBase} p-2 min-w-[36px] ${activeDraw === null && !selectedPlayer ? active : inactive}`}
         >
-          <MousePointer className="h-5 w-5" />
+          <MousePointer className="h-4 w-4" />
         </button>
-        
+
+        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+
+        {/* Freehand */}
         <button
-          onClick={handleDrawingMode}
-          className={`px-3 py-2 flex items-center gap-2 ${
-            drawingMode 
-              ? 'bg-primary/20 text-primary' 
-              : 'text-chalk/70 hover:text-chalk hover:bg-board-light'
-          } rounded-md transition-colors`}
-          title="Drawing Mode"
+          onClick={() => pickDraw('freehand')}
+          title="Freehand Route"
+          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'freehand' ? active : inactive}`}
         >
-          <Pencil className="h-5 w-5" style={{ transform: 'rotate(-15deg)' }} />
-          <span className="text-sm">Draw Route</span>
+          <Pencil className="h-4 w-4" style={{ transform: 'rotate(-15deg)' }} />
+          <span className="hidden sm:inline whitespace-nowrap">Freehand</span>
+        </button>
+
+        {/* Straight */}
+        <button
+          onClick={() => pickDraw('straight')}
+          title="Straight Line Route"
+          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'straight' ? active : inactive}`}
+        >
+          <Minus className="h-4 w-4" />
+          <span className="hidden sm:inline whitespace-nowrap">Straight</span>
+        </button>
+
+        {/* Waypoint / multi-segment */}
+        <button
+          onClick={() => pickDraw('waypoint')}
+          title="Multi-Segment Route (tap points, double-tap to finish)"
+          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'waypoint' ? active : inactive}`}
+        >
+          <GitBranch className="h-4 w-4" />
+          <span className="hidden sm:inline whitespace-nowrap">Route</span>
+        </button>
+
+        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+
+        {/* Undo */}
+        <button onClick={onUndo} disabled={!canUndo} title="Undo" className={`${btnBase} p-2 min-w-[36px] ${canUndo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
+          <Undo className="h-4 w-4" />
+        </button>
+
+        {/* Redo */}
+        <button onClick={onRedo} disabled={!canRedo} title="Redo" className={`${btnBase} p-2 min-w-[36px] ${canRedo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
+          <Redo className="h-4 w-4" />
+        </button>
+
+        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+
+        {/* Clear routes */}
+        <button onClick={onClearRoutes} title="Clear Routes" className={`${btnBase} p-2 min-w-[36px] text-yellow-400 hover:bg-yellow-400/10`}>
+          <Eraser className="h-4 w-4" />
+        </button>
+
+        {/* Clear all */}
+        <button onClick={onClear} title="Clear All" className={`${btnBase} px-2.5 py-2 gap-1 text-xs text-red-400 hover:bg-red-400/10`}>
+          <Eraser className="h-4 w-4" />
+          <span className="hidden sm:inline whitespace-nowrap">All</span>
         </button>
       </div>
 
-      <div className="h-6 w-px bg-chalk/10 mx-1"></div>
+      {/* Row 2: player icons (horizontally scrollable) */}
+      <div className="overflow-x-auto scrollbar-hide">
+        <PlayerToolbar selectedPlayer={selectedPlayer} onSelectPlayer={handlePlayerSelect} />
+      </div>
 
-      <button
-        onClick={onUndo}
-        disabled={!canUndo}
-        className="p-2 text-chalk/70 hover:text-chalk hover:bg-board-light rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Undo (Ctrl+Z)"
-      >
-        <Undo className="h-5 w-5" />
-      </button>
-
-      <button
-        onClick={onRedo}
-        disabled={!canRedo}
-        className="p-2 text-chalk/70 hover:text-chalk hover:bg-board-light rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Redo (Ctrl+Y)"
-      >
-        <Redo className="h-5 w-5" />
-      </button>
-
-      <PlayerToolbar
-        selectedPlayer={selectedPlayer}
-        onSelectPlayer={handlePlayerSelect}
-      />
-
-      <div className="h-6 w-px bg-chalk/10 mx-1"></div>
-
-      <button
-        onClick={onClearRoutes}
-        className="p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-md transition-colors"
-        title="Clear Routes"
-      >
-        <Route className="h-5 w-5" />
-      </button>
-
-      <button
-        onClick={onClear}
-        className="p-2 text-red-500 hover:bg-red-500/10 rounded-md transition-colors"
-        title="Clear All"
-      >
-        <Eraser className="h-5 w-5" />
-      </button>
+      {/* Active mode hint */}
+      {activeDraw === 'waypoint' && (
+        <p className="text-[10px] text-primary/80 px-1">
+          Tap to add points · Double-tap to finish route
+        </p>
+      )}
+      {activeDraw === 'straight' && (
+        <p className="text-[10px] text-primary/80 px-1">
+          Drag from a player to draw a straight route
+        </p>
+      )}
     </div>
   );
 }

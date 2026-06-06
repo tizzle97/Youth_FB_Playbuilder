@@ -1,51 +1,31 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Save, Download, Layout, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Save, Download, Layout, BookOpen, ChevronLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas } from './Canvas';
+import type { DrawMode } from './Canvas';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
-import { BookOpen } from 'lucide-react';
-
-interface PlayData {
-  metadata: PlayMetadata;
-  canvasDataURL: string;
-}
 
 export function PlayDesigner() {
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<any>(null);
-  const [canvasSize, setCanvasSize] = useState({ width: window.innerWidth, height: window.innerHeight - 10 });
-  const [drawingMode, setDrawingMode] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
 
-  useEffect(() => {
-    const updateSize = () => {
-      const container = canvasContainerRef.current;
-      const width = container?.clientWidth || window.innerWidth;
-      const height = container?.clientHeight || Math.max(window.innerHeight - 10 - 160, Math.floor((container?.clientWidth || window.innerWidth) * 0.75));
-      // Ensure sane minimums so the canvas can't become 0px tall or overly small
-      const finalWidth = Math.max(600, Math.floor(width));
-      const finalHeight = Math.max(360, Math.floor(height));
-      setCanvasSize({ width: finalWidth, height: finalHeight });
-    };
-    // run on next frame so layout settles
-    requestAnimationFrame(updateSize);
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-  }, []);
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [drawMode, setDrawMode] = useState<DrawMode>('freehand');
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
-  const navigate = useNavigate();
 
   const [currentPlayMetadata, setCurrentPlayMetadata] = useState<PlayMetadata>({
     playName: 'New Play',
@@ -61,208 +41,177 @@ export function PlayDesigner() {
     createdDate: new Date().toISOString(),
   });
 
-  // Handler functions
-  const handleSave = useCallback(() => {
-    setShowSaveModal(true);
+  // Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleExport = useCallback(() => {
-    setShowExportModal(true);
+  // Resize canvas to fill container
+  useEffect(() => {
+    const update = () => {
+      const el = canvasContainerRef.current;
+      if (!el) return;
+      const w = Math.max(320, el.clientWidth);
+      const h = Math.max(320, el.clientHeight);
+      setCanvasSize({ width: w, height: h });
+    };
+    const frame = requestAnimationFrame(update);
+    const ro = new ResizeObserver(update);
+    if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
+    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
 
   const handleNewPlay = useCallback(() => {
-    if (canvasRef.current) {
-      canvasRef.current.clear();
-      setCurrentPlayMetadata(prev => ({
-        ...prev,
-        playName: 'New Play',
-        playType: 'pass',
-        formation: '',
-        tags: [],
-        description: '',
-        situation: '',
-        yardage: ''
-      }));
-      setIsEditingExistingPlay(false);
-    }
+    canvasRef.current?.clear();
+    setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));
+    setIsEditingExistingPlay(false);
   }, []);
 
-  const handleClear = useCallback(() => {
-    if (canvasRef.current) {
-      canvasRef.current.clear();
-    }
-  }, []);
-
-  const handleUndo = useCallback(() => {
-    if (canvasRef.current?.undo) {
-      canvasRef.current.undo();
-    }
-  }, []);
-
-  const handleRedo = useCallback(() => {
-    if (canvasRef.current?.redo) {
-      canvasRef.current.redo();
-    }
-  }, []);
-
-  const handleClearRoutes = useCallback(() => {
-    if (canvasRef.current?.clearRoutes) {
-      canvasRef.current.clearRoutes();
-    }
-  }, []);
-
-  const handleExportToPDF = useCallback(async (format: 'single' | 'multiple' | 'wristband') => {
+  const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {
-      if (!canvasRef.current) return;
-      
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      
-      // Set canvas size
-      canvas.width = canvasRef.current.width;
-      canvas.height = canvasRef.current.height;
-      
-      // Draw white background
-      context.fillStyle = 'white';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the canvas content
-      context.drawImage(canvasRef.current, 0, 0);
-      
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-        unit: 'mm'
-      });
-      
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save('play-design.pdf');
-      
+      const sourceCanvas = canvasRef.current?.getCanvas();
+      if (!sourceCanvas) return;
+      const pdf = new jsPDF({ orientation: sourceCanvas.width > sourceCanvas.height ? 'landscape' : 'portrait', unit: 'mm' });
+      const imgData = sourceCanvas.toDataURL('image/png');
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = (sourceCanvas.height * pw) / sourceCanvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pw, ph);
+      pdf.save(`${currentPlayMetadata.playName || 'play'}.pdf`);
       setShowExportModal(false);
     } catch (err) {
-      console.error('Error exporting to PDF:', err);
-      setError('Failed to export play to PDF. Please try again.');
+      console.error(err);
+      setError('Failed to export PDF.');
     }
-  }, []);
+  }, [currentPlayMetadata.playName]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-board flex items-center justify-center">
-        <div className="text-chalk">Loading play...</div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen bg-board flex items-center justify-center">
+      <div className="text-chalk">Loading…</div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-board flex flex-col">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-30 bg-board-light border-b border-chalk/10 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-chalk flex items-center gap-2">
-            <Layout className="h-6 w-6 text-primary" />
+    <div className="fixed inset-0 flex flex-col bg-board overflow-hidden">
+
+      {/* ── HEADER ─────────────────────────────────────────────── */}
+      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">
+        {/* Back (mobile) */}
+        <button
+          onClick={() => navigate(-1)}
+          className="sm:hidden p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
+          title="Back"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+
+        {/* Title */}
+        <div className="flex items-center gap-1.5 mr-auto min-w-0">
+          <Layout className="h-5 w-5 text-primary shrink-0" />
+          <span className="font-bold text-chalk text-sm sm:text-base truncate">
             Play Designer
-            {isEditingExistingPlay && (
-              <span className="text-sm font-normal text-chalk/70 ml-2">
-                (Editing existing play)
-              </span>
-            )}
-          </h1>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleNewPlay}
-              className="flex items-center gap-2 px-4 py-2 bg-board hover:bg-board-light text-chalk border border-chalk/20 rounded-lg transition-colors"
-            >
-              New Play
-            </button>
-            <button
-              onClick={() => navigate('/playbooks')}
-              className="flex items-center gap-2 px-4 py-2 bg-board hover:bg-board-light text-chalk border border-chalk/20 rounded-lg transition-colors"
-            >
-              <BookOpen className="h-4 w-4" />
-              My Playbooks
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!user}
-              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="h-4 w-4" />
-              {isEditingExistingPlay ? 'Update Play' : 'Save Play'}
-            </button>
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-board hover:bg-board-light text-chalk border border-chalk/20 rounded-lg transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              Export
-            </button>
-          </div>
+            {isEditingExistingPlay && <span className="font-normal text-chalk/50 ml-1 text-xs hidden sm:inline">(editing)</span>}
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <button
+            onClick={handleNewPlay}
+            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
+          >
+            New
+          </button>
+          <button
+            onClick={() => navigate('/playbooks')}
+            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
+          >
+            <BookOpen className="h-4 w-4" />
+            Playbooks
+          </button>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            disabled={!user}
+            title={user ? 'Save play' : 'Sign in to save'}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Save className="h-4 w-4" />
+            <span className="hidden sm:inline">{isEditingExistingPlay ? 'Update' : 'Save'}</span>
+          </button>
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
         </div>
       </header>
 
-      {/* Floating Toolbar */}
-      <div className="fixed top-20 left-0 right-0 z-20 bg-white/90 backdrop-blur-sm p-4 shadow-md">
-        <div className="max-w-7xl mx-auto">
-          <DesignerToolbar
-            drawingMode={drawingMode}
-            setDrawingMode={setDrawingMode}
-            selectedPlayer={selectedPlayer?.letter || null}
-            onSelectPlayer={setSelectedPlayer}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onClear={handleClear}
-            onClearRoutes={handleClearRoutes}
-            canUndo={canvasRef.current?.canUndo?.()}
-            canRedo={canvasRef.current?.canRedo?.()}
-          />
-        </div>
+      {/* ── TOOLBAR ────────────────────────────────────────────── */}
+      {/* Desktop: top bar below header | Mobile: bottom bar */}
+      <div className="
+        shrink-0 bg-board-light border-chalk/10 px-3 py-2 z-20
+        hidden sm:block border-b
+      ">
+        <DesignerToolbar
+          drawingMode={drawingMode}
+          setDrawingMode={setDrawingMode}
+          drawMode={drawMode}
+          setDrawMode={setDrawMode}
+          selectedPlayer={selectedPlayer?.letter || null}
+          onSelectPlayer={setSelectedPlayer}
+          onUndo={() => canvasRef.current?.undo()}
+          onRedo={() => canvasRef.current?.redo()}
+          onClear={() => canvasRef.current?.clear()}
+          onClearRoutes={() => canvasRef.current?.clearRoutes()}
+          canUndo={canvasRef.current?.canUndo?.() ?? false}
+          canRedo={canvasRef.current?.canRedo?.() ?? false}
+        />
       </div>
 
-      {/* Main Canvas Area */}
-      <main className="flex-1 pt-40 overflow-hidden">
-        <div
-          ref={canvasContainerRef}
-          className="w-full bg-white"
-          style={{ width: '100%', height: `calc(100vh - 160px)`, minHeight: 360 }}
-        >
-          <Canvas
-            ref={canvasRef}
-            id="play-canvas"
-            width={canvasSize.width}
-            height={canvasSize.height}
-            drawingMode={drawingMode}
-            selectedPlayer={selectedPlayer}
-            setSelectedPlayer={setSelectedPlayer}
-            onDrawingComplete={(path) => console.log("Path drawn:", path)}
-          />
-        </div>
+      {/* ── CANVAS ─────────────────────────────────────────────── */}
+      <main
+        ref={canvasContainerRef}
+        className="flex-1 bg-white overflow-hidden"
+        style={{ minHeight: 0 }}
+      >
+        <Canvas
+          ref={canvasRef}
+          id="play-canvas"
+          width={canvasSize.width}
+          height={canvasSize.height}
+          drawingMode={drawingMode}
+          drawMode={drawMode}
+          selectedPlayer={selectedPlayer}
+          setSelectedPlayer={setSelectedPlayer}
+          onDrawingComplete={() => {}}
+        />
       </main>
 
-      {/* Status Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 z-10 bg-board-light border-t border-chalk/10 p-2">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="text-sm text-chalk/70">
-            {user ? 'Save your plays and share with the community.' : 'Sign in to save your plays.'}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleClear}
-              className="flex items-center gap-1 px-3 py-1 text-sm bg-board hover:bg-board-light text-chalk/70 hover:text-chalk rounded-md transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-              Clear All
-            </button>
-          </div>
-        </div>
-      </footer>
+      {/* ── MOBILE BOTTOM TOOLBAR ──────────────────────────────── */}
+      <div className="
+        sm:hidden shrink-0 bg-board-light border-t border-chalk/10 px-3 py-2 z-20
+        pb-[env(safe-area-inset-bottom,8px)]
+      ">
+        <DesignerToolbar
+          drawingMode={drawingMode}
+          setDrawingMode={setDrawingMode}
+          drawMode={drawMode}
+          setDrawMode={setDrawMode}
+          selectedPlayer={selectedPlayer?.letter || null}
+          onSelectPlayer={setSelectedPlayer}
+          onUndo={() => canvasRef.current?.undo()}
+          onRedo={() => canvasRef.current?.redo()}
+          onClear={() => canvasRef.current?.clear()}
+          onClearRoutes={() => canvasRef.current?.clearRoutes()}
+          canUndo={canvasRef.current?.canUndo?.() ?? false}
+          canRedo={canvasRef.current?.canRedo?.() ?? false}
+        />
+      </div>
 
-      {/* Modals */}
+      {/* ── MODALS ─────────────────────────────────────────────── */}
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
@@ -272,23 +221,23 @@ export function PlayDesigner() {
         onUpdateMetadata={setCurrentPlayMetadata}
         userHasAccount={!!user}
       />
-
       <SavePlayModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onSave={async (playData) => {
-          try {
-            // Implementation for saving play
-            console.log('Saving play:', playData);
-            setShowSaveModal(false);
-          } catch (err) {
-            console.error('Error saving play:', err);
-            setError('Failed to save play. Please try again.');
-          }
+          console.log('Saving play:', playData);
+          setShowSaveModal(false);
         }}
         user={user}
         previewThumbnail={canvasRef.current?.getCanvas()?.toDataURL() || ''}
       />
+
+      {error && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm z-50 shadow-lg">
+          {error}
+          <button onClick={() => setError(null)} className="ml-3 underline">dismiss</button>
+        </div>
+      )}
     </div>
   );
 }
