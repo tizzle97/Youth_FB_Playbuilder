@@ -432,11 +432,30 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           return;
         }
 
-        if (waypointPoints.length === 0 && clicked >= 0) {
-          const icon = playerIcons[clicked];
-          setWaypointColor(icon.color);
-          setWaypointIconIndex(clicked);
-          setWaypointPoints([{ x: icon.x, y: icon.y }]);
+        if (waypointPoints.length === 0) {
+          if (clicked >= 0) {
+            // Started directly on a player icon — use it as origin
+            const icon = playerIcons[clicked];
+            setWaypointColor(icon.color);
+            setWaypointIconIndex(clicked);
+            setWaypointPoints([{ x: icon.x, y: icon.y }]);
+          } else if (playerIcons.length > 0) {
+            // Tapped away from any icon — snap origin to the nearest player icon
+            let nearestIdx = 0;
+            let nearestDist = Infinity;
+            playerIcons.forEach((icon, i) => {
+              const dx = icon.x - p.x;
+              const dy = icon.y - p.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < nearestDist) { nearestDist = dist; nearestIdx = i; }
+            });
+            const nearest = playerIcons[nearestIdx];
+            setWaypointColor(nearest.color);
+            setWaypointIconIndex(nearestIdx);
+            // Origin = nearest icon, first segment end = tapped point
+            setWaypointPoints([{ x: nearest.x, y: nearest.y }, p]);
+          }
+          // If no icons exist at all, do nothing (route must start from a player)
         } else {
           setWaypointPoints((prev) => [...prev, p]);
         }
