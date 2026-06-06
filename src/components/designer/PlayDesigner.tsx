@@ -287,7 +287,7 @@ export function PlayDesigner() {
           }
         }}
         user={user}
-        previewThumbnail={canvasRef.current?.toDataURL() || ''}
+        previewThumbnail={canvasRef.current?.getCanvas()?.toDataURL() || ''}
       />
     </div>
   );
