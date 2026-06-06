@@ -185,6 +185,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [waypointIconIndex, setWaypointIconIndex] = useState<number | null>(null);
     const lastTapRef = useRef<number>(0);
 
+    // Hover highlight (shows which icon will be used as route origin)
+    const [hoveredIconIndex, setHoveredIconIndex] = useState<number | null>(null);
+
     // Drag state
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
@@ -293,6 +296,32 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         drawArrowhead(ctx, pts, extraColor);
       }
 
+      // Draw hover highlight ring (shown in drawing modes before a route origin is selected)
+      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
+        const hi = playerIcons[hoveredIconIndex];
+        ctx.save();
+        // Outer glow
+        ctx.shadowColor = hi.color;
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = hi.color;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(hi.x, hi.y, PLAYER_SIZE / 2 + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        // Dashed inner ring
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hi.x, hi.y, PLAYER_SIZE / 2 + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
       // Draw icons
       playerIcons.forEach((icon) => {
         ctx.save();
@@ -351,7 +380,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           return prev.slice(0, -1);
         });
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setCurrentPoints([]); setWaypointPoints([]); setIsDrawing(false); setActiveIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setCurrentPoints([]); setWaypointPoints([]); setIsDrawing(false); setActiveIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); },
       canUndo: () => undoStack.length > 0,
@@ -434,29 +463,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         if (waypointPoints.length === 0) {
           if (clicked >= 0) {
-            // Started directly on a player icon — use it as origin
+            // User clicked directly on a player icon — lock it in as the route origin
             const icon = playerIcons[clicked];
             setWaypointColor(icon.color);
             setWaypointIconIndex(clicked);
             setWaypointPoints([{ x: icon.x, y: icon.y }]);
-          } else if (playerIcons.length > 0) {
-            // Tapped away from any icon — snap origin to the nearest player icon
-            let nearestIdx = 0;
-            let nearestDist = Infinity;
-            playerIcons.forEach((icon, i) => {
-              const dx = icon.x - p.x;
-              const dy = icon.y - p.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < nearestDist) { nearestDist = dist; nearestIdx = i; }
-            });
-            const nearest = playerIcons[nearestIdx];
-            setWaypointColor(nearest.color);
-            setWaypointIconIndex(nearestIdx);
-            // Origin = nearest icon, first segment end = tapped point
-            setWaypointPoints([{ x: nearest.x, y: nearest.y }, p]);
+            setHoveredIconIndex(null);
           }
-          // If no icons exist at all, do nothing (route must start from a player)
+          // Tapped away from any icon with no origin selected — do nothing.
+          // The hover highlight guides the user to tap a player first.
         } else {
+          // Origin already selected — add next waypoint
           setWaypointPoints((prev) => [...prev, p]);
         }
         return;
@@ -499,6 +516,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           return c;
         });
         return;
+      }
+
+      // Hover highlight: show which icon will be the route origin
+      // Only when in drawing mode and no route is currently in progress
+      if (drawingMode && !isDrawing && waypointPoints.length === 0) {
+        const idx = findIcon(p.x, p.y);
+        setHoveredIconIndex(idx >= 0 ? idx : null);
+      } else if (!drawingMode || isDrawing || waypointPoints.length > 0) {
+        if (hoveredIconIndex !== null) setHoveredIconIndex(null);
       }
 
       if (isDrawing && (drawMode === 'freehand' || drawMode === 'straight')) {

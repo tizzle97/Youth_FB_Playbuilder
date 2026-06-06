@@ -131,12 +131,17 @@ export function DesignerToolbar({
       {/* Active mode hint */}
       {activeDraw === 'waypoint' && (
         <p className="text-[10px] text-primary/80 px-1">
-          Tap to add points · Double-tap to finish route
+          Hover &amp; tap a player to start · Tap waypoints · Double-tap to finish
         </p>
       )}
       {activeDraw === 'straight' && (
         <p className="text-[10px] text-primary/80 px-1">
-          Drag from a player to draw a straight route
+          Hover a player icon, then drag to draw a straight route
+        </p>
+      )}
+      {activeDraw === 'freehand' && (
+        <p className="text-[10px] text-primary/80 px-1">
+          Hover a player icon, then drag to draw a freehand route
         </p>
       )}
     </div>
