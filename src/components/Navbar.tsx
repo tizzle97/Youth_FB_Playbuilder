@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { FolderRoot as Football, Menu } from 'lucide-react';
+import { Menu } from 'lucide-react';
+import { Logo } from './Logo';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 import { UserMenu } from './auth/UserMenu';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -52,7 +48,7 @@ export function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <Link to="/" className="flex-shrink-0 flex items-center">
-              <Football className="h-8 w-8 text-primary" strokeWidth={2.5} />
+              <Logo className="h-8 w-8 text-chalk" />
               <span className="ml-2 text-xl font-chalk font-bold text-chalk">Playbuilder Pro</span>
             </Link>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">

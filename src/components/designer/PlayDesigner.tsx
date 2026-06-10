@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Save, Download, Layout, BookOpen, Home } from 'lucide-react';
+import { Save, Download, BookOpen, Home } from 'lucide-react';
+import { Logo } from '../Logo';
 import { useNavigate } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
@@ -108,7 +109,7 @@ export function PlayDesigner() {
 
         {/* Title */}
         <div className="flex items-center gap-1.5 mr-auto min-w-0">
-          <Layout className="h-5 w-5 text-primary shrink-0" />
+          <Logo className="h-6 w-6 text-chalk shrink-0" />
           <span className="font-bold text-chalk text-sm sm:text-base truncate">
             Play Designer
             {isEditingExistingPlay && <span className="font-normal text-chalk/50 ml-1 text-xs hidden sm:inline">(editing)</span>}
