@@ -33,7 +33,7 @@ const PLAYER_SIZE = 36;
 // ---------------------------------------------
 // Types
 // ---------------------------------------------
-export type DrawMode = 'freehand' | 'straight' | 'waypoint';
+export type DrawMode = 'straight' | 'waypoint';
 
 type Pt = { x: number; y: number };
 
@@ -81,28 +81,6 @@ export type CanvasHandle = {
 // ---------------------------------------------
 const yFromYards = (yards: number, H: number) =>
   ((yards + FIELD_YARDS_ABOVE_LOS) / (FIELD_YARDS_ABOVE_LOS + FIELD_YARDS_BELOW_LOS)) * H;
-
-/** Smooth a polyline using midpoint averaging (Chaikin-style). */
-function smoothPoints(pts: Pt[], iterations = 2): Pt[] {
-  if (pts.length <= 2) return pts;
-  let result = pts;
-  for (let iter = 0; iter < iterations; iter++) {
-    const next: Pt[] = [result[0]];
-    for (let i = 0; i < result.length - 1; i++) {
-      next.push({
-        x: result[i].x * 0.75 + result[i + 1].x * 0.25,
-        y: result[i].y * 0.75 + result[i + 1].y * 0.25,
-      });
-      next.push({
-        x: result[i].x * 0.25 + result[i + 1].x * 0.75,
-        y: result[i].y * 0.25 + result[i + 1].y * 0.75,
-      });
-    }
-    next.push(result[result.length - 1]);
-    result = next;
-  }
-  return result;
-}
 
 /** Draw a smooth route through pts on ctx. */
 function strokeRoute(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, lw = ROUTE_LINE_WIDTH) {
@@ -189,12 +167,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [undoStack, setUndoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[] }>>([]);
     const [redoStack, setRedoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[] }>>([]);
 
-    // Freehand / straight drawing state
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [currentPoints, setCurrentPoints] = useState<Pt[]>([]);
-    const [currentColor, setCurrentColor] = useState('#e05a1e'); // orange default
-    const [activeIconIndex, setActiveIconIndex] = useState<number | null>(null);
-
     // Waypoint mode state
     const [waypointPoints, setWaypointPoints] = useState<Pt[]>([]);
     const [waypointColor, setWaypointColor] = useState('#e05a1e');
@@ -267,7 +239,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ------------------------------------------
     // Full redraw
     // ------------------------------------------
-    const draw = useCallback((extraPoints?: Pt[], extraColor?: string, extraMode?: DrawMode) => {
+    const draw = useCallback(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -281,11 +253,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       paths.forEach((p, i) => { if (p.startIconIndex !== undefined) lastByIcon.set(p.startIconIndex, i); });
 
       paths.forEach((p, i) => {
-        const rendered = p.mode === 'straight'
-          ? p.points
-          : p.mode === 'freehand'
-            ? smoothPoints(p.points, 1)
-            : p.points; // waypoint: already smooth enough
+        const rendered = p.points;
         if (p.mode === 'straight') {
           strokeStraight(ctx, rendered, p.color);
         } else {
@@ -316,13 +284,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         }
         // Live arrowhead at current end
         if (waypointPoints.length >= 2) drawArrowhead(ctx, waypointPoints, waypointColor);
-      }
-
-      // Draw in-progress freehand stroke preview (freehand drag only)
-      if (extraPoints && extraPoints.length >= 2 && extraColor) {
-        const pts = smoothPoints(extraPoints, 1);
-        strokeRoute(ctx, pts, extraColor, ROUTE_LINE_WIDTH * 0.8);
-        drawArrowhead(ctx, pts, extraColor);
       }
 
       // Draw origin-locked indicator (solid bright ring on the icon whose route is being drawn)
@@ -411,8 +372,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     useEffect(() => {
       setWaypointPoints([]);
       setWaypointIconIndex(null);
-      setCurrentPoints([]);
-      setIsDrawing(false);
       setHoveredIconIndex(null);
     }, [drawMode]);
 
@@ -422,8 +381,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (!drawingMode) {
         setWaypointPoints([]);
         setWaypointIconIndex(null);
-        setCurrentPoints([]);
-        setIsDrawing(false);
         setHoveredIconIndex(null);
       }
     }, [drawingMode]);
@@ -453,7 +410,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           return prev.slice(0, -1);
         });
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setCurrentPoints([]); setWaypointPoints([]); setIsDrawing(false); setActiveIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); },
       canUndo: () => undoStack.length > 0,
@@ -576,24 +533,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Freehand mode — drag to draw
-      if (drawingMode && drawMode === 'freehand') {
-        if (clicked >= 0) {
-          const icon = playerIcons[clicked];
-          setCurrentColor(icon.color);
-          setActiveIconIndex(clicked);
-          setIsDrawing(true);
-          setCurrentPoints([{ x: icon.x, y: icon.y }]);
-          setHoveredIconIndex(null);
-        } else {
-          setCurrentColor('#e05a1e');
-          setActiveIconIndex(null);
-          setIsDrawing(true);
-          setCurrentPoints([p]);
-        }
-        return;
-      }
-
       // Drag icon
       if (clicked >= 0) {
         const icon = playerIcons[clicked];
@@ -618,31 +557,18 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
       // Hover highlight: show which icon will be the route origin
       // Only when in drawing mode and no route is currently in progress
-      if (drawingMode && !isDrawing && waypointPoints.length === 0) {
+      if (drawingMode && waypointPoints.length === 0) {
         const idx = findIcon(p.x, p.y);
         setHoveredIconIndex(idx >= 0 ? idx : null);
-      } else if (!drawingMode || isDrawing || waypointPoints.length > 0) {
-        if (hoveredIconIndex !== null) setHoveredIconIndex(null);
-      }
-
-      if (isDrawing && (drawMode === 'freehand' || drawMode === 'straight')) {
-        const pts = [...currentPoints, p];
-        setCurrentPoints(pts);
-        draw(pts, currentColor, drawMode);
+      } else if (hoveredIconIndex !== null) {
+        setHoveredIconIndex(null);
       }
     };
 
     const handlePointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
       if (e) (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
 
-      if (isDragging) { setIsDragging(false); draggingIndexRef.current = null; return; }
-
-      if (isDrawing) {
-        setIsDrawing(false);
-        finishRoute(currentPoints, currentColor, activeIconIndex, drawMode);
-        setCurrentPoints([]);
-        setActiveIconIndex(null);
-      }
+      if (isDragging) { setIsDragging(false); draggingIndexRef.current = null; }
     };
 
     // Drag-and-drop from toolbar
@@ -667,17 +593,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
     let instructionText: string | null = null;
     if (drawingMode) {
-      if (drawMode === 'freehand') {
-        if (!isDrawing) instructionText = 'Hover a player icon, then drag to draw their route';
-      } else {
-        // straight / waypoint
-        if (waypointPoints.length === 0) {
-          instructionText = 'Hover a player icon, then tap to select them';
-        } else if (waypointPoints.length === 1 && originIcon) {
-          instructionText = `"${originIcon.letter}" selected · Tap the field to place route points · Tap "${originIcon.letter}" again to cancel`;
-        } else if (waypointPoints.length >= 2) {
-          instructionText = 'Tap to keep adding corners · Double-tap or press Finish to complete';
-        }
+      if (waypointPoints.length === 0) {
+        instructionText = 'Hover a player icon, then tap to select them';
+      } else if (waypointPoints.length === 1 && originIcon) {
+        instructionText = `"${originIcon.letter}" selected · Tap the field to place route points · Tap "${originIcon.letter}" again to cancel`;
+      } else if (waypointPoints.length >= 2) {
+        instructionText = 'Tap to keep adding corners · Double-tap or press Finish to complete';
       }
     }
 

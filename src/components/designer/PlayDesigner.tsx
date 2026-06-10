@@ -17,7 +17,7 @@ export function PlayDesigner() {
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
 
   const [drawingMode, setDrawingMode] = useState(false);
-  const [drawMode, setDrawMode] = useState<DrawMode>('freehand');
+  const [drawMode, setDrawMode] = useState<DrawMode>('straight');
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
 
   const [loading, setLoading] = useState(false);

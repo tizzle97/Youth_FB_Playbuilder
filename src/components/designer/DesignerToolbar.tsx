@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Pencil, Undo, Redo, Eraser, Minus, GitBranch } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch } from 'lucide-react';
 import { PlayerToolbar } from './PlayerToolbar';
 import type { DrawMode } from './Canvas';
 
@@ -67,16 +67,6 @@ export function DesignerToolbar({
 
         <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
 
-        {/* Freehand */}
-        <button
-          onClick={() => pickDraw('freehand')}
-          title="Freehand Route"
-          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'freehand' ? active : inactive}`}
-        >
-          <Pencil className="h-4 w-4" style={{ transform: 'rotate(-15deg)' }} />
-          <span className="hidden sm:inline whitespace-nowrap">Freehand</span>
-        </button>
-
         {/* Straight */}
         <button
           onClick={() => pickDraw('straight')}
@@ -132,7 +122,6 @@ export function DesignerToolbar({
       {activeDraw && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className="text-primary font-semibold">
-            {activeDraw === 'freehand' && 'Freehand mode'}
             {activeDraw === 'straight' && 'Straight line mode'}
             {activeDraw === 'waypoint' && 'Curved route mode'}
           </span>
