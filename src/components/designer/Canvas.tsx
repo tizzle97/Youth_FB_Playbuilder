@@ -204,6 +204,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Hover highlight (shows which icon will be used as route origin)
     const [hoveredIconIndex, setHoveredIconIndex] = useState<number | null>(null);
 
+    // Route-saved flash
+    const [savedFlash, setSavedFlash] = useState(false);
+    const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Drag state
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
@@ -321,8 +325,31 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         drawArrowhead(ctx, pts, extraColor);
       }
 
-      // Draw hover highlight ring (shown in drawing modes before a route origin is selected)
-      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
+      // Draw origin-locked indicator (solid bright ring on the icon whose route is being drawn)
+      if (waypointPoints.length >= 1 && waypointIconIndex !== null && playerIcons[waypointIconIndex]) {
+        const oi = playerIcons[waypointIconIndex];
+        ctx.save();
+        // Pulsing glow
+        ctx.shadowColor = oi.color;
+        ctx.shadowBlur = 24;
+        ctx.strokeStyle = oi.color;
+        ctx.lineWidth = 4;
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(oi.x, oi.y, PLAYER_SIZE / 2 + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        // Solid white inner ring so it's clearly "locked"
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(oi.x, oi.y, PLAYER_SIZE / 2 + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw hover highlight ring — only when NO origin is locked yet
+      if (waypointPoints.length === 0 && hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const hi = playerIcons[hoveredIconIndex];
         ctx.save();
         // Outer glow
@@ -366,7 +393,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.fillText(icon.letter, icon.x, icon.y);
         ctx.restore();
       });
-    }, [paths, playerIcons, drawField, waypointPoints, waypointColor]);
+    }, [paths, playerIcons, drawField, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -388,6 +415,18 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setIsDrawing(false);
       setHoveredIconIndex(null);
     }, [drawMode]);
+
+    // Clear in-progress segments when drawing mode is turned off
+    // (e.g. user selects a player from the toolbar, which disables drawing mode)
+    useEffect(() => {
+      if (!drawingMode) {
+        setWaypointPoints([]);
+        setWaypointIconIndex(null);
+        setCurrentPoints([]);
+        setIsDrawing(false);
+        setHoveredIconIndex(null);
+      }
+    }, [drawingMode]);
 
     // ------------------------------------------
     // Imperative handle
@@ -450,7 +489,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // All modes keep all points — straight mode renders as connected segments
       const newPath: PathItem = { points: pts, color, startIconIndex: iconIdx ?? undefined, mode };
       setPaths((prev) => [...prev, newPath]);
-      if (onDrawingComplete) onDrawingComplete(finalPts);
+      if (onDrawingComplete) onDrawingComplete(pts);
     }, [pushSnapshot, onDrawingComplete]);
 
     // ------------------------------------------
@@ -460,6 +499,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (waypointPoints.length >= 2) {
         // Use the active drawMode so straight segments are stored as 'straight'
         finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode);
+        // Flash "Route saved!" confirmation — setSavedFlash is stable, safe to call here
+        if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+        setSavedFlash(true);
+        savedFlashTimerRef.current = setTimeout(() => setSavedFlash(false), 1500);
       }
       setWaypointPoints([]);
       setWaypointIconIndex(null);
@@ -509,8 +552,26 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           // Clicked canvas without selecting a player — do nothing.
           // Hover highlight guides the user to tap a player first.
         } else {
-          // Origin locked — add the next segment endpoint
-          setWaypointPoints((prev) => [...prev, p]);
+          // Origin already locked — check what the user tapped
+          if (clicked >= 0 && clicked === waypointIconIndex) {
+            // Tapped the SAME origin icon → cancel the in-progress route and deselect
+            setWaypointPoints([]);
+            setWaypointIconIndex(null);
+            setHoveredIconIndex(null);
+          } else if (clicked >= 0) {
+            // Tapped a DIFFERENT player icon → save current route (if long enough), start fresh
+            if (waypointPoints.length >= 2) {
+              finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode);
+            }
+            const icon = playerIcons[clicked];
+            setWaypointPoints([{ x: icon.x, y: icon.y }]);
+            setWaypointColor(icon.color);
+            setWaypointIconIndex(clicked);
+            setHoveredIconIndex(null);
+          } else {
+            // Tapped open canvas → add the next segment endpoint
+            setWaypointPoints((prev) => [...prev, p]);
+          }
         }
         return;
       }
@@ -602,6 +663,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       } catch { /* ignore */ }
     };
 
+    // ── Instruction text for the canvas overlay ──────────────────
+    const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
+    let instructionText: string | null = null;
+    if (drawingMode) {
+      if (drawMode === 'freehand') {
+        if (!isDrawing) instructionText = 'Hover a player icon, then drag to draw their route';
+      } else {
+        // straight / waypoint
+        if (waypointPoints.length === 0) {
+          instructionText = 'Hover a player icon, then tap to select them';
+        } else if (waypointPoints.length === 1 && originIcon) {
+          instructionText = `"${originIcon.letter}" selected · Tap the field to place route points · Tap "${originIcon.letter}" again to cancel`;
+        } else if (waypointPoints.length >= 2) {
+          instructionText = 'Tap to keep adding corners · Double-tap or press Finish to complete';
+        }
+      }
+    }
+
     return (
       <div className="relative w-full h-full">
         <canvas
@@ -618,14 +697,43 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           className="block bg-white touch-none"
           style={{ width: '100%', height: '100%' }}
         />
-        {/* Finish button for straight + waypoint modes */}
-        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 2 && (
-          <button
-            onPointerDown={(e) => { e.stopPropagation(); finishWaypoint(); }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-primary text-white rounded-full shadow-lg font-semibold text-sm z-10 flex items-center gap-2"
-          >
-            ✓ Finish Route
-          </button>
+
+        {/* ── Contextual instruction bar (top of canvas) ── */}
+        {(savedFlash || instructionText) && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
+            <div
+              className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
+                savedFlash ? 'bg-green-600' : 'bg-black/65 backdrop-blur-sm'
+              }`}
+            >
+              {savedFlash ? '✓ Route saved!' : instructionText}
+            </div>
+          </div>
+        )}
+
+        {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
+        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 1 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
+            {waypointPoints.length >= 2 && (
+              <button
+                onPointerDown={(e) => { e.stopPropagation(); finishWaypoint(); }}
+                className="px-5 py-2 bg-primary hover:bg-primary/90 text-white rounded-full shadow-lg font-semibold text-sm flex items-center gap-1.5 transition-colors"
+              >
+                <span>⚑</span> Finish Route
+              </button>
+            )}
+            <button
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setWaypointPoints([]);
+                setWaypointIconIndex(null);
+                setHoveredIconIndex(null);
+              }}
+              className="px-4 py-2 bg-black/60 hover:bg-black/80 text-white rounded-full shadow-lg font-semibold text-sm flex items-center gap-1.5 transition-colors"
+            >
+              <span>✕</span> Cancel
+            </button>
+          </div>
         )}
       </div>
     );

@@ -128,20 +128,15 @@ export function DesignerToolbar({
         <PlayerToolbar selectedPlayer={selectedPlayer} onSelectPlayer={handlePlayerSelect} />
       </div>
 
-      {/* Active mode hint */}
-      {activeDraw === 'waypoint' && (
-        <p className="text-[10px] text-primary/80 px-1">
-          Hover &amp; tap a player to start · Tap waypoints · Double-tap to finish
-        </p>
-      )}
-      {activeDraw === 'straight' && (
-        <p className="text-[10px] text-primary/80 px-1">
-          Hover a player icon, then drag to draw a straight route
-        </p>
-      )}
-      {activeDraw === 'freehand' && (
-        <p className="text-[10px] text-primary/80 px-1">
-          Hover a player icon, then drag to draw a freehand route
+      {/* Active mode label */}
+      {activeDraw && (
+        <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
+          <span className="text-primary font-semibold">
+            {activeDraw === 'freehand' && 'Freehand mode'}
+            {activeDraw === 'straight' && 'Straight line mode'}
+            {activeDraw === 'waypoint' && 'Curved route mode'}
+          </span>
+          <span>· See field for instructions</span>
         </p>
       )}
     </div>
