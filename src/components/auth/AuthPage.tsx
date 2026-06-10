@@ -77,15 +77,7 @@ export function AuthPage() {
           throw new Error('Username can only contain letters, numbers, underscores, and hyphens');
         }
 
-        const { data: { user: existingUser }, error: checkError } = await supabase.auth.getUser(email);
-        
-        if (existingUser) {
-          setError('This email is already registered. Please sign in instead.');
-          setLoading(false);
-          return;
-        }
-
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -94,19 +86,26 @@ export function AuthPage() {
             }
           }
         });
-        
+
         if (signUpError) {
           if (signUpError.message.includes('already registered')) {
             setError('This email is already registered. Please sign in instead.');
+          } else if (signUpError.message.toLowerCase().includes('rate limit')) {
+            setError('We are experiencing high signup volume. Please try again in about an hour, or contact us if the problem persists.');
           } else {
             setError(signUpError.message);
           }
+        } else if (signUpData.session) {
+          // Email confirmation disabled — user is signed in immediately
+          setSuccess('Account created successfully! Welcome!');
+          setTimeout(() => navigate('/'), 1500);
         } else {
-          setSuccess('Account created successfully! You can now sign in.');
+          // Email confirmation required — tell the user what to actually do
+          setSuccess('Account created! Please check your email and click the confirmation link before signing in.');
           setTimeout(() => {
             setIsSignUp(false);
             setSuccess('');
-          }, 3000);
+          }, 6000);
         }
       } else {
         const { error: signInError, data } = await supabase.auth.signInWithPassword({
