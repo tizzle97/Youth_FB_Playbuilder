@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Save, Download, Layout, BookOpen, ChevronLeft } from 'lucide-react';
+import { Save, Download, Layout, BookOpen, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
@@ -97,13 +97,13 @@ export function PlayDesigner() {
 
       {/* ── HEADER ─────────────────────────────────────────────── */}
       <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">
-        {/* Back (mobile) */}
+        {/* Home */}
         <button
-          onClick={() => navigate(-1)}
-          className="sm:hidden p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
-          title="Back"
+          onClick={() => navigate('/')}
+          className="p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
+          title="Back to Home"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <Home className="h-5 w-5" />
         </button>
 
         {/* Title */}
