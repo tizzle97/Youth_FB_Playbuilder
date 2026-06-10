@@ -1,5 +1,6 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { initAnalytics, trackPageView } from './lib/analytics';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Features } from './components/Features';
@@ -28,9 +29,23 @@ function HomePage() {
   );
 }
 
+// Sends a page_view to Google Analytics on every route change
+function PageTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location]);
+  return null;
+}
+
 function App() {
+  useEffect(() => {
+    initAnalytics();
+  }, []);
+
   return (
     <Router>
+      <PageTracker />
       <div className="min-h-screen bg-board">
         <Navbar />
         <Routes>
