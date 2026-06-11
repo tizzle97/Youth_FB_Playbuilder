@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MessageSquare, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 export function FeedbackButton() {
@@ -11,6 +11,11 @@ export function FeedbackButton() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // The Play Designer covers the full screen; the floating button would
+  // overlap the mobile toolbar's player icons and route action buttons.
+  if (location.pathname === '/designer') return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
