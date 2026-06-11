@@ -130,6 +130,32 @@ function strokeStraight(ctx: CanvasRenderingContext2D, pts: Pt[], color: string,
   ctx.restore();
 }
 
+/**
+ * Shorten a polyline from its end by `dist` pixels so the stroked line
+ * tucks behind the arrowhead instead of poking past its tip.
+ */
+function trimEnd(pts: Pt[], dist: number): Pt[] {
+  if (pts.length < 2 || dist <= 0) return pts;
+  let remaining = dist;
+  const out = [...pts];
+  while (out.length >= 2) {
+    const tip = out[out.length - 1];
+    const prev = out[out.length - 2];
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const segLen = Math.sqrt(dx * dx + dy * dy);
+    if (segLen > remaining) {
+      const t = (segLen - remaining) / segLen;
+      out[out.length - 1] = { x: prev.x + dx * t, y: prev.y + dy * t };
+      return out;
+    }
+    // Whole segment shorter than the trim distance — drop the point
+    remaining -= segLen;
+    out.pop();
+  }
+  return out;
+}
+
 function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number) {
   if (pts.length < 2) return;
   const tip = pts[pts.length - 1];
@@ -230,12 +256,14 @@ function renderScene(
 
   paths.forEach((p, i) => {
     const pts = p.points.map(toPx);
-    if (p.mode === 'straight') {
-      strokeStraight(ctx, pts, p.color, lineWidth);
-    } else {
-      strokeRoute(ctx, pts, p.color, lineWidth);
-    }
     const isLast = p.startIconIndex !== undefined ? lastByIcon.get(p.startIconIndex) === i : true;
+    // Stop the stroked line short of the tip so it tucks behind the arrowhead
+    const stroked = isLast ? trimEnd(pts, arrowSize * 0.8) : pts;
+    if (p.mode === 'straight') {
+      strokeStraight(ctx, stroked, p.color, lineWidth);
+    } else {
+      strokeRoute(ctx, stroked, p.color, lineWidth);
+    }
     if (isLast) drawArrowhead(ctx, pts, p.color, arrowSize);
   });
 
@@ -317,8 +345,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // In-progress route preview
       if (waypointPoints.length >= 1) {
         const pts = waypointPoints.map(toPx);
+        const stroked = pts.length >= 2 ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
         if (drawMode === 'straight') {
-          strokeStraight(ctx, pts, waypointColor, ROUTE_LINE_WIDTH * scale);
+          strokeStraight(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
           pts.slice(1).forEach((pt) => {
             ctx.save();
             ctx.fillStyle = waypointColor;
@@ -328,7 +357,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             ctx.restore();
           });
         } else {
-          strokeRoute(ctx, pts, waypointColor, ROUTE_LINE_WIDTH * scale);
+          strokeRoute(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
         }
         if (pts.length >= 2) drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
       }
