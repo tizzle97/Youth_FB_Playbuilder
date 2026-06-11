@@ -9,6 +9,7 @@ import { Donate } from './components/Donate';
 import { CommunityPage } from './components/community/CommunityPage';
 import { BlogPage } from './components/blog/BlogPage';
 import { AuthPage } from './components/auth/AuthPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { AccountSettings } from './components/auth/AccountSettings';
 import { PlayDesigner } from './components/designer/PlayDesigner';
 import { PlaysPage } from './components/plays/PlaysPage';
@@ -38,6 +39,7 @@ function App() {
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
           <Route path="/account" element={<AccountSettings />} />
           <Route path="/plays" element={<PlaysPage />} />
           <Route path="/playbooks" element={<PlaybooksPage />} />
