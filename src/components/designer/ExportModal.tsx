@@ -76,6 +76,9 @@ export function ExportModal({
   };
 
   const getCurrentCanvasData = (): string => {
+    // Fixed-resolution render so prints are identical on every device
+    const fixed = canvasRef?.current?.exportImage?.();
+    if (fixed) return fixed;
     const canvas = document.getElementById('play-canvas') as HTMLCanvasElement;
     if (canvas) {
       return canvas.toDataURL('image/png', 1.0);

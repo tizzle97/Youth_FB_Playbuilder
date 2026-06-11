@@ -72,12 +72,13 @@ export function PlayDesigner() {
 
   const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {
-      const sourceCanvas = canvasRef.current?.getCanvas();
-      if (!sourceCanvas) return;
-      const pdf = new jsPDF({ orientation: sourceCanvas.width > sourceCanvas.height ? 'landscape' : 'portrait', unit: 'mm' });
-      const imgData = sourceCanvas.toDataURL('image/png');
+      // Fixed-resolution render (1650x1275) so every play prints identically
+      // regardless of the screen it was designed on
+      const imgData = canvasRef.current?.exportImage?.();
+      if (!imgData) return;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm' });
       const pw = pdf.internal.pageSize.getWidth();
-      const ph = (sourceCanvas.height * pw) / sourceCanvas.width;
+      const ph = (1275 * pw) / 1650;
       pdf.addImage(imgData, 'PNG', 0, 0, pw, ph);
       pdf.save(`${currentPlayMetadata.playName || 'play'}.pdf`);
       setShowExportModal(false);
@@ -230,7 +231,7 @@ export function PlayDesigner() {
           setShowSaveModal(false);
         }}
         user={user}
-        previewThumbnail={canvasRef.current?.getCanvas()?.toDataURL() || ''}
+        previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
       />
 
       {error && (
