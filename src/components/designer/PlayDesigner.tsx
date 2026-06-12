@@ -23,6 +23,7 @@ export function PlayDesigner() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -69,6 +70,68 @@ export function PlayDesigner() {
     setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));
     setIsEditingExistingPlay(false);
   }, []);
+
+  const handleSavePlay = useCallback(async (playData: {
+    name: string;
+    metadata: PlayMetadata;
+    isPublic: boolean;
+    playbookId?: string;
+  }) => {
+    try {
+      setError(null);
+      if (!user) {
+        setError('Please sign in to save plays.');
+        return;
+      }
+
+      // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx)
+      const canvasData = JSON.stringify({
+        version: 2,
+        paths: canvasRef.current?.getPaths?.() || [],
+        playerIcons: canvasRef.current?.getIcons?.() || [],
+      });
+      const thumbnail = canvasRef.current?.exportImage?.(660, 510) || '';
+
+      const { data: inserted, error: insertError } = await supabase
+        .from('plays')
+        .insert({
+          name: playData.name,
+          type: 'offense',
+          canvas_data: canvasData,
+          description: playData.metadata.description || '',
+          user_id: user.id,
+          thumbnail,
+          is_public: playData.isPublic,
+          metadata: playData.metadata,
+        })
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
+
+      if (playData.playbookId) {
+        const { data: maxRow } = await supabase
+          .from('playbook_plays')
+          .select('order_position')
+          .eq('playbook_id', playData.playbookId)
+          .order('order_position', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const { error: linkError } = await supabase.from('playbook_plays').insert({
+          playbook_id: playData.playbookId,
+          play_id: inserted.id,
+          order_position: (maxRow?.order_position ?? 0) + 1,
+        });
+        if (linkError) throw linkError;
+      }
+
+      setCurrentPlayMetadata((prev) => ({ ...prev, ...playData.metadata, playName: playData.name }));
+      setSuccessMessage(playData.playbookId ? 'Play saved to playbook!' : 'Play saved!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Save play error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save play');
+    }
+  }, [user]);
 
   const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {
@@ -226,10 +289,7 @@ export function PlayDesigner() {
       <SavePlayModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
-        onSave={async (playData) => {
-          console.log('Saving play:', playData);
-          setShowSaveModal(false);
-        }}
+        onSave={handleSavePlay}
         user={user}
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
       />
@@ -238,6 +298,12 @@ export function PlayDesigner() {
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm z-50 shadow-lg">
           {error}
           <button onClick={() => setError(null)} className="ml-3 underline">dismiss</button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm z-50 shadow-lg">
+          ✓ {successMessage}
         </div>
       )}
     </div>
