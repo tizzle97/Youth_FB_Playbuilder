@@ -1,5 +1,6 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from './lib/supabase';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Features } from './components/Features';
@@ -29,9 +30,39 @@ function HomePage() {
   );
 }
 
+/**
+ * Safety net for password-recovery links. If Supabase's redirect allowlist
+ * sends the user to the homepage (or anywhere else) instead of the reset
+ * page, the recovery token in the URL hash still signs them in — catch that
+ * and route them to the reset form so they can actually set a new password.
+ */
+function RecoveryRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // The recovery hash is present synchronously on first load
+    if (window.location.hash.includes('type=recovery') && location.pathname !== '/auth/reset-password') {
+      navigate('/auth/reset-password' + window.location.hash, { replace: true });
+      return;
+    }
+    // Belt-and-suspenders: Supabase fires PASSWORD_RECOVERY after exchanging the token
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/auth/reset-password') {
+        navigate('/auth/reset-password', { replace: true });
+      }
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
+
 function App() {
   return (
     <Router>
+      <RecoveryRedirect />
       <div className="min-h-screen bg-board">
         <Navbar />
         <Routes>
