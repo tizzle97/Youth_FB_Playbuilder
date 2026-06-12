@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, BookOpen, MessageSquare, Trash2 } from 'lucide-react';
+import { Shield, Users, BookOpen, MessageSquare, Trash2, Inbox } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { BlogManagement } from './BlogManagement';
+import { FeedbackManagement } from './FeedbackManagement';
 
 interface User {
   id: string;
@@ -16,7 +17,7 @@ export function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'blog' | 'moderation'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'blog' | 'feedback' | 'moderation'>('users');
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -96,6 +97,17 @@ export function AdminDashboard() {
                 Blog Posts
               </button>
               <button
+                onClick={() => setActiveTab('feedback')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  activeTab === 'feedback'
+                    ? 'bg-primary text-white'
+                    : 'text-chalk/70 hover:text-chalk hover:bg-board'
+                }`}
+              >
+                <Inbox className="h-4 w-4" />
+                Feedback
+              </button>
+              <button
                 onClick={() => setActiveTab('moderation')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                   activeTab === 'moderation'
@@ -162,6 +174,8 @@ export function AdminDashboard() {
             )}
 
             {activeTab === 'blog' && <BlogManagement />}
+
+            {activeTab === 'feedback' && <FeedbackManagement />}
 
             {activeTab === 'moderation' && (
               <div className="text-chalk">
