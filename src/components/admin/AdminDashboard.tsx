@@ -4,17 +4,16 @@ import { supabase } from '../../lib/supabase';
 import { BlogManagement } from './BlogManagement';
 import { FeedbackManagement } from './FeedbackManagement';
 
-interface User {
+interface AdminUserRow {
   id: string;
   email: string;
+  username: string | null;
   created_at: string;
-  user_metadata: {
-    username?: string;
-  };
+  is_admin_user: boolean;
 }
 
 export function AdminDashboard() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'blog' | 'feedback' | 'moderation'>('users');
@@ -28,19 +27,12 @@ export function AdminDashboard() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
-      if (!currentUser?.user_metadata?.is_admin) {
-        throw new Error('Unauthorized access');
-      }
-
-      const { data: users, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+      setError(null);
+      // Admin access is enforced server-side: admin_list_users() raises
+      // unless the caller is in the admin_users table
+      const { data, error: fetchError } = await supabase.rpc('admin_list_users');
       if (fetchError) throw fetchError;
-      setUsers(users || []);
+      setUsers(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
@@ -49,14 +41,14 @@ export function AdminDashboard() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this user? Their account and all of their data will be permanently removed.')) {
       return;
     }
 
     try {
-      const { error } = await supabase.rpc('delete_user', { user_id: userId });
+      const { error } = await supabase.rpc('delete_user', { target_user_id: userId });
       if (error) throw error;
-      
+
       setUsers(users.filter(user => user.id !== userId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete user');
@@ -150,20 +142,27 @@ export function AdminDashboard() {
                       {users.map((user) => (
                         <tr key={user.id} className="border-b border-chalk/10">
                           <td className="px-4 py-2 text-chalk">
-                            {user.user_metadata?.username || 'Anonymous'}
+                            {user.username || 'Anonymous'}
+                            {user.is_admin_user && (
+                              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary">
+                                Admin
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-chalk">{user.email}</td>
                           <td className="px-4 py-2 text-chalk">
                             {new Date(user.created_at).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-2 text-right">
-                            <button
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                              title="Delete User"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {!user.is_admin_user && (
+                              <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                title="Delete User"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
