@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Save, Download, BookOpen, Home } from 'lucide-react';
 import { Logo } from '../Logo';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
@@ -13,6 +13,7 @@ import { PlayMetadata } from '../../types/play';
 
 export function PlayDesigner() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<any>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
@@ -28,6 +29,7 @@ export function PlayDesigner() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
+  const [editingPlayId, setEditingPlayId] = useState<string | null>(null);
 
   const [currentPlayMetadata, setCurrentPlayMetadata] = useState<PlayMetadata>({
     playName: 'New Play',
@@ -50,6 +52,53 @@ export function PlayDesigner() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Load an existing play when opened via /designer?play=<id>
+  useEffect(() => {
+    const playId = searchParams.get('play');
+    if (!playId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const { data, error: fetchError } = await supabase
+          .from('plays')
+          .select('*')
+          .eq('id', playId)
+          .single();
+        if (fetchError) throw fetchError;
+        if (cancelled || !data) return;
+
+        // canvas_data is JSON { version, paths, playerIcons } (normalized coords)
+        let paths: any[] = [];
+        let playerIcons: any[] = [];
+        try {
+          const parsed = JSON.parse(data.canvas_data || '{}');
+          paths = Array.isArray(parsed.paths) ? parsed.paths : [];
+          playerIcons = Array.isArray(parsed.playerIcons) ? parsed.playerIcons : [];
+        } catch {
+          throw new Error('This play could not be opened (unrecognized format).');
+        }
+
+        canvasRef.current?.loadState?.({ paths, playerIcons });
+
+        const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
+        setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
+        setEditingPlayId(data.id);
+        setIsEditingExistingPlay(true);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Load play error:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load play');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [searchParams]);
+
   // Resize canvas to fill container
   useEffect(() => {
     const update = () => {
@@ -69,6 +118,7 @@ export function PlayDesigner() {
     canvasRef.current?.clear();
     setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));
     setIsEditingExistingPlay(false);
+    setEditingPlayId(null);
   }, []);
 
   const handleSavePlay = useCallback(async (playData: {
@@ -92,21 +142,41 @@ export function PlayDesigner() {
       });
       const thumbnail = canvasRef.current?.exportImage?.(660, 510) || '';
 
-      const { data: inserted, error: insertError } = await supabase
-        .from('plays')
-        .insert({
-          name: playData.name,
-          type: 'offense',
-          canvas_data: canvasData,
-          description: playData.metadata.description || '',
-          user_id: user.id,
-          thumbnail,
-          is_public: playData.isPublic,
-          metadata: playData.metadata,
-        })
-        .select('id')
-        .single();
-      if (insertError) throw insertError;
+      let savedPlayId = editingPlayId;
+      if (editingPlayId) {
+        // Update the existing play in place
+        const { error: updateError } = await supabase
+          .from('plays')
+          .update({
+            name: playData.name,
+            canvas_data: canvasData,
+            description: playData.metadata.description || '',
+            thumbnail,
+            is_public: playData.isPublic,
+            metadata: playData.metadata,
+          })
+          .eq('id', editingPlayId);
+        if (updateError) throw updateError;
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from('plays')
+          .insert({
+            name: playData.name,
+            type: 'offense',
+            canvas_data: canvasData,
+            description: playData.metadata.description || '',
+            user_id: user.id,
+            thumbnail,
+            is_public: playData.isPublic,
+            metadata: playData.metadata,
+          })
+          .select('id')
+          .single();
+        if (insertError) throw insertError;
+        savedPlayId = inserted.id;
+        setEditingPlayId(inserted.id);
+        setIsEditingExistingPlay(true);
+      }
 
       if (playData.playbookId) {
         const { data: maxRow } = await supabase
@@ -116,22 +186,32 @@ export function PlayDesigner() {
           .order('order_position', { ascending: false })
           .limit(1)
           .maybeSingle();
-        const { error: linkError } = await supabase.from('playbook_plays').insert({
-          playbook_id: playData.playbookId,
-          play_id: inserted.id,
-          order_position: (maxRow?.order_position ?? 0) + 1,
-        });
+        // ignoreDuplicates so re-saving a play already in this playbook is a no-op
+        const { error: linkError } = await supabase
+          .from('playbook_plays')
+          .upsert(
+            {
+              playbook_id: playData.playbookId,
+              play_id: savedPlayId,
+              order_position: (maxRow?.order_position ?? 0) + 1,
+            },
+            { onConflict: 'playbook_id,play_id', ignoreDuplicates: true },
+          );
         if (linkError) throw linkError;
       }
 
       setCurrentPlayMetadata((prev) => ({ ...prev, ...playData.metadata, playName: playData.name }));
-      setSuccessMessage(playData.playbookId ? 'Play saved to playbook!' : 'Play saved!');
+      setSuccessMessage(
+        editingPlayId
+          ? 'Play updated!'
+          : playData.playbookId ? 'Play saved to playbook!' : 'Play saved!',
+      );
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error('Save play error:', err);
       setError(err instanceof Error ? err.message : 'Failed to save play');
     }
-  }, [user]);
+  }, [user, editingPlayId]);
 
   const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {
