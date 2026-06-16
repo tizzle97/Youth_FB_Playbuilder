@@ -167,6 +167,35 @@ export function PlaybooksPage() {
     loadPlaysInPlaybook(playbook.id);
   };
 
+  const deletePlaybook = async (playbook: Playbook) => {
+    if (!confirm(
+      `Delete "${playbook.name}"? This removes the playbook and its play list. ` +
+      `Your individual plays are not deleted and remain in your Plays library.`
+    )) {
+      return;
+    }
+
+    try {
+      // playbook_plays rows cascade-delete with the playbook (ON DELETE CASCADE),
+      // so the plays themselves are untouched
+      const { error } = await supabase
+        .from('playbooks')
+        .delete()
+        .eq('id', playbook.id);
+
+      if (error) throw error;
+
+      if (selectedPlaybook?.id === playbook.id) {
+        setSelectedPlaybook(null);
+        setPlaysInPlaybook([]);
+      }
+      setPlaybooks((prev) => prev.filter((p) => p.id !== playbook.id));
+    } catch (error) {
+      console.error('Error deleting playbook:', error);
+      alert('Failed to delete playbook. Please try again.');
+    }
+  };
+
   const handleEditPlay = (playId: string) => {
     navigate(`/designer?play=${playId}`);
   };
@@ -820,8 +849,8 @@ export function PlaybooksPage() {
                           : 'border-chalk/10 bg-board hover:bg-board-light'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-chalk">{playbook.name}</h3>
                           {playbook.description && (
                             <p className="text-sm text-chalk/70 mt-1 line-clamp-2">
@@ -839,6 +868,16 @@ export function PlaybooksPage() {
                             </span>
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deletePlaybook(playbook);
+                          }}
+                          className="shrink-0 p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                          title="Delete playbook"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   ))
