@@ -30,6 +30,7 @@ export function PlayDesigner() {
   const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
   const [editingPlayId, setEditingPlayId] = useState<string | null>(null);
+  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[] } | null>(null);
 
   const [currentPlayMetadata, setCurrentPlayMetadata] = useState<PlayMetadata>({
     playName: 'New Play',
@@ -52,7 +53,10 @@ export function PlayDesigner() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load an existing play when opened via /designer?play=<id>
+  // Fetch an existing play when opened via /designer?play=<id>.
+  // The parsed scene is stashed in pendingLoad and applied to the canvas by a
+  // separate effect — applying here directly is unreliable because the canvas
+  // may not be mounted yet at the moment the fetch resolves.
   useEffect(() => {
     const playId = searchParams.get('play');
     if (!playId) return;
@@ -60,7 +64,6 @@ export function PlayDesigner() {
     let cancelled = false;
     (async () => {
       try {
-        setLoading(true);
         const { data, error: fetchError } = await supabase
           .from('plays')
           .select('*')
@@ -80,24 +83,29 @@ export function PlayDesigner() {
           throw new Error('This play could not be opened (unrecognized format).');
         }
 
-        canvasRef.current?.loadState?.({ paths, playerIcons });
-
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
         setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
         setEditingPlayId(data.id);
         setIsEditingExistingPlay(true);
+        setPendingLoad({ paths, playerIcons });
       } catch (err) {
         if (!cancelled) {
           console.error('Load play error:', err);
           setError(err instanceof Error ? err.message : 'Failed to load play');
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
 
     return () => { cancelled = true; };
   }, [searchParams]);
+
+  // Apply a fetched play onto the canvas once it is mounted
+  useEffect(() => {
+    if (!pendingLoad) return;
+    if (!canvasRef.current?.loadState) return;
+    canvasRef.current.loadState(pendingLoad);
+    setPendingLoad(null);
+  }, [pendingLoad, canvasSize]);
 
   // Resize canvas to fill container
   useEffect(() => {
