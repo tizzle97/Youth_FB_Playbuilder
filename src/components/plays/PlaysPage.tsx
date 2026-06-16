@@ -26,7 +26,7 @@ export function PlaysPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'offense' | 'defense' | 'special_teams' | 'all'>('all');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -278,6 +278,25 @@ export function PlaysPage() {
 
   const visiblePlays = user ? plays : plays.slice(0, 10);
   const fadedPlays = user ? [] : plays.slice(10);
+
+  // Require sign-in to view Community Plays
+  if (!loading && !user) {
+    return (
+      <div className="min-h-screen bg-board flex items-center justify-center px-4">
+        <div className="text-center">
+          <LogIn className="h-12 w-12 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-chalk mb-4">Sign In Required</h2>
+          <p className="text-chalk/70 mb-6">Please sign in to view Community Plays.</p>
+          <button
+            onClick={() => navigate('/auth')}
+            className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-board py-8">
