@@ -6,7 +6,7 @@ import { Hero } from './components/Hero';
 import { Features } from './components/Features';
 // TopPlays and Testimonials are temporarily disabled on the homepage until
 // backed by real data (top-voted plays + collected user feedback).
-import { Donate } from './components/Donate';
+import { Pricing } from './components/Pricing';
 import { CommunityPage } from './components/community/CommunityPage';
 import { BlogPage } from './components/blog/BlogPage';
 import { AuthPage } from './components/auth/AuthPage';
@@ -31,7 +31,7 @@ function HomePage() {
           user feedback.
         Components are kept in src/components/ for future use.
       */}
-      <Donate />
+      <Pricing />
     </>
   );
 }
