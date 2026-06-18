@@ -319,6 +319,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [conflictFlash, setConflictFlash] = useState(false);
     const conflictFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Flash shown when user taps a different icon while a route is already in progress
+    const [finishFirstFlash, setFinishFirstFlash] = useState(false);
+    const finishFirstFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Flash shown when a route is successfully deleted in delete-route mode
     const [deletedFlash, setDeletedFlash] = useState(false);
     const deletedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -627,15 +631,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             setWaypointIconIndex(null);
             setHoveredIconIndex(null);
           } else if (clicked >= 0) {
-            // Tapped a DIFFERENT player icon → save current route (if long enough), start fresh
-            if (waypointPoints.length >= 2) {
-              finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode);
-            }
-            const icon = playerIcons[clicked];
-            setWaypointPoints([{ x: icon.x, y: icon.y }]);
-            setWaypointColor(icon.color);
-            setWaypointIconIndex(clicked);
-            setHoveredIconIndex(null);
+            // Tapped a DIFFERENT player icon while a route is in progress — block it
+            if (finishFirstFlashTimerRef.current) clearTimeout(finishFirstFlashTimerRef.current);
+            setFinishFirstFlash(true);
+            finishFirstFlashTimerRef.current = setTimeout(() => setFinishFirstFlash(false), 2500);
           } else {
             // Tapped open canvas → add the next segment endpoint
             setWaypointPoints((prev) => [...prev, p]);
@@ -744,18 +743,19 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         />
 
         {/* ── Contextual instruction bar (top of canvas) ── */}
-        {(savedFlash || conflictFlash || deletedFlash || instructionText) && (
+        {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || instructionText) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
                 savedFlash ? 'bg-green-600'
                 : deletedFlash ? 'bg-amber-600'
-                : conflictFlash ? 'bg-red-600'
+                : (conflictFlash || finishFirstFlash) ? 'bg-red-600'
                 : 'bg-black/65 backdrop-blur-sm'
               }`}
             >
               {savedFlash ? '✓ Route saved!'
                 : deletedFlash ? '✓ Route removed'
+                : finishFirstFlash ? 'Finish or cancel the current route first'
                 : conflictFlash ? 'This player already has a route · Use Remove Route to clear it'
                 : instructionText}
             </div>
