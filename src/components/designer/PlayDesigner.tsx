@@ -20,6 +20,7 @@ export function PlayDesigner() {
 
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
+  const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -313,6 +314,8 @@ export function PlayDesigner() {
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
+          deleteRouteMode={deleteRouteMode}
+          setDeleteRouteMode={setDeleteRouteMode}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}
@@ -337,6 +340,7 @@ export function PlayDesigner() {
           height={canvasSize.height}
           drawingMode={drawingMode}
           drawMode={drawMode}
+          deleteRouteMode={deleteRouteMode}
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           onDrawingComplete={() => {}}
@@ -353,6 +357,8 @@ export function PlayDesigner() {
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
+          deleteRouteMode={deleteRouteMode}
+          setDeleteRouteMode={setDeleteRouteMode}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}

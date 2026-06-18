@@ -65,6 +65,7 @@ type CanvasProps = {
   height: number;
   drawingMode: boolean;
   drawMode: DrawMode;
+  deleteRouteMode: boolean;
   selectedPlayer: { letter: string; color: string; isSquare?: boolean } | null;
   setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean } | null) => void;
   onDrawingComplete?: (points: Pt[]) => void;
@@ -76,6 +77,7 @@ export type CanvasHandle = {
   redo: () => void;
   clear: () => void;
   clearRoutes: () => void;
+  removeRouteForIcon: (iconIndex: number) => void;
   loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[] }) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
@@ -292,7 +294,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -313,6 +315,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [savedFlash, setSavedFlash] = useState(false);
     const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Flash shown when user tries to draw a second route on an icon that already has one
+    const [conflictFlash, setConflictFlash] = useState(false);
+    const conflictFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Flash shown when a route is successfully deleted in delete-route mode
+    const [deletedFlash, setDeletedFlash] = useState(false);
+    const deletedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Drag state
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
@@ -326,6 +336,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Current on-screen scaling helpers
     const screenScale = Math.min(width, height) / REF_SIZE;
     const iconRadiusPx = (PLAYER_SIZE * screenScale) / 2;
+
+    /** True if the given icon index already has at least one saved route. */
+    const iconHasRoute = useCallback(
+      (idx: number) => paths.some((p) => p.startIconIndex === idx),
+      [paths],
+    );
 
     // ------------------------------------------
     // Full redraw (scene + interactive overlays)
@@ -388,11 +404,18 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // Hover highlight ring — only when no origin is locked yet
       if (waypointPoints.length === 0 && hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const hi = toPx(playerIcons[hoveredIconIndex]);
-        const color = playerIcons[hoveredIconIndex].color;
+        const hasRoute = iconHasRoute(hoveredIconIndex);
+        // Color depends on context:
+        //   delete mode → amber (will delete)
+        //   drawing mode + icon already has route → red (blocked)
+        //   normal drawing mode → icon color
+        const ringColor = deleteRouteMode
+          ? '#f59e0b'
+          : (drawingMode && hasRoute ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
-        ctx.shadowColor = color;
+        ctx.shadowColor = ringColor;
         ctx.shadowBlur = 18 * scale;
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = ringColor;
         ctx.lineWidth = 3 * scale;
         ctx.globalAlpha = 0.85;
         ctx.beginPath();
@@ -409,7 +432,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode]);
+    }, [paths, playerIcons, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, iconHasRoute]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -475,6 +498,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       },
       clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
+      removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); },
       canUndo: () => undoStack.length > 0,
       canRedo: () => redoStack.length > 0,
@@ -551,6 +575,21 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Delete-route mode — tap any icon to remove its route
+      if (deleteRouteMode) {
+        if (clicked >= 0) {
+          if (iconHasRoute(clicked)) {
+            pushSnapshot();
+            setPaths((prev) => prev.filter((p) => p.startIconIndex !== clicked));
+            if (deletedFlashTimerRef.current) clearTimeout(deletedFlashTimerRef.current);
+            setDeletedFlash(true);
+            deletedFlashTimerRef.current = setTimeout(() => setDeletedFlash(false), 1500);
+          }
+          setHoveredIconIndex(null);
+        }
+        return;
+      }
+
       // Straight + Waypoint modes — click-to-add-segments flow
       if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
@@ -564,6 +603,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         if (waypointPoints.length === 0) {
           if (clicked >= 0) {
+            // Block starting a second route on an icon that already has one
+            if (iconHasRoute(clicked)) {
+              if (conflictFlashTimerRef.current) clearTimeout(conflictFlashTimerRef.current);
+              setConflictFlash(true);
+              conflictFlashTimerRef.current = setTimeout(() => setConflictFlash(false), 2500);
+              return;
+            }
             // User clicked a player icon — lock it as the route origin
             const icon = playerIcons[clicked];
             setWaypointColor(icon.color);
@@ -620,9 +666,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Hover highlight: show which icon will be the route origin
-      // Only when in drawing mode and no route is currently in progress
-      if (drawingMode && waypointPoints.length === 0) {
+      // Hover highlight: show which icon will be the route origin (or deletion target)
+      if ((drawingMode && waypointPoints.length === 0) || deleteRouteMode) {
         const idx = findIcon(p);
         setHoveredIconIndex(idx >= 0 ? idx : null);
       } else if (hoveredIconIndex !== null) {
@@ -656,10 +701,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
+    const hoveredHasRoute = hoveredIconIndex !== null && iconHasRoute(hoveredIconIndex);
     let instructionText: string | null = null;
-    if (drawingMode) {
+    if (deleteRouteMode) {
+      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
+        const ltr = playerIcons[hoveredIconIndex].letter;
+        instructionText = hoveredHasRoute
+          ? `Tap to remove "${ltr}"'s route`
+          : `"${ltr}" has no route to remove`;
+      } else {
+        instructionText = 'Tap a player to remove their route';
+      }
+    } else if (drawingMode) {
       if (waypointPoints.length === 0) {
-        instructionText = 'Hover a player icon, then tap to select them';
+        if (hoveredHasRoute) {
+          instructionText = 'This player already has a route · Use Remove Route to clear it first';
+        } else {
+          instructionText = 'Hover a player icon, then tap to select them';
+        }
       } else if (waypointPoints.length === 1 && originIcon) {
         instructionText = `"${originIcon.letter}" selected · Tap the field to place route points · Tap "${originIcon.letter}" again to cancel`;
       } else if (waypointPoints.length >= 2) {
@@ -685,14 +744,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         />
 
         {/* ── Contextual instruction bar (top of canvas) ── */}
-        {(savedFlash || instructionText) && (
+        {(savedFlash || conflictFlash || deletedFlash || instructionText) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
-                savedFlash ? 'bg-green-600' : 'bg-black/65 backdrop-blur-sm'
+                savedFlash ? 'bg-green-600'
+                : deletedFlash ? 'bg-amber-600'
+                : conflictFlash ? 'bg-red-600'
+                : 'bg-black/65 backdrop-blur-sm'
               }`}
             >
-              {savedFlash ? '✓ Route saved!' : instructionText}
+              {savedFlash ? '✓ Route saved!'
+                : deletedFlash ? '✓ Route removed'
+                : conflictFlash ? 'This player already has a route · Use Remove Route to clear it'
+                : instructionText}
             </div>
           </div>
         )}

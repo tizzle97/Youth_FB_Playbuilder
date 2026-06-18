@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff } from 'lucide-react';
 import { PlayerToolbar } from './PlayerToolbar';
 import type { DrawMode } from './Canvas';
 
@@ -8,6 +8,8 @@ interface DesignerToolbarProps {
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
   setDrawMode: (mode: DrawMode) => void;
+  deleteRouteMode: boolean;
+  setDeleteRouteMode: (mode: boolean) => void;
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean } | null) => void;
   onUndo: () => void;
@@ -23,6 +25,8 @@ export function DesignerToolbar({
   setDrawingMode,
   drawMode,
   setDrawMode,
+  deleteRouteMode,
+  setDeleteRouteMode,
   selectedPlayer,
   onSelectPlayer,
   onUndo,
@@ -34,16 +38,23 @@ export function DesignerToolbar({
 }: DesignerToolbarProps) {
   const activeDraw = drawingMode ? drawMode : null;
 
-  const selectMode = () => { setDrawingMode(false); onSelectPlayer(null); };
+  const selectMode = () => { setDrawingMode(false); setDeleteRouteMode(false); onSelectPlayer(null); };
 
   const pickDraw = (mode: DrawMode) => {
     setDrawingMode(true);
+    setDeleteRouteMode(false);
     setDrawMode(mode);
     onSelectPlayer(null);
   };
 
+  const toggleDeleteRouteMode = () => {
+    const next = !deleteRouteMode;
+    setDeleteRouteMode(next);
+    if (next) { setDrawingMode(false); onSelectPlayer(null); }
+  };
+
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean } | null) => {
-    if (player) { setDrawingMode(false); onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare) }); }
+    if (player) { setDrawingMode(false); setDeleteRouteMode(false); onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare) }); }
     else onSelectPlayer(null);
   };
 
@@ -87,6 +98,18 @@ export function DesignerToolbar({
           <span className="hidden sm:inline whitespace-nowrap">Route</span>
         </button>
 
+        {/* Remove Route for a player */}
+        <button
+          onClick={toggleDeleteRouteMode}
+          title="Remove a player's route (tap the player)"
+          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${
+            deleteRouteMode ? 'bg-amber-500/20 text-amber-400' : inactive
+          }`}
+        >
+          <RouteOff className="h-4 w-4" />
+          <span className="hidden sm:inline whitespace-nowrap">Remove Route</span>
+        </button>
+
         <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
 
         {/* Undo */}
@@ -119,11 +142,12 @@ export function DesignerToolbar({
       </div>
 
       {/* Active mode label */}
-      {activeDraw && (
+      {(activeDraw || deleteRouteMode) && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
-          <span className="text-primary font-semibold">
-            {activeDraw === 'straight' && 'Straight line mode'}
-            {activeDraw === 'waypoint' && 'Curved route mode'}
+          <span className={`font-semibold ${deleteRouteMode ? 'text-amber-400' : 'text-primary'}`}>
+            {deleteRouteMode && 'Remove route mode'}
+            {!deleteRouteMode && activeDraw === 'straight' && 'Straight line mode'}
+            {!deleteRouteMode && activeDraw === 'waypoint' && 'Curved route mode'}
           </span>
           <span>· See field for instructions</span>
         </p>
