@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Book, Tag, Calendar, User, Eye } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface BlogPost {
   id: string;
@@ -36,7 +37,7 @@ export function BlogPage() {
       if (fetchError) throw fetchError;
       setPosts(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load blog posts');
+      setError(getSafeErrorMessage(err, 'Failed to load blog posts'));
     } finally {
       setLoading(false);
     }

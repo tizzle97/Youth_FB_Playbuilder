@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bug, Lightbulb, MessageCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface FeedbackItem {
   id: string;
@@ -39,7 +40,7 @@ export function FeedbackManagement() {
         if (rpcError) throw rpcError;
         setItems(data || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load feedback');
+        setError(getSafeErrorMessage(err, 'Failed to load feedback'));
       } finally {
         setLoading(false);
       }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Eye, Calendar, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface BlogPost {
   id: string;
@@ -142,7 +143,7 @@ export function BlogManagement() {
       if (fetchError) throw fetchError;
       setPosts(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load blog posts');
+      setError(getSafeErrorMessage(err, 'Failed to load blog posts'));
     } finally {
       setLoading(false);
     }
@@ -166,7 +167,7 @@ export function BlogManagement() {
       if (error) throw error;
       await fetchPosts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create blog post');
+      setError(getSafeErrorMessage(err, 'Failed to create blog post'));
     }
   };
 
@@ -187,7 +188,7 @@ export function BlogManagement() {
       await fetchPosts();
       setEditingPost(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update blog post');
+      setError(getSafeErrorMessage(err, 'Failed to update blog post'));
     }
   };
 
@@ -205,7 +206,7 @@ export function BlogManagement() {
       if (error) throw error;
       setPosts(posts.filter(post => post.id !== postId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete blog post');
+      setError(getSafeErrorMessage(err, 'Failed to delete blog post'));
     }
   };
 

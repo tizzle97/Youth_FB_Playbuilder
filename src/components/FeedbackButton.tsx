@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MessageSquare, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { getSafeErrorMessage } from '../lib/errors';
 
 export function FeedbackButton() {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,7 +54,7 @@ export function FeedbackButton() {
         setSuccess('');
       }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit feedback');
+      setError(getSafeErrorMessage(err, 'Failed to submit feedback'));
     } finally {
       setLoading(false);
     }

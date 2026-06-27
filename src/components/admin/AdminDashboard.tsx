@@ -3,6 +3,7 @@ import { Shield, Users, BookOpen, MessageSquare, Trash2, Inbox } from 'lucide-re
 import { supabase } from '../../lib/supabase';
 import { BlogManagement } from './BlogManagement';
 import { FeedbackManagement } from './FeedbackManagement';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface AdminUserRow {
   id: string;
@@ -34,7 +35,7 @@ export function AdminDashboard() {
       if (fetchError) throw fetchError;
       setUsers(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load users');
+      setError(getSafeErrorMessage(err, 'Failed to load users'));
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,7 @@ export function AdminDashboard() {
 
       setUsers(users.filter(user => user.id !== userId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete user');
+      setError(getSafeErrorMessage(err, 'Failed to delete user'));
     }
   };
 

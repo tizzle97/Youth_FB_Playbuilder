@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -47,7 +48,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
       onPostCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create post');
+      setError(getSafeErrorMessage(err, 'Failed to create post'));
     } finally {
       setLoading(false);
     }

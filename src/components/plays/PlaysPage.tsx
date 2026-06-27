@@ -3,6 +3,7 @@ import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface Play {
   id: string;
@@ -82,7 +83,7 @@ export function PlaysPage() {
         }
       } catch (err) {
         console.error('Error fetching plays:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load plays');
+        setError(getSafeErrorMessage(err, 'Failed to load plays'));
       } finally {
         setLoading(false);
       }
@@ -106,7 +107,7 @@ export function PlaysPage() {
 
       setPlays(plays.filter(play => play.id !== playId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete play');
+      setError(getSafeErrorMessage(err, 'Failed to delete play'));
     }
   };
 

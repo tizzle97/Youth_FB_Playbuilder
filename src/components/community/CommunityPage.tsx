@@ -6,6 +6,7 @@ import { TopContributors } from './TopContributors';
 import { CreatePostButton } from './CreatePostButton';
 import type { TimeRange } from '../../types/community';
 import { createClient } from '@supabase/supabase-js';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -55,7 +56,7 @@ export function CommunityPage() {
       setPosts(data || []);
     } catch (err) {
       console.error('Error fetching posts:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch posts. Please try again later.');
+      setError(getSafeErrorMessage(err, 'Failed to fetch posts. Please try again later.'));
     } finally {
       setLoading(false);
     }

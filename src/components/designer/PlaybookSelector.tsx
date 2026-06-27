@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { Book, Plus, Folder, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { CreatePlaybookModal } from './CreatePlaybookModal';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -83,7 +84,7 @@ export function PlaybookSelector({ onPlaySelected }: PlaybookSelectorProps) {
         setExpandedPlaybooks(expanded);
         
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load playbooks');
+        setError(getSafeErrorMessage(err, 'Failed to load playbooks'));
         console.error('Error loading playbooks:', err);
       } finally {
         setLoading(false);
@@ -182,7 +183,7 @@ export function PlaybookSelector({ onPlaySelected }: PlaybookSelectorProps) {
       setShowDeleteConfirm(null);
     } catch (err) {
       console.error('Error deleting playbook:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete playbook');
+      setError(getSafeErrorMessage(err, 'Failed to delete playbook'));
     }
   };
 
@@ -205,7 +206,7 @@ export function PlaybookSelector({ onPlaySelected }: PlaybookSelectorProps) {
       setShowDeletePlayConfirm(null);
     } catch (err) {
       console.error('Error deleting play:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete play');
+      setError(getSafeErrorMessage(err, 'Failed to delete play'));
     }
   };
 

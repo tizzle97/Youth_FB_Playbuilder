@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, FolderPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { CreatePlaybookModal } from './CreatePlaybookModal';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface Playbook {
   id: string;
@@ -44,7 +45,7 @@ export function PlaybookSelectionModal({ isOpen, onClose, onSelect }: PlaybookSe
         if (fetchError) throw fetchError;
         setPlaybooks(data || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load playbooks');
+        setError(getSafeErrorMessage(err, 'Failed to load playbooks'));
       } finally {
         setLoading(false);
       }
@@ -78,7 +79,7 @@ export function PlaybookSelectionModal({ isOpen, onClose, onSelect }: PlaybookSe
       setPlaybooks(prev => [data, ...prev]);
       setShowCreateModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create playbook');
+      setError(getSafeErrorMessage(err, 'Failed to create playbook'));
     }
   };
 

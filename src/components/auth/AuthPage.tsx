@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 export function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -51,7 +52,7 @@ export function AuthPage() {
       }, 3000);
     } catch (err) {
       console.error('Password reset error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send reset instructions');
+      setError(getSafeErrorMessage(err, 'Failed to send reset instructions'));
     } finally {
       setLoading(false);
     }
@@ -89,11 +90,18 @@ export function AuthPage() {
 
         if (signUpError) {
           if (signUpError.message.includes('already registered')) {
-            setError('This email is already registered. Please sign in instead.');
+            // Don't reveal that this email already has an account (account
+            // enumeration) — show the same "check your email" message a
+            // brand-new signup would get, so the two cases look identical.
+            setSuccess('Account created! Please check your email and click the confirmation link before signing in.');
+            setTimeout(() => {
+              setIsSignUp(false);
+              setSuccess('');
+            }, 6000);
           } else if (signUpError.message.toLowerCase().includes('rate limit')) {
             setError('We are experiencing high signup volume. Please try again in about an hour, or contact us if the problem persists.');
           } else {
-            setError(signUpError.message);
+            setError(getSafeErrorMessage(signUpError, 'Failed to create account'));
           }
         } else if (signUpData.session) {
           // Email confirmation disabled — user is signed in immediately
@@ -117,7 +125,7 @@ export function AuthPage() {
           if (signInError.message === 'Invalid login credentials') {
             setError('Invalid email or password. Please try again.');
           } else {
-            setError(signInError.message);
+            setError(getSafeErrorMessage(signInError, 'Failed to sign in'));
           }
         } else if (data.user) {
           navigate('/');
@@ -125,7 +133,7 @@ export function AuthPage() {
       }
     } catch (err) {
       console.error('Auth error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during authentication');
+      setError(getSafeErrorMessage(err, 'An error occurred during authentication'));
     } finally {
       setLoading(false);
     }

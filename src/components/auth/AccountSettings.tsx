@@ -5,6 +5,7 @@ import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image,
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -136,7 +137,7 @@ export default function AccountSettings() {
       setSuccess('Changes saved successfully!');
       setHasChanges(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save changes');
+      setError(getSafeErrorMessage(err, 'Failed to save changes'));
     }
   };
 
@@ -160,7 +161,7 @@ export default function AccountSettings() {
       setTempImageUrl(imageUrl);
       setShowCropModal(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process image');
+      setError(getSafeErrorMessage(err, 'Failed to process image'));
     }
   };
 
@@ -190,7 +191,7 @@ export default function AccountSettings() {
       setAvatarUrl(publicUrl);
       setSelectedIconId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload avatar');
+      setError(getSafeErrorMessage(err, 'Failed to upload avatar'));
     } finally {
       setUploadingAvatar(false);
       URL.revokeObjectURL(tempImageUrl);
@@ -211,7 +212,7 @@ export default function AccountSettings() {
       setSuccess('Image reported. Thank you.');
     } catch (err) {
       console.error('Report failed', err);
-      setError(err instanceof Error ? err.message : 'Failed to report image');
+      setError(getSafeErrorMessage(err, 'Failed to report image'));
     }
   };
 
@@ -222,7 +223,7 @@ export default function AccountSettings() {
       await supabase.auth.signOut();
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete account');
+      setError(getSafeErrorMessage(err, 'Failed to delete account'));
     }
   };
 

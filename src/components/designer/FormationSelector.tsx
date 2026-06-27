@@ -3,6 +3,7 @@ import { Layout } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as fabric from 'fabric';
 import type { Canvas, Object as FabricObject, Line } from 'fabric/fabric-impl';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -151,7 +152,7 @@ export function FormationSelector({
         if (fetchError) throw fetchError;
         setFormations(data || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load formations');
+        setError(getSafeErrorMessage(err, 'Failed to load formations'));
         console.error('Error loading formations:', err);
       } finally {
         setLoading(false);

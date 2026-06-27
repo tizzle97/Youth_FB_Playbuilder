@@ -4,6 +4,7 @@ import { X, FolderPlus, Plus } from 'lucide-react';
 import type { Play } from '../../types/play';
 import { supabase } from '../../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 declare global {
   namespace JSX {
@@ -56,7 +57,7 @@ export const AddToPlaybookModal: React.FC<AddToPlaybookModalProps> = ({
       if (error) throw error;
       setPlaybooks(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load playbooks');
+      setError(getSafeErrorMessage(err, 'Failed to load playbooks'));
     } finally {
       setLoading(false);
     }
@@ -121,7 +122,7 @@ export const AddToPlaybookModal: React.FC<AddToPlaybookModalProps> = ({
       onClose();
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add play to playbook');
+      setError(getSafeErrorMessage(err, 'Failed to add play to playbook'));
     } finally {
       setSaving(false);
     }

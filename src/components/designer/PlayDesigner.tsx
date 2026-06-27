@@ -10,6 +10,7 @@ import type { DrawMode } from './Canvas';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 export function PlayDesigner() {
   const navigate = useNavigate();
@@ -92,7 +93,7 @@ export function PlayDesigner() {
       } catch (err) {
         if (!cancelled) {
           console.error('Load play error:', err);
-          setError(err instanceof Error ? err.message : 'Failed to load play');
+          setError(getSafeErrorMessage(err, 'Failed to load play'));
         }
       }
     })();
@@ -218,7 +219,7 @@ export function PlayDesigner() {
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error('Save play error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save play');
+      setError(getSafeErrorMessage(err, 'Failed to save play'));
     }
   }, [user, editingPlayId]);
 
