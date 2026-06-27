@@ -23,6 +23,10 @@ export function PlayDesigner() {
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
+  // Undo/redo availability, kept in sync by the Canvas via onHistoryChange so
+  // the toolbar buttons stay accurate after canvas-only edits (drawing routes,
+  // deleting routes, dragging icons) that don't otherwise re-render this page.
+  const [history, setHistory] = useState({ canUndo: false, canRedo: false });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +126,27 @@ export function PlayDesigner() {
     const ro = new ResizeObserver(update);
     if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
+  }, []);
+
+  // Keyboard undo/redo. Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z or Ctrl+Y = redo.
+  // Ignored while typing in a field so it doesn't fight text editing in modals.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        canvasRef.current?.undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        canvasRef.current?.redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   const handleNewPlay = useCallback(() => {
@@ -323,8 +348,8 @@ export function PlayDesigner() {
           onRedo={() => canvasRef.current?.redo()}
           onClear={() => canvasRef.current?.clear()}
           onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={canvasRef.current?.canUndo?.() ?? false}
-          canRedo={canvasRef.current?.canRedo?.() ?? false}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
         />
       </div>
 
@@ -345,6 +370,7 @@ export function PlayDesigner() {
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           onDrawingComplete={() => {}}
+          onHistoryChange={setHistory}
         />
       </main>
 
@@ -366,8 +392,8 @@ export function PlayDesigner() {
           onRedo={() => canvasRef.current?.redo()}
           onClear={() => canvasRef.current?.clear()}
           onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={canvasRef.current?.canUndo?.() ?? false}
-          canRedo={canvasRef.current?.canRedo?.() ?? false}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
         />
       </div>
 
