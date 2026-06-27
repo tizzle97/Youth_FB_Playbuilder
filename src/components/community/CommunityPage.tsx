@@ -16,7 +16,7 @@ const supabase = createClient(
 export function CommunityPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
   const [searchQuery, setSearchQuery] = useState('');
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,14 +32,7 @@ export function CommunityPage() {
 
       let query = supabase
         .from('posts')
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            avatar_url
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (searchQuery) {
@@ -47,13 +40,30 @@ export function CommunityPage() {
       }
 
       const { data, error: supabaseError } = await query;
-      
+
       if (supabaseError) {
         console.error('Supabase error:', supabaseError);
-        throw new Error(supabaseError.message);
+        throw supabaseError;
       }
-      
-      setPosts(data || []);
+
+      const postsData = data || [];
+
+      // Author display info (username/avatar) isn't on the posts table —
+      // look it up in one batched call via get_community_authors().
+      const authorIds = Array.from(new Set(postsData.map((p: any) => p.user_id)));
+      let authorsById: Record<string, { username: string; avatar_url: string | null }> = {};
+      if (authorIds.length > 0) {
+        const { data: authors, error: authorsError } = await supabase.rpc('get_community_authors', {
+          target_ids: authorIds,
+        });
+        if (authorsError) {
+          console.error('Error fetching post authors:', authorsError);
+        } else {
+          authorsById = Object.fromEntries((authors || []).map((a: any) => [a.id, a]));
+        }
+      }
+
+      setPosts(postsData.map((p: any) => ({ ...p, author: authorsById[p.user_id] })));
     } catch (err) {
       console.error('Error fetching posts:', err);
       setError(getSafeErrorMessage(err, 'Failed to fetch posts. Please try again later.'));

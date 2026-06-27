@@ -90,17 +90,18 @@ export function PostList({ posts, loading, timeRange, searchQuery }: PostListPro
             {/* Content */}
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center">
-                  <span className="text-primary text-sm">
-                    {post.user?.raw_user_meta_data?.username?.[0]?.toUpperCase() || 
-                     post.user?.email?.[0]?.toUpperCase() || 'U'}
-                  </span>
+                <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                  {post.author?.avatar_url ? (
+                    <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-primary text-sm">
+                      {post.author?.username?.[0]?.toUpperCase() || 'U'}
+                    </span>
+                  )}
                 </div>
                 <span className="text-chalk/70">Posted by</span>
                 <span className="text-primary font-medium">
-                  {post.user?.raw_user_meta_data?.username || 
-                   post.user?.email?.split('@')[0] || 
-                   'Anonymous'}
+                  {post.author?.username || 'Anonymous'}
                 </span>
                 <span className="text-chalk/50">•</span>
                 <span className="text-chalk/70">
