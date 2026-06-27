@@ -1,14 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Layout } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import * as fabric from 'fabric';
 import type { Canvas, Object as FabricObject, Line } from 'fabric/fabric-impl';
 import { getSafeErrorMessage } from '../../lib/errors';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../lib/supabase';
 
 interface Formation {
   id: string;

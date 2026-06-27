@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Book, Plus, Folder, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import { CreatePlaybookModal } from './CreatePlaybookModal';
 import { getSafeErrorMessage } from '../../lib/errors';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../lib/supabase';
 
 interface Playbook {
   id: string;

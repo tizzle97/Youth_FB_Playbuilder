@@ -2,13 +2,8 @@ import React, { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { PlayCircle, Users, BookOpen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import { UserMenu } from './auth/UserMenu';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 export function Hero() {
   const [user, setUser] = useState<User | null>(null);

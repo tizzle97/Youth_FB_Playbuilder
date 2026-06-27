@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Flag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../lib/supabase';
 
 export default function AccountSettings() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);

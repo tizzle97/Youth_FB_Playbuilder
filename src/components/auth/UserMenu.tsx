@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, LogOut, Settings, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 
 interface UserMenuProps {
   user: SupabaseUser;

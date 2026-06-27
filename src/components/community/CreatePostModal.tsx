@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import { getSafeErrorMessage } from '../../lib/errors';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../lib/supabase';
 
 interface CreatePostModalProps {
   isOpen: boolean;

@@ -2,12 +2,7 @@ import React, { useState } from 'react';
 import { PenSquare } from 'lucide-react';
 import { CreatePostModal } from './CreatePostModal';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../lib/supabase';
 
 interface CreatePostButtonProps {
   onPostCreated: () => void;
