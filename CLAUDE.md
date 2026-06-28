@@ -23,10 +23,15 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
 - `npm run lint` — eslint
 
 ## Database / migrations workflow
+- **Read `supabase/SCHEMA.md` for the current schema** (tables, columns, RLS,
+  functions) instead of grepping `combined_migrations.sql` — that file is ~2,000
+  lines with superseded duplicate blocks and is slow/error-prone to read. Keep
+  `SCHEMA.md` updated in the same change whenever you alter the schema.
 - Migrations are **plain .sql files in `supabase/`**, run **manually by the user**
   in the Supabase SQL Editor. There is no automated migration runner.
 - `combined_migrations.sql` is the original bundled schema. Newer changes are
-  separate files (`feedback_admin.sql`, `plays_save.sql`, `subscriptions.sql`).
+  separate files (`feedback_admin.sql`, `plays_save.sql`, `subscriptions.sql`,
+  `security_hardening.sql`, `community_authors.sql`).
   When schema changes are needed, add a new idempotent `.sql` file and tell the
   user to run it.
 - **Admin** is tracked via the `admin_users` table + `is_admin()` function (NOT a
