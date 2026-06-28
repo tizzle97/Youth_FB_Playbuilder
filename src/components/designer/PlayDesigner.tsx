@@ -3,6 +3,7 @@ import { Save, Download, BookOpen, Home } from 'lucide-react';
 import { Logo } from '../Logo';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
+import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas } from './Canvas';
@@ -22,11 +23,19 @@ export function PlayDesigner() {
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
+  const [zoneMode, setZoneMode] = useState(false);
+  const [deleteZoneMode, setDeleteZoneMode] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
   // Undo/redo availability, kept in sync by the Canvas via onHistoryChange —
   // the canvas's history stacks live below this component, so without this
   // callback the toolbar buttons go stale after canvas-only edits.
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
+
+  // Offense/Defense is decided once per play (toolbar swaps icon roster +
+  // tools accordingly), defaulting to offense. Not reset by "New" — a coach
+  // making several defensive plays in a row shouldn't have to re-pick it
+  // every time.
+  const [playType, setPlayType] = useState<PlayType>('offense');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +45,12 @@ export function PlayDesigner() {
   const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
   const [editingPlayId, setEditingPlayId] = useState<string | null>(null);
-  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[] } | null>(null);
+  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[] } | null>(null);
+
+  // Locks once the play has content — reusing history.canUndo, which is
+  // already true exactly when there's committed history or an in-progress
+  // action, i.e. "the canvas has content."
+  const playTypeLocked = isEditingExistingPlay || history.canUndo;
 
   const [currentPlayMetadata, setCurrentPlayMetadata] = useState<PlayMetadata>({
     playName: 'New Play',
@@ -78,22 +92,25 @@ export function PlayDesigner() {
         if (fetchError) throw fetchError;
         if (cancelled || !data) return;
 
-        // canvas_data is JSON { version, paths, playerIcons } (normalized coords)
+        // canvas_data is JSON { version, paths, playerIcons, zones } (normalized coords)
         let paths: any[] = [];
         let playerIcons: any[] = [];
+        let zones: any[] = [];
         try {
           const parsed = JSON.parse(data.canvas_data || '{}');
           paths = Array.isArray(parsed.paths) ? parsed.paths : [];
           playerIcons = Array.isArray(parsed.playerIcons) ? parsed.playerIcons : [];
+          zones = Array.isArray(parsed.zones) ? parsed.zones : [];
         } catch {
           throw new Error('This play could not be opened (unrecognized format).');
         }
 
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
         setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
+        setPlayType(data.type === 'defense' ? 'defense' : 'offense');
         setEditingPlayId(data.id);
         setIsEditingExistingPlay(true);
-        setPendingLoad({ paths, playerIcons });
+        setPendingLoad({ paths, playerIcons, zones });
       } catch (err) {
         if (!cancelled) {
           console.error('Load play error:', err);
@@ -150,9 +167,10 @@ export function PlayDesigner() {
 
       // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx)
       const canvasData = JSON.stringify({
-        version: 2,
+        version: 3,
         paths: canvasRef.current?.getPaths?.() || [],
         playerIcons: canvasRef.current?.getIcons?.() || [],
+        zones: canvasRef.current?.getZones?.() || [],
       });
       const thumbnail = canvasRef.current?.exportImage?.(660, 510) || '';
 
@@ -176,7 +194,7 @@ export function PlayDesigner() {
           .from('plays')
           .insert({
             name: playData.name,
-            type: 'offense',
+            type: playType,
             canvas_data: canvasData,
             description: playData.metadata.description || '',
             user_id: user.id,
@@ -225,7 +243,7 @@ export function PlayDesigner() {
       console.error('Save play error:', err);
       setError(getSafeErrorMessage(err, 'Failed to save play'));
     }
-  }, [user, editingPlayId]);
+  }, [user, editingPlayId, playType]);
 
   const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {
@@ -315,12 +333,19 @@ export function PlayDesigner() {
         hidden sm:block border-b
       ">
         <DesignerToolbar
+          playType={playType}
+          onSetPlayType={setPlayType}
+          playTypeLocked={playTypeLocked}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
           deleteRouteMode={deleteRouteMode}
           setDeleteRouteMode={setDeleteRouteMode}
+          zoneMode={zoneMode}
+          setZoneMode={setZoneMode}
+          deleteZoneMode={deleteZoneMode}
+          setDeleteZoneMode={setDeleteZoneMode}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}
@@ -346,6 +371,8 @@ export function PlayDesigner() {
           drawingMode={drawingMode}
           drawMode={drawMode}
           deleteRouteMode={deleteRouteMode}
+          zoneMode={zoneMode}
+          deleteZoneMode={deleteZoneMode}
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           onDrawingComplete={() => {}}
@@ -359,12 +386,19 @@ export function PlayDesigner() {
         pb-[env(safe-area-inset-bottom,8px)]
       ">
         <DesignerToolbar
+          playType={playType}
+          onSetPlayType={setPlayType}
+          playTypeLocked={playTypeLocked}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
           deleteRouteMode={deleteRouteMode}
           setDeleteRouteMode={setDeleteRouteMode}
+          zoneMode={zoneMode}
+          setZoneMode={setZoneMode}
+          deleteZoneMode={deleteZoneMode}
+          setDeleteZoneMode={setDeleteZoneMode}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}

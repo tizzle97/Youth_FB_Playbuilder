@@ -60,12 +60,26 @@ type PlayerIcon = {
   isSquare?: boolean;
 };
 
+/** A defender's zone of responsibility — an ellipse anchored to (but
+ *  independently movable/resizable from) a player icon. */
+export type Zone = {
+  iconIndex: number; // index into playerIcons
+  cx: number; cy: number; // normalized 0–1, ellipse center
+  rx: number; ry: number; // normalized 0–1, horizontal/vertical radii
+  color: string; // snapshot of the icon's color at creation time
+};
+
+type ZoneHandleAxis = 'x' | 'y' | 'both';
+type ZoneHandle = { x: number; y: number; axis: ZoneHandleAxis };
+
 type CanvasProps = {
   width: number;
   height: number;
   drawingMode: boolean;
   drawMode: DrawMode;
   deleteRouteMode: boolean;
+  zoneMode: boolean;
+  deleteZoneMode: boolean;
   selectedPlayer: { letter: string; color: string; isSquare?: boolean } | null;
   setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean } | null) => void;
   onDrawingComplete?: (points: Pt[]) => void;
@@ -82,11 +96,12 @@ export type CanvasHandle = {
   clear: () => void;
   clearRoutes: () => void;
   removeRouteForIcon: (iconIndex: number) => void;
-  loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[] }) => void;
+  loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[]; zones?: Zone[] }) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   getPaths: () => PathItem[];
   getIcons: () => PlayerIcon[];
+  getZones: () => Zone[];
   getCanvas: () => HTMLCanvasElement | null;
   /** Render the play at a fixed standard resolution; returns a PNG data URL. */
   exportImage: (width?: number, height?: number) => string;
@@ -234,10 +249,107 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   ctx.restore();
 }
 
+/** Smallest radius (normalized) a zone can have — keeps a plain tap-no-drag
+ *  zone creation visible instead of invisibly tiny. */
+const MIN_ZONE_RADIUS = 0.035;
+const ZONE_FILL_ALPHA = 0.3;
+const ZONE_STROKE_ALPHA = 0.85;
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** Pixel-space positions of the 8 resize handles around a zone's bounding
+ *  box (4 edge midpoints, single-axis; 4 corners, both axes). Shared by
+ *  rendering and hit-testing so the two never drift apart. */
+function zoneHandlePositions(cx: number, cy: number, rx: number, ry: number): ZoneHandle[] {
+  return [
+    { x: cx + rx, y: cy, axis: 'x' },
+    { x: cx - rx, y: cy, axis: 'x' },
+    { x: cx, y: cy + ry, axis: 'y' },
+    { x: cx, y: cy - ry, axis: 'y' },
+    { x: cx + rx, y: cy + ry, axis: 'both' },
+    { x: cx - rx, y: cy + ry, axis: 'both' },
+    { x: cx + rx, y: cy - ry, axis: 'both' },
+    { x: cx - rx, y: cy - ry, axis: 'both' },
+  ];
+}
+
+function drawZoneHandles(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, scale: number) {
+  const hs = 5 * scale;
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = Math.max(1, scale);
+  zoneHandlePositions(cx, cy, rx, ry).forEach((h) => {
+    ctx.beginPath();
+    ctx.rect(h.x - hs, h.y - hs, hs * 2, hs * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+/** Draws committed zones — translucent fill (field grid shows through),
+ *  a connector line back to the icon once the zone has been moved away
+ *  from it, and resize handles on the selected zone. */
+function drawZones(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  zones: Zone[],
+  playerIcons: PlayerIcon[],
+  scale: number,
+  selectedZoneIndex: number | null,
+) {
+  zones.forEach((zone, i) => {
+    const cx = zone.cx * W;
+    const cy = zone.cy * H;
+    const rx = Math.max(zone.rx * W, 2);
+    const ry = Math.max(zone.ry * H, 2);
+
+    const icon = playerIcons[zone.iconIndex];
+    if (icon) {
+      const ix = icon.x * W;
+      const iy = icon.y * H;
+      const dist = Math.sqrt((ix - cx) ** 2 + (iy - cy) ** 2);
+      if (dist > Math.max(rx, ry) * 0.6) {
+        ctx.save();
+        ctx.strokeStyle = zone.color;
+        ctx.globalAlpha = 0.7;
+        ctx.lineWidth = 1.5 * scale;
+        ctx.setLineDash([5 * scale, 4 * scale]);
+        ctx.beginPath();
+        ctx.moveTo(ix, iy);
+        ctx.lineTo(cx, cy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = hexToRgba(zone.color, ZONE_FILL_ALPHA);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(zone.color, ZONE_STROKE_ALPHA);
+    ctx.lineWidth = 2 * scale;
+    ctx.stroke();
+    ctx.restore();
+
+    if (selectedZoneIndex === i) drawZoneHandles(ctx, cx, cy, rx, ry, scale);
+  });
+}
+
 /**
- * Render a complete play scene (field, routes, icons) onto a context at any
- * pixel size. All input data is in normalized 0–1 coordinates; visual sizes
- * scale relative to REF_SIZE so proportions stay constant everywhere —
+ * Render a complete play scene (field, zones, routes, icons) onto a context
+ * at any pixel size. All input data is in normalized 0–1 coordinates; visual
+ * sizes scale relative to REF_SIZE so proportions stay constant everywhere —
  * on-screen editing, thumbnails, and print export all look identical.
  */
 function renderScene(
@@ -246,6 +358,8 @@ function renderScene(
   H: number,
   paths: PathItem[],
   playerIcons: PlayerIcon[],
+  zones: Zone[] = [],
+  selectedZoneIndex: number | null = null,
 ) {
   const scale = Math.min(W, H) / REF_SIZE;
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
@@ -255,6 +369,9 @@ function renderScene(
 
   ctx.clearRect(0, 0, W, H);
   drawField(ctx, W, H, scale);
+  // Zones sit on top of the grid (translucent, so it shows through) but
+  // underneath routes/icons, which should stay crisp.
+  drawZones(ctx, W, H, zones, playerIcons, scale, selectedZoneIndex);
 
   // Routes — arrowhead only on the last path of each icon's chain
   const lastByIcon = new Map<number, number>();
@@ -286,7 +403,8 @@ function renderScene(
       ctx.fill();
     }
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${PLAYER_FONT * scale}px Inter, Arial, sans-serif`;
+    const fontSize = (icon.letter.length > 1 ? PLAYER_FONT * 0.72 : PLAYER_FONT) * scale;
+    ctx.font = `bold ${fontSize}px Inter, Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(icon.letter, c.x, c.y);
@@ -298,13 +416,14 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
     const [playerIcons, setPlayerIcons] = useState<PlayerIcon[]>([]);
-    const [undoStack, setUndoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[] }>>([]);
-    const [redoStack, setRedoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[] }>>([]);
+    const [zones, setZones] = useState<Zone[]>([]);
+    const [undoStack, setUndoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[]; zones: Zone[] }>>([]);
+    const [redoStack, setRedoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[]; zones: Zone[] }>>([]);
 
     // Waypoint mode state (normalized coords)
     const [waypointPoints, setWaypointPoints] = useState<Pt[]>([]);
@@ -331,6 +450,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [deletedFlash, setDeletedFlash] = useState(false);
     const deletedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Flash shown when a zone is successfully deleted in delete-zone mode
+    const [deletedZoneFlash, setDeletedZoneFlash] = useState(false);
+    const deletedZoneFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Drag state
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
@@ -341,10 +464,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // would swallow the next undo press.
     const dragMovedRef = useRef(false);
 
+    // Zone creation: a single continuous drag from an icon outward. Held in
+    // state (not just a ref) so the live preview redraws as it changes.
+    const [zoneDraft, setZoneDraft] = useState<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number } | null>(null);
+    // Currently selected zone (for showing resize handles / enabling move).
+    const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
+    // In-flight resize-or-move gesture on the selected zone. Like icon
+    // dragging, the undo snapshot is deferred to the first actual move.
+    const zoneGestureRef = useRef<{ type: 'move' | 'resize'; zoneIndex: number; axis?: ZoneHandleAxis; offset?: Pt; moved: boolean } | null>(null);
+
     const pushSnapshot = useCallback(() => {
-      setUndoStack((prev) => [...prev, { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) }]);
+      setUndoStack((prev) => [...prev, {
+        paths: [...paths],
+        playerIcons: playerIcons.map((i) => ({ ...i })),
+        zones: zones.map((z) => ({ ...z })),
+      }]);
       setRedoStack([]);
-    }, [paths, playerIcons]);
+    }, [paths, playerIcons, zones]);
 
     // Current on-screen scaling helpers
     const screenScale = Math.min(width, height) / REF_SIZE;
@@ -355,6 +491,41 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       (idx: number) => paths.some((p) => p.startIconIndex === idx),
       [paths],
     );
+
+    /** True if the given icon index already has a zone. */
+    const iconHasZone = useCallback(
+      (idx: number) => zones.some((z) => z.iconIndex === idx),
+      [zones],
+    );
+
+    const findZoneByIcon = useCallback(
+      (iconIdx: number) => zones.findIndex((z) => z.iconIndex === iconIdx),
+      [zones],
+    );
+
+    /** Point-in-ellipse hit test (normalized coords), topmost zone first. */
+    const findZoneAt = useCallback((p: Pt): number => {
+      for (let i = zones.length - 1; i >= 0; i--) {
+        const z = zones[i];
+        const dx = (p.x - z.cx) / Math.max(z.rx, 0.001);
+        const dy = (p.y - z.cy) / Math.max(z.ry, 0.001);
+        if (dx * dx + dy * dy <= 1) return i;
+      }
+      return -1;
+    }, [zones]);
+
+    /** Which resize handle (if any) of `zone` the point is over, in pixel space. */
+    const findZoneHandle = useCallback((p: Pt, zone: Zone): ZoneHandleAxis | null => {
+      const cxPx = zone.cx * width, cyPx = zone.cy * height;
+      const rxPx = zone.rx * width, ryPx = zone.ry * height;
+      const pxPx = p.x * width, pyPx = p.y * height;
+      const hitRadius = Math.max(14, iconRadiusPx * 0.5);
+      for (const h of zoneHandlePositions(cxPx, cyPx, rxPx, ryPx)) {
+        const dx = h.x - pxPx, dy = h.y - pyPx;
+        if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) return h.axis;
+      }
+      return null;
+    }, [width, height, iconRadiusPx]);
 
     // ------------------------------------------
     // Full redraw (scene + interactive overlays)
@@ -369,7 +540,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons);
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex);
+
+      // In-progress zone creation preview (not yet committed to `zones`)
+      if (zoneDraft) {
+        const cx = zoneDraft.cx * W;
+        const cy = zoneDraft.cy * H;
+        const rx = Math.max(zoneDraft.rx * W, 2);
+        const ry = Math.max(zoneDraft.ry * H, 2);
+        const draftColor = playerIcons[zoneDraft.iconIndex]?.color || '#888888';
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(draftColor, ZONE_FILL_ALPHA);
+        ctx.fill();
+        ctx.strokeStyle = hexToRgba(draftColor, ZONE_STROKE_ALPHA);
+        ctx.lineWidth = 2 * scale;
+        ctx.setLineDash([4 * scale, 3 * scale]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
 
       // In-progress route preview
       if (waypointPoints.length >= 1) {
@@ -418,13 +609,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (waypointPoints.length === 0 && hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const hi = toPx(playerIcons[hoveredIconIndex]);
         const hasRoute = iconHasRoute(hoveredIconIndex);
+        const hasZone = iconHasZone(hoveredIconIndex);
         // Color depends on context:
-        //   delete mode → amber (will delete)
-        //   drawing mode + icon already has route → red (blocked)
+        //   delete mode (route or zone) → amber (will delete)
+        //   drawing/zone mode + icon already has that thing → red (blocked)
         //   normal drawing mode → icon color
-        const ringColor = deleteRouteMode
+        const blocked = (drawingMode && hasRoute) || (zoneMode && hasZone);
+        const ringColor = (deleteRouteMode || deleteZoneMode)
           ? '#f59e0b'
-          : (drawingMode && hasRoute ? '#ef4444' : playerIcons[hoveredIconIndex].color);
+          : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
         ctx.shadowColor = ringColor;
         ctx.shadowBlur = 18 * scale;
@@ -445,7 +638,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, iconHasRoute]);
+    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -488,6 +681,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
     }, [drawingMode]);
 
+    // Deselect any zone (hide its resize handles) and drop an in-progress
+    // zone draft when switching tools, so stale handles don't linger.
+    useEffect(() => {
+      setSelectedZoneIndex(null);
+      setZoneDraft(null);
+    }, [zoneMode, deleteZoneMode, drawingMode]);
+
     // ------------------------------------------
     // Imperative handle
     // ------------------------------------------
@@ -498,7 +698,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         off.width = w;
         off.height = h;
         const ctx = off.getContext('2d')!;
-        renderScene(ctx, w, h, paths, playerIcons);
+        renderScene(ctx, w, h, paths, playerIcons, zones);
         return off.toDataURL('image/png');
       },
       undo: () => {
@@ -508,6 +708,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         // mid-draw, it would undo an unrelated earlier action (e.g. the icon
         // placement) while the in-progress route preview stayed orphaned on
         // screen. Step back through the in-progress route first instead.
+        // (Zone create/resize/move are each a single continuous pointer
+        // gesture — there's no idle moment between clicks for a separate
+        // Undo press to land on, so they don't need this same handling.)
         if (waypointPoints.length > 0) {
           if (waypointPoints.length === 1) {
             // Only the locked origin remains — cancel the route entirely.
@@ -526,11 +729,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         // redo push and could leave phantom history entries.
         if (!undoStack.length) return;
         const prevState = undoStack[undoStack.length - 1];
-        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) };
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })) };
         setUndoStack((us) => us.slice(0, -1));
         setRedoStack((rs) => [...rs, current]);
         setPaths(prevState.paths);
         setPlayerIcons(prevState.playerIcons);
+        setZones(prevState.zones);
+        setSelectedZoneIndex(null);
       },
       redo: () => {
         // Mirrors the undo guard above: redoing a committed change could
@@ -540,21 +745,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         if (waypointPoints.length > 0) return;
         if (!redoStack.length) return;
         const nextState = redoStack[redoStack.length - 1];
-        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) };
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })) };
         setRedoStack((rs) => rs.slice(0, -1));
         setUndoStack((us) => [...us, current]);
         setPaths(nextState.paths);
         setPlayerIcons(nextState.playerIcons);
+        setZones(nextState.zones);
+        setSelectedZoneIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setSelectedZoneIndex(null); setZoneDraft(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
-      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); },
+      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); },
       canUndo: () => undoStack.length > 0 || waypointPoints.length > 0,
       canRedo: () => redoStack.length > 0 && waypointPoints.length === 0,
       getPaths: () => paths,
       getIcons: () => playerIcons,
-    }), [paths, playerIcons, pushSnapshot, undoStack, redoStack, waypointPoints]);
+      getZones: () => zones,
+    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints]);
 
     // ------------------------------------------
     // Pointer helpers
@@ -640,6 +848,32 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Delete-zone mode — tap a zone (or its player) to remove it
+      if (deleteZoneMode) {
+        let zoneIdx = clicked >= 0 ? findZoneByIcon(clicked) : -1;
+        if (zoneIdx < 0) zoneIdx = findZoneAt(p);
+        if (zoneIdx >= 0) {
+          pushSnapshot();
+          setZones((prev) => prev.filter((_, i) => i !== zoneIdx));
+          setSelectedZoneIndex(null);
+          if (deletedZoneFlashTimerRef.current) clearTimeout(deletedZoneFlashTimerRef.current);
+          setDeletedZoneFlash(true);
+          deletedZoneFlashTimerRef.current = setTimeout(() => setDeletedZoneFlash(false), 1500);
+        }
+        setHoveredIconIndex(null);
+        return;
+      }
+
+      // Zone tool — pointer-down directly on a defender without a zone yet
+      // begins a single drag-to-size gesture (icon = fixed center).
+      if (zoneMode) {
+        if (clicked >= 0 && !iconHasZone(clicked)) {
+          const icon = playerIcons[clicked];
+          setZoneDraft({ iconIndex: clicked, cx: icon.x, cy: icon.y, rx: 0, ry: 0 });
+        }
+        return;
+      }
+
       // Straight + Waypoint modes — click-to-add-segments flow
       if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
@@ -689,6 +923,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Default Select/Move mode: a selected zone's resize handle takes
+      // priority, then its body (to move it), before falling through to
+      // icon dragging.
+      if (selectedZoneIndex !== null && zones[selectedZoneIndex]) {
+        const axis = findZoneHandle(p, zones[selectedZoneIndex]);
+        if (axis) {
+          zoneGestureRef.current = { type: 'resize', zoneIndex: selectedZoneIndex, axis, moved: false };
+          return;
+        }
+      }
+      const hitZone = findZoneAt(p);
+      if (hitZone >= 0) {
+        setSelectedZoneIndex(hitZone);
+        const z = zones[hitZone];
+        zoneGestureRef.current = { type: 'move', zoneIndex: hitZone, offset: { x: p.x - z.cx, y: p.y - z.cy }, moved: false };
+        return;
+      }
+      if (selectedZoneIndex !== null) setSelectedZoneIndex(null);
+
       // Drag icon
       if (clicked >= 0) {
         const icon = playerIcons[clicked];
@@ -703,6 +956,33 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
       const p = getPos(e);
+
+      // Zone creation: live-resize the draft as the drag continues.
+      if (zoneDraft) {
+        setZoneDraft((prev) => prev ? { ...prev, rx: Math.abs(p.x - prev.cx), ry: Math.abs(p.y - prev.cy) } : prev);
+        return;
+      }
+
+      // Zone resize/move: deferred snapshot on first actual move, same
+      // pattern as icon dragging below.
+      if (zoneGestureRef.current) {
+        const g = zoneGestureRef.current;
+        if (!g.moved) { g.moved = true; pushSnapshot(); }
+        setZones((prev) => {
+          const next = [...prev];
+          const z = { ...next[g.zoneIndex] };
+          if (g.type === 'move' && g.offset) {
+            z.cx = p.x - g.offset.x;
+            z.cy = p.y - g.offset.y;
+          } else if (g.type === 'resize') {
+            if (g.axis === 'x' || g.axis === 'both') z.rx = Math.max(Math.abs(p.x - z.cx), MIN_ZONE_RADIUS);
+            if (g.axis === 'y' || g.axis === 'both') z.ry = Math.max(Math.abs(p.y - z.cy), MIN_ZONE_RADIUS);
+          }
+          next[g.zoneIndex] = z;
+          return next;
+        });
+        return;
+      }
 
       if (isDragging && draggingIndexRef.current !== null) {
         // Record the pre-drag state exactly once, the moment the icon first moves.
@@ -719,7 +999,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
 
       // Hover highlight: show which icon will be the route origin (or deletion target)
-      if ((drawingMode && waypointPoints.length === 0) || deleteRouteMode) {
+      if ((drawingMode && waypointPoints.length === 0) || deleteRouteMode || zoneMode || deleteZoneMode) {
         const idx = findIcon(p);
         setHoveredIconIndex(idx >= 0 ? idx : null);
       } else if (hoveredIconIndex !== null) {
@@ -729,6 +1009,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     const handlePointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
       if (e) (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+
+      // Commit the zone creation gesture: pushSnapshot (pre-zone state) then
+      // add the new zone, floored to a minimum visible radius so a tap
+      // without much drag still produces a usable zone.
+      if (zoneDraft) {
+        pushSnapshot();
+        const rx = Math.max(zoneDraft.rx, MIN_ZONE_RADIUS);
+        const ry = Math.max(zoneDraft.ry, MIN_ZONE_RADIUS);
+        const icon = playerIcons[zoneDraft.iconIndex];
+        setZones((prev) => [...prev, { iconIndex: zoneDraft.iconIndex, cx: zoneDraft.cx, cy: zoneDraft.cy, rx, ry, color: icon?.color || '#888888' }]);
+        setZoneDraft(null);
+        return;
+      }
+
+      if (zoneGestureRef.current) {
+        zoneGestureRef.current = null;
+        return;
+      }
 
       if (isDragging) { setIsDragging(false); draggingIndexRef.current = null; }
     };
@@ -754,6 +1052,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
     const hoveredHasRoute = hoveredIconIndex !== null && iconHasRoute(hoveredIconIndex);
+    const hoveredHasZone = hoveredIconIndex !== null && iconHasZone(hoveredIconIndex);
     let instructionText: string | null = null;
     if (deleteRouteMode) {
       if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
@@ -763,6 +1062,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           : `"${ltr}" has no route to remove`;
       } else {
         instructionText = 'Tap a player to remove their route';
+      }
+    } else if (deleteZoneMode) {
+      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
+        const ltr = playerIcons[hoveredIconIndex].letter;
+        instructionText = hoveredHasZone
+          ? `Tap to remove "${ltr}"'s zone`
+          : `"${ltr}" has no zone to remove`;
+      } else {
+        instructionText = 'Tap a zone (or its player) to remove it';
+      }
+    } else if (zoneMode) {
+      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
+        const ltr = playerIcons[hoveredIconIndex].letter;
+        instructionText = hoveredHasZone
+          ? `"${ltr}" already has a zone · Use Remove Zone to clear it first`
+          : `Drag from "${ltr}" to size their zone`;
+      } else {
+        instructionText = 'Hover a defender, then drag to draw their zone';
       }
     } else if (drawingMode) {
       if (waypointPoints.length === 0) {
@@ -796,18 +1113,19 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         />
 
         {/* ── Contextual instruction bar (top of canvas) ── */}
-        {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || instructionText) && (
+        {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || deletedZoneFlash || instructionText) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
                 savedFlash ? 'bg-green-600'
-                : deletedFlash ? 'bg-amber-600'
+                : (deletedFlash || deletedZoneFlash) ? 'bg-amber-600'
                 : (conflictFlash || finishFirstFlash) ? 'bg-red-600'
                 : 'bg-black/65 backdrop-blur-sm'
               }`}
             >
               {savedFlash ? '✓ Route saved!'
                 : deletedFlash ? '✓ Route removed'
+                : deletedZoneFlash ? '✓ Zone removed'
                 : finishFirstFlash ? 'Finish or cancel the current route first'
                 : conflictFlash ? 'This player already has a route · Use Remove Route to clear it'
                 : instructionText}

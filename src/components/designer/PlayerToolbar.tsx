@@ -52,7 +52,7 @@ const PlayerIcon: React.FC<PlayerIconProps> = ({ letter, color, isSquare, isSele
       title={`Player ${letter}`}
     >
       <div
-        className={`w-8 h-8 ${!isSquare ? 'rounded-full' : ''} flex items-center justify-center text-white font-bold cursor-move`}
+        className={`w-8 h-8 ${!isSquare ? 'rounded-full' : ''} flex items-center justify-center text-white font-bold cursor-move ${letter.length > 1 ? 'text-[10px]' : ''}`}
         style={{ backgroundColor: color }}
       >
         {letter}
@@ -72,16 +72,26 @@ export const players = [
   { letter: 'Z', color: '#6366F1' }, // Indigo
 ];
 
+// Defensive roster: Defensive Line, Linebacker, Cornerback, Safety.
+// "CB" (not "C") since "C" is already the offensive Center above.
+export const defensivePlayers = [
+  { letter: 'D', color: '#F97316' },  // Orange
+  { letter: 'LB', color: '#14B8A6' }, // Teal
+  { letter: 'CB', color: '#84CC16' }, // Lime
+  { letter: 'S', color: '#E11D48' },  // Rose
+];
+
 interface PlayerToolbarProps {
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean } | null) => void;
+  roster?: typeof players;
 }
 
-export function PlayerToolbar({ selectedPlayer, onSelectPlayer }: PlayerToolbarProps) {
+export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players }: PlayerToolbarProps) {
   return (
     <div className="flex items-center gap-1">
       <div className="h-6 w-px bg-chalk/10 mx-1"></div>
-      {players.map((player) => (
+      {roster.map((player) => (
         <PlayerIcon
           key={player.letter}
           letter={player.letter}
