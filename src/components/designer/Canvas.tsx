@@ -69,6 +69,10 @@ type CanvasProps = {
   selectedPlayer: { letter: string; color: string; isSquare?: boolean } | null;
   setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean } | null) => void;
   onDrawingComplete?: (points: Pt[]) => void;
+  /** Notifies the parent whenever undo/redo availability changes, so toolbar
+   *  buttons reflect this canvas's internal history (which the parent can't
+   *  otherwise observe — it never re-renders on a canvas-only edit). */
+  onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
   id?: string;
 };
 
@@ -294,7 +298,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -331,6 +335,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
     const dragOffsetRef = useRef<Pt>({ x: 0, y: 0 });
+    // Whether the current drag has actually moved the icon yet. The undo
+    // snapshot is pushed on the first real move, not on pointer-down, so a
+    // plain tap (no movement) doesn't create a no-op history entry that
+    // would swallow the next undo press.
+    const dragMovedRef = useRef(false);
 
     const pushSnapshot = useCallback(() => {
       setUndoStack((prev) => [...prev, { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) }]);
@@ -441,6 +450,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
 
+    // Keep the parent's undo/redo button state in sync with this canvas's
+    // internal history stacks.
+    useEffect(() => {
+      onHistoryChange?.({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
+    }, [undoStack.length, redoStack.length, onHistoryChange]);
+
     // Sync canvas size
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -481,24 +496,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return off.toDataURL('image/png');
       },
       undo: () => {
-        setUndoStack((prev) => {
-          if (!prev.length) return prev;
-          const state = prev[prev.length - 1];
-          setRedoStack((rs) => [...rs, { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) }]);
-          setPaths(state.paths);
-          setPlayerIcons(state.playerIcons);
-          return prev.slice(0, -1);
-        });
+        // Flat, top-level setState calls only — no setState nested inside
+        // another updater function. An updater (the `prev => ...` form) is
+        // invoked twice by StrictMode in dev to surface impurities; nesting
+        // side effects in one meant a single undo press double-fired the
+        // redo push and could leave phantom history entries.
+        if (!undoStack.length) return;
+        const prevState = undoStack[undoStack.length - 1];
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) };
+        setUndoStack((us) => us.slice(0, -1));
+        setRedoStack((rs) => [...rs, current]);
+        setPaths(prevState.paths);
+        setPlayerIcons(prevState.playerIcons);
       },
       redo: () => {
-        setRedoStack((prev) => {
-          if (!prev.length) return prev;
-          const state = prev[prev.length - 1];
-          setUndoStack((us) => [...us, { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) }]);
-          setPaths(state.paths);
-          setPlayerIcons(state.playerIcons);
-          return prev.slice(0, -1);
-        });
+        if (!redoStack.length) return;
+        const nextState = redoStack[redoStack.length - 1];
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) };
+        setRedoStack((rs) => rs.slice(0, -1));
+        setUndoStack((us) => [...us, current]);
+        setPaths(nextState.paths);
+        setPlayerIcons(nextState.playerIcons);
       },
       clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
@@ -648,8 +666,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const icon = playerIcons[clicked];
         draggingIndexRef.current = clicked;
         dragOffsetRef.current = { x: p.x - icon.x, y: p.y - icon.y };
+        dragMovedRef.current = false;
         setIsDragging(true);
-        pushSnapshot();
+        // Snapshot is deferred to the first actual move (see handlePointerMove)
+        // so a plain tap doesn't push a no-op undo entry.
       }
     };
 
@@ -657,6 +677,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const p = getPos(e);
 
       if (isDragging && draggingIndexRef.current !== null) {
+        // Record the pre-drag state exactly once, the moment the icon first moves.
+        if (!dragMovedRef.current) {
+          dragMovedRef.current = true;
+          pushSnapshot();
+        }
         setPlayerIcons((prev) => {
           const c = [...prev];
           c[draggingIndexRef.current!] = { ...c[draggingIndexRef.current!], x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };

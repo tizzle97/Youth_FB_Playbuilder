@@ -23,6 +23,10 @@ export function PlayDesigner() {
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
+  // Undo/redo availability, kept in sync by the Canvas via onHistoryChange —
+  // the canvas's history stacks live below this component, so without this
+  // callback the toolbar buttons go stale after canvas-only edits.
+  const [history, setHistory] = useState({ canUndo: false, canRedo: false });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -323,8 +327,8 @@ export function PlayDesigner() {
           onRedo={() => canvasRef.current?.redo()}
           onClear={() => canvasRef.current?.clear()}
           onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={canvasRef.current?.canUndo?.() ?? false}
-          canRedo={canvasRef.current?.canRedo?.() ?? false}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
         />
       </div>
 
@@ -345,6 +349,7 @@ export function PlayDesigner() {
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           onDrawingComplete={() => {}}
+          onHistoryChange={setHistory}
         />
       </main>
 
@@ -366,8 +371,8 @@ export function PlayDesigner() {
           onRedo={() => canvasRef.current?.redo()}
           onClear={() => canvasRef.current?.clear()}
           onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={canvasRef.current?.canUndo?.() ?? false}
-          canRedo={canvasRef.current?.canRedo?.() ?? false}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
         />
       </div>
 
