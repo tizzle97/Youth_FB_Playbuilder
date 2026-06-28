@@ -451,10 +451,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     useEffect(() => { draw(); }, [draw]);
 
     // Keep the parent's undo/redo button state in sync with this canvas's
-    // internal history stacks.
+    // internal history stacks. An in-progress route counts toward canUndo
+    // even before it's committed — see the undo() comment below.
     useEffect(() => {
-      onHistoryChange?.({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
-    }, [undoStack.length, redoStack.length, onHistoryChange]);
+      onHistoryChange?.({
+        canUndo: undoStack.length > 0 || waypointPoints.length > 0,
+        // Redo is a no-op while a route is mid-draw (see redo() below) — keep
+        // the button's enabled state consistent with what clicking it does.
+        canRedo: redoStack.length > 0 && waypointPoints.length === 0,
+      });
+    }, [undoStack.length, redoStack.length, waypointPoints.length, onHistoryChange]);
 
     // Sync canvas size
     useEffect(() => {
@@ -496,6 +502,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return off.toDataURL('image/png');
       },
       undo: () => {
+        // A route being drawn (waypointPoints) isn't pushed to undoStack
+        // until it's finished — finishRoute() only snapshots at commit time.
+        // So if undo fell through to the committed stack while a route is
+        // mid-draw, it would undo an unrelated earlier action (e.g. the icon
+        // placement) while the in-progress route preview stayed orphaned on
+        // screen. Step back through the in-progress route first instead.
+        if (waypointPoints.length > 0) {
+          if (waypointPoints.length === 1) {
+            // Only the locked origin remains — cancel the route entirely.
+            setWaypointPoints([]);
+            setWaypointIconIndex(null);
+            setHoveredIconIndex(null);
+          } else {
+            setWaypointPoints((prev) => prev.slice(0, -1));
+          }
+          return;
+        }
         // Flat, top-level setState calls only — no setState nested inside
         // another updater function. An updater (the `prev => ...` form) is
         // invoked twice by StrictMode in dev to surface impurities; nesting
@@ -510,6 +533,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setPlayerIcons(prevState.playerIcons);
       },
       redo: () => {
+        // Mirrors the undo guard above: redoing a committed change could
+        // move or remove the icon an in-progress route is anchored to and
+        // orphan its preview. There's nothing to redo for an uncommitted
+        // route's points, so just no-op until it's finished or cancelled.
+        if (waypointPoints.length > 0) return;
         if (!redoStack.length) return;
         const nextState = redoStack[redoStack.length - 1];
         const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })) };
@@ -522,11 +550,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); },
-      canUndo: () => undoStack.length > 0,
-      canRedo: () => redoStack.length > 0,
+      canUndo: () => undoStack.length > 0 || waypointPoints.length > 0,
+      canRedo: () => redoStack.length > 0 && waypointPoints.length === 0,
       getPaths: () => paths,
       getIcons: () => playerIcons,
-    }), [paths, playerIcons, pushSnapshot, undoStack, redoStack]);
+    }), [paths, playerIcons, pushSnapshot, undoStack, redoStack, waypointPoints]);
 
     // ------------------------------------------
     // Pointer helpers
