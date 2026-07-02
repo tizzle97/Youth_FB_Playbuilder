@@ -145,6 +145,21 @@ export function PlayDesigner() {
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
 
+  // Bridge for the Playwright smoke suite (tests/smoke): exposes real canvas
+  // state so tests assert on data instead of sampling pixels. import.meta.env.DEV
+  // is statically false in production builds, so none of this ships.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as any).__PBP_TEST__ = {
+      getCanvasState: () => ({
+        paths: canvasRef.current?.getPaths?.() ?? [],
+        playerIcons: canvasRef.current?.getIcons?.() ?? [],
+        zones: canvasRef.current?.getZones?.() ?? [],
+      }),
+    };
+    return () => { delete (window as any).__PBP_TEST__; };
+  }, []);
+
   const handleNewPlay = useCallback(() => {
     canvasRef.current?.clear();
     setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));

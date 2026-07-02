@@ -20,7 +20,18 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
 - `npm run build` — production build. **Run before committing.** Note: `vite build`
   does NOT type-check; run `npx tsc --noEmit` to catch type errors (the repo has
   some pre-existing tsc errors in unrelated files — only worry about files you touch).
-- `npm run lint` — eslint
+- `npm run lint` — eslint (currently broken: flat-config migration, BACKLOG.md B-6)
+- `npm run smoke` — Playwright smoke suite (`tests/smoke/`), drives the real app
+  headlessly on its own port (4517). Tests assert on real canvas state via the
+  dev-only `window.__PBP_TEST__` bridge in `PlayDesigner.tsx` — no pixel sampling.
+- `npm run verify` — build + smoke. **Run before every commit/PR.** Extend the
+  smoke suite whenever you touch the designer or save/load flows.
+
+## Backlog
+`BACKLOG.md` is the prioritized work queue for humans and automated agents.
+Agent rules (one item per PR, never run migrations, money code needs human
+review) are at the top of that file. When asked to pick up "the next thing,"
+take the topmost unblocked item there.
 
 ## Database / migrations workflow
 - **Read `supabase/SCHEMA.md` for the current schema** (tables, columns, RLS,

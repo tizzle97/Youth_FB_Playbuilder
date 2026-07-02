@@ -1,0 +1,174 @@
+import { test, expect, Page } from '@playwright/test';
+
+/**
+ * Smoke suite for the flows that matter most and break most quietly: the Play
+ * Designer's draw/undo behavior and the saved-play load path.
+ *
+ * Assertions read real canvas state through the dev-only `window.__PBP_TEST__`
+ * bridge (see PlayDesigner.tsx) — no pixel sampling.
+ *
+ * Timing rule: the canvas treats two taps within 350ms as "double-tap to
+ * finish the route" (Canvas.tsx handlePointerDown), so consecutive canvas
+ * clicks while drawing must be spaced further apart than that.
+ */
+const TAP_GAP = 450;
+
+type CanvasState = {
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string }>;
+  playerIcons: Array<{ x: number; y: number; letter: string; color: string }>;
+  zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
+};
+
+async function openDesigner(page: Page) {
+  await page.goto('/designer');
+  await page.waitForFunction(() => Boolean((window as unknown as { __PBP_TEST__?: unknown }).__PBP_TEST__));
+  await expect(page.locator('#play-canvas')).toBeVisible();
+}
+
+function canvasState(page: Page): Promise<CanvasState> {
+  return page.evaluate(() =>
+    (window as unknown as { __PBP_TEST__: { getCanvasState: () => unknown } }).__PBP_TEST__.getCanvasState(),
+  ) as Promise<CanvasState>;
+}
+
+/** Page coords for a point at fractional position (fx, fy) inside the canvas. */
+async function canvasPoint(page: Page, fx: number, fy: number) {
+  const box = await page.locator('#play-canvas').boundingBox();
+  if (!box) throw new Error('canvas has no bounding box');
+  return { x: box.x + box.width * fx, y: box.y + box.height * fy };
+}
+
+// Toolbar renders twice (desktop top bar + mobile bottom bar); :visible picks
+// the one that exists at the test viewport size.
+const btn = (page: Page, title: string) => page.locator(`button[title="${title}"]:visible`);
+
+test('home page renders without uncaught errors', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Flag Football League');
+  expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
+});
+
+test('offense: place a player, draw a straight route, undo both', async ({ page }) => {
+  await openDesigner(page);
+
+  // Place Q
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(1);
+  expect(state.playerIcons[0].letter).toBe('Q');
+  // Coordinates are stored normalized 0–1
+  expect(state.playerIcons[0].x).toBeGreaterThan(0);
+  expect(state.playerIcons[0].x).toBeLessThan(1);
+
+  // Draw a straight route: origin = the icon, one endpoint, then Finish Route
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].startIconIndex).toBe(0);
+  expect(state.paths[0].points.length).toBeGreaterThanOrEqual(2);
+
+  // Undo removes the route first, then the icon
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(0);
+  expect(state.playerIcons).toHaveLength(1);
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(0);
+});
+
+test('defense: place a safety and drag a zone of responsibility', async ({ page }) => {
+  await openDesigner(page);
+
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+  await btn(page, 'Player S').click();
+  const spot = await canvasPoint(page, 0.5, 0.55);
+  await page.mouse.click(spot.x, spot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(1);
+  expect(state.playerIcons[0].letter).toBe('S');
+
+  // Zone tool: single drag starting on the defender sizes the zone
+  await btn(page, 'Draw a zone of responsibility (drag from a player)').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.move(icon.x, icon.y);
+  await page.mouse.down();
+  await page.mouse.move(icon.x + 110, icon.y + 70, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.zones).toHaveLength(1);
+  expect(state.zones[0].iconIndex).toBe(0);
+  expect(state.zones[0].rx).toBeGreaterThan(0);
+  expect(state.zones[0].ry).toBeGreaterThan(0);
+  expect(state.zones[0].color).toBe(state.playerIcons[0].color);
+
+  // Play type locks once the canvas has content
+  await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
+});
+
+test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
+  // Covers the client half of the save→reload seam without needing an
+  // authenticated Supabase session: version-3 canvas_data with icons, a
+  // route, and a zone must all land back on the canvas.
+  const canvasData = JSON.stringify({
+    version: 3,
+    paths: [
+      { points: [{ x: 0.5, y: 0.6 }, { x: 0.5, y: 0.35 }], color: '#14B8A6', startIconIndex: 1, mode: 'straight' },
+    ],
+    playerIcons: [
+      { x: 0.45, y: 0.7, letter: 'S', color: '#E11D48' },
+      { x: 0.5, y: 0.6, letter: 'LB', color: '#14B8A6' },
+    ],
+    zones: [{ iconIndex: 0, cx: 0.45, cy: 0.7, rx: 0.12, ry: 0.1, color: '#E11D48' }],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000001',
+        name: 'Cover 2',
+        type: 'defense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Cover 2' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000001');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 2 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.playerIcons.map((i) => i.letter)).toEqual(['S', 'LB']);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].startIconIndex).toBe(1);
+  expect(state.zones).toHaveLength(1);
+  expect(state.zones[0].iconIndex).toBe(0);
+
+  // Editing mode + defense roster active
+  await expect(page.getByText('(editing)')).toBeVisible();
+  await expect(btn(page, 'Player S')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
+});
