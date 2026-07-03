@@ -21,6 +21,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 interface Playbook {
   id: string;
@@ -55,6 +56,7 @@ export function PlaybooksPage() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [newPlaybookName, setNewPlaybookName] = useState('');
   const [newPlaybookDescription, setNewPlaybookDescription] = useState('');
+  const [createPlaybookError, setCreatePlaybookError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -139,6 +141,7 @@ export function PlaybooksPage() {
     if (!newPlaybookName.trim()) return;
 
     try {
+      setCreatePlaybookError(null);
       const { data: playbook, error } = await supabase
         .from('playbooks')
         .insert([
@@ -159,6 +162,7 @@ export function PlaybooksPage() {
       loadPlaybooks();
     } catch (error) {
       console.error('Error creating playbook:', error);
+      setCreatePlaybookError(getSafeErrorMessage(error, 'Failed to create playbook'));
     }
   };
 
@@ -777,7 +781,7 @@ export function PlaybooksPage() {
                 New Play
               </button>
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
                 className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
               >
                 <Plus className="h-4 w-4" />
@@ -832,7 +836,7 @@ export function PlaybooksPage() {
                     <BookOpen className="h-12 w-12 text-chalk/30 mx-auto mb-3" />
                     <p className="text-chalk/70 mb-4">No playbooks found</p>
                     <button
-                      onClick={() => setShowCreateModal(true)}
+                      onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
                       className="text-sm text-primary hover:text-primary/80"
                     >
                       Create your first playbook
@@ -1060,6 +1064,11 @@ export function PlaybooksPage() {
                   </button>
                 </div>
                 <div className="p-6 space-y-4">
+                  {createPlaybookError && (
+                    <div className="text-red-500 text-sm bg-red-500/10 p-3 rounded-lg">
+                      {createPlaybookError}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-chalk mb-2">
                       Playbook Name *
