@@ -122,6 +122,66 @@ test('defense: place a safety and drag a zone of responsibility', async ({ page 
   await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
 });
 
+test('free-tier play limit: server rejection surfaces as an upgrade prompt', async ({ page }) => {
+  // Covers the client half of B-1 (server-enforced free-tier limits): when
+  // the enforce_plays_free_limit() trigger (supabase/free_tier_limits.sql)
+  // rejects a 16th play insert with its custom PBP01 code, the UI must show
+  // the trigger's friendly message rather than a raw/generic DB error. The
+  // trigger itself runs only against a real Supabase instance and isn't
+  // covered by this mocked-backend suite.
+  await page.addInitScript(() => {
+    const session = {
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user: {
+        id: '11111111-1111-1111-1111-111111111111',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'coach@example.com',
+        app_metadata: {},
+        user_metadata: {},
+        created_at: new Date(0).toISOString(),
+      },
+    };
+    localStorage.setItem('sb-your-project-auth-token', JSON.stringify(session));
+  });
+
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'PBP01',
+        message: 'Free plan is limited to 15 plays. Upgrade to Pro for unlimited plays.',
+        details: null,
+        hint: null,
+      }),
+    });
+  });
+
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  await page.locator('button[title="Save play"]:visible').click();
+  await page.getByPlaceholder('Enter play name...').fill('16th Play');
+  await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();
+  await page.getByRole('button', { name: 'Save Play' }).click();
+
+  await expect(
+    page.getByText('Free plan is limited to 15 plays. Upgrade to Pro for unlimited plays.'),
+  ).toBeVisible();
+});
+
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
   // Covers the client half of the save→reload seam without needing an
   // authenticated Supabase session: version-3 canvas_data with icons, a

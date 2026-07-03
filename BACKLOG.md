@@ -22,15 +22,6 @@ section); schema context lives in `supabase/SCHEMA.md`.
 
 ## Up next
 
-### B-1 · Server-enforced free-tier limits (15 plays / 2 playbooks)
-New idempotent SQL file: RLS policy or trigger blocking INSERT into `plays`
-beyond 15 rows (and `playbooks` beyond 2) for users where `is_pro()` is false.
-Client: catch the rejection in the save flows and show a friendly upgrade prompt
-(use `useEntitlement()` + `FREE_LIMITS` from `src/lib/entitlements.ts`), never a
-raw Postgres error. **Acceptance:** free user's 16th play insert fails
-server-side; UI shows an upgrade message; Pro/Founding users unaffected.
-⚠ requires SQL run.
-
 ### B-2 · UI export gates (Pro features)
 Gate playbook PDF export (detailed + grid) and wristband export behind
 `useEntitlement().isPro` with an upgrade prompt for free users. Free single-play
@@ -101,6 +92,18 @@ them in.
 
 ## Done
 
+- **2026-07-03 · B-1: Server-enforced free-tier limits (15 plays / 2 playbooks)**
+  — `supabase/free_tier_limits.sql` adds `BEFORE INSERT` triggers on `plays`/
+  `playbooks` blocking a 16th play / 3rd playbook for non-`is_pro()` users
+  (raises custom `PBP01`/`PBP02` codes). Client: `getSafeErrorMessage()`
+  (`src/lib/errors.ts`) maps those codes to the trigger's friendly
+  upgrade-prompt message instead of a generic DB error — also fixed a latent
+  bug there where Postgrest errors (thrown as plain `{code,message,...}`
+  objects, not `Error` instances, since this codebase doesn't use
+  `.throwOnError()`) were falling through to the generic fallback message
+  entirely. `PlaybooksPage.tsx`'s `createPlaybook` now surfaces its error in
+  the create-playbook modal (previously silently console-logged only).
+  ⚠ requires SQL run.
 - **2026-07-02 · Playwright smoke suite + `verify` script** — `tests/smoke/`,
   `npm run smoke`, `npm run verify`; covers designer offense/defense flows,
   undo, and the play-load path with a mocked backend.

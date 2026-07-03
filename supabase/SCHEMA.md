@@ -19,6 +19,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `subscriptions.sql` | applied | `subscriptions` table, `is_pro()`, Founding-Member backfill. |
 | `security_hardening.sql` | **verify applied** | Pins `search_path` on `is_admin()`/`is_pro()`; drops the unsafe `user_reputation` write policy; switches `image_reports` moderator policies to `is_admin()`. |
 | `community_authors.sql` | **verify applied** | `get_community_authors(uuid[])` for Community post author display. |
+| `free_tier_limits.sql` | **verify applied** | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -39,8 +40,8 @@ idempotent `.sql` file and update this doc in the same change.
 ### Play design
 | Table | Key columns | RLS summary |
 |---|---|---|
-| `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`. |
-| `playbooks` | `id`, `user_id`, `name`, `description`, timestamps | Owner full access. |
+| `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`. `BEFORE INSERT` trigger blocks a 16th row for non-`is_pro()` users (`free_tier_limits.sql`). |
+| `playbooks` | `id`, `user_id`, `name`, `description`, timestamps | Owner full access. `BEFORE INSERT` trigger blocks a 3rd row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbook_plays` | `id`, `playbook_id`, `play_id`, `order_position`; UNIQUE`(playbook_id,play_id)` & `(playbook_id,order_position)` | Access via owning playbook (`playbooks.user_id=auth.uid()`). |
 | `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. |
 | `categories` | `id`, `name`, `type`, `parent_id`, `playbook_id`, `order_position` | Access via owning playbook. |
@@ -76,6 +77,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `admin_list_feedback()` | Admin-gated; feedback rows joined to submitter email. |
 | `delete_user(target_user_id uuid)` | Admin-gated; deletes the auth account (cascades). Blocks self-deletion. |
 | `get_community_authors(target_ids uuid[])` | Returns `id, username, avatar_url` for a batch of authors (Community page; avoids embedding a nonexistent `profiles` table). Granted to anon+authenticated. |
+| `enforce_plays_free_limit()` / `enforce_playbooks_free_limit()` | Trigger fns: raise `PBP01`/`PBP02` (custom SQLSTATE, user-safe message) when a non-`is_pro()` user's insert would exceed `FREE_LIMITS.plays`/`FREE_LIMITS.playbooks`. Client maps these codes to an upgrade prompt in `src/lib/errors.ts`. |
 | `handle_new_user_signup()` | Trigger fn: on `auth.users` insert, creates a `user_reputation` row with a default avatar. |
 | `update_updated_at_column()` | Generic `updated_at` touch trigger. |
 | `update_user_reputation()` | Trigger fn: bumps poster reputation on new post/comment. |
