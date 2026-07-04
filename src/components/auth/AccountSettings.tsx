@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Flag } from 'lucide-react';
+import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
@@ -12,7 +12,6 @@ export default function AccountSettings() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -83,20 +82,38 @@ export default function AccountSettings() {
 
   // Check for changes
   useEffect(() => {
-    const hasUnsavedChanges = 
+    const hasUnsavedChanges =
       username !== initialValues.username ||
       avatarType !== initialValues.avatarType ||
       avatarUrl !== initialValues.avatarUrl ||
-      selectedIconId !== initialValues.selectedIconId;
-    
+      selectedIconId !== initialValues.selectedIconId ||
+      newPassword !== '';
+
     setHasChanges(hasUnsavedChanges);
-  }, [username, avatarType, avatarUrl, selectedIconId, initialValues]);
+  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, initialValues]);
 
   const handleSaveChanges = async () => {
+    if (!user) return;
     try {
       setError('');
       setSuccess('');
-      
+
+      // Update password if a new one was entered
+      if (newPassword) {
+        if (newPassword !== confirmPassword) {
+          throw new Error('New password and confirmation do not match.');
+        }
+        if (newPassword.length < 6) {
+          throw new Error('Password must be at least 6 characters.');
+        }
+        const { error: passwordError } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+        if (passwordError) throw passwordError;
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+
       // Update username if changed
       if (username !== initialValues.username) {
         const { error: usernameError } = await supabase.auth.updateUser({
@@ -199,18 +216,6 @@ export default function AccountSettings() {
     setAvatarUrl('');
   };
 
-  const handleReportImage = async (url: string, userId?: string | null) => {
-    try {
-      if (!url) return;
-      // Minimal reporting: insert into reported_images table (adjust schema as needed)
-      await supabase.from('reported_images').insert({ url, reported_by: userId || null });
-      setSuccess('Image reported. Thank you.');
-    } catch (err) {
-      console.error('Report failed', err);
-      setError(getSafeErrorMessage(err, 'Failed to report image'));
-    }
-  };
-
   const handleDeleteAccount = async () => {
     try {
       const { error } = await supabase.rpc('delete_user');
@@ -229,6 +234,10 @@ export default function AccountSettings() {
       </div>
     );
   }
+
+  // getUser() redirects to /auth when signed out, so user is set by the time
+  // loading clears — this narrows the type for the JSX below.
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-board py-12">
@@ -292,21 +301,12 @@ export default function AccountSettings() {
               {avatarType === 'custom' ? (
                 <div className="space-y-4">
                   {avatarUrl && (
-                    <div className="relative">
-                      <div className="w-24 h-24 rounded-full overflow-hidden">
-                        <img
-                          src={avatarUrl}
-                          alt="Profile"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <button
-                        onClick={() => handleReportImage(avatarUrl, user.id)}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                        title="Report inappropriate content"
-                      >
-                        <Flag className="h-4 w-4" />
-                      </button>
+                    <div className="w-24 h-24 rounded-full overflow-hidden">
+                      <img
+                        src={avatarUrl}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   )}
                   <div>
@@ -357,7 +357,7 @@ export default function AccountSettings() {
                 </label>
                 <div className="mt-1 relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
-                    <User className="h-5 w-5 text-chalk/50" />
+                    <UserIcon className="h-5 w-5 text-chalk/50" />
                   </div>
                   <input
                     type="text"

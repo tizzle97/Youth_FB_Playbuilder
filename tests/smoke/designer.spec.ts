@@ -182,6 +182,58 @@ test('free-tier play limit: server rejection surfaces as an upgrade prompt', asy
   ).toBeVisible();
 });
 
+test('account settings page renders for a signed-in user (mocked backend)', async ({ page }) => {
+  // Regression test: the page previously rendered blank because a type-only
+  // `User` import was used as a JSX component (undefined at runtime), which
+  // crashed the whole route after "Loading..." cleared.
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+
+  const userJson = {
+    id: '11111111-1111-1111-1111-111111111111',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'coach@example.com',
+    app_metadata: {},
+    user_metadata: { username: 'coach' },
+    created_at: '2025-09-01T00:00:00Z',
+  };
+
+  await page.addInitScript((user) => {
+    localStorage.setItem('sb-your-project-auth-token', JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, userJson);
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  await page.route('**/rest/v1/user_reputation**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ avatar_type: 'icon', avatar_url: null, avatar_icon_id: null }),
+    }),
+  );
+  await page.route('**/rest/v1/avatar_icons**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  await page.goto('/account');
+
+  await expect(page.getByRole('heading', { name: 'Account Settings' })).toBeVisible();
+  await expect(page.getByText('Member Since')).toBeVisible();
+  // The username section is where the crash happened (icon next to the input)
+  await expect(page.locator('#username')).toBeVisible();
+  await expect(page.getByText('Delete Account').first()).toBeVisible();
+  expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
+});
+
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
   // Covers the client half of the save→reload seam without needing an
   // authenticated Supabase session: version-3 canvas_data with icons, a
