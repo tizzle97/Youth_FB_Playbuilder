@@ -11,10 +11,11 @@ A modern web application for designing and managing football plays.
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS
-- **Canvas**: Fabric.js for interactive drawing
-- **Backend**: Supabase (database, auth, storage)
+- **Frontend**: React 18 + TypeScript + Vite, React Router v6
+- **Styling**: Tailwind CSS (dark theme)
+- **Canvas**: HTML5 Canvas 2D — the play designer draws directly to a `<canvas>`
+  (play data stored in normalized 0–1 coordinates); not Fabric.js
+- **Backend**: Supabase (Postgres, auth, storage)
 - **Icons**: Lucide React
 
 ## Development
@@ -72,11 +73,17 @@ This app is configured for deployment on Vercel:
 
 ```
 src/
+├── App.tsx           # Routes + top-level layout
+├── main.tsx          # Entry point
 ├── components/
-│   ├── designer/     # Play designer components
-│   ├── ui/           # Reusable UI components
-│   └── layout/       # Layout components
-├── lib/              # Utilities and configurations
-├── types/            # TypeScript type definitions
-└── pages/            # Page components
+│   ├── designer/     # Play designer (canvas, toolbar, save/load)
+│   ├── plays/        # Play library
+│   ├── playbooks/    # Playbook management + PDF export
+│   ├── community/    # Community feed
+│   ├── blog/         # Blog
+│   ├── auth/         # Auth & account settings
+│   ├── admin/        # Admin dashboard
+│   └── *.tsx         # Landing-page sections (Navbar, Hero, Pricing, …)
+├── lib/              # Shared Supabase client, entitlements, errors, analytics
+└── types/            # TypeScript type definitions
 ```
