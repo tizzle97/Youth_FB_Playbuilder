@@ -11,7 +11,7 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
 - **Backend:** Supabase (Postgres, Auth, Storage). Client in `src/lib/supabase.ts` —
   always import the shared client; never call `createClient` in components.
 - **Deploy:** Netlify, auto-deploys on push to `main`. SPA routing relies on
-  `public/_redirects` (`/* /index.html 200`) — NOT `vercel.json` (legacy, ignored).
+  `public/_redirects` (`/* /index.html 200`).
 - **Env:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (and the GA tag is
   hardcoded in `index.html`). `.env` is git-ignored; never commit secrets.
 

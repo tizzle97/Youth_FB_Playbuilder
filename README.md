@@ -54,14 +54,17 @@ npm run preview
 
 ## Deployment
 
-This app is configured for deployment on Vercel:
+This app is deployed on Netlify and auto-deploys on every push to `main`:
 
 1. Push your code to GitHub
-2. Connect your repository to Vercel
-3. Set environment variables in Vercel dashboard:
+2. Connect your repository to Netlify
+3. Set environment variables in the Netlify dashboard:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
 4. Deploy!
+
+SPA routing (so deep links like `/designer` don't 404) relies on
+`public/_redirects` (`/* /index.html 200`), which Netlify picks up automatically.
 
 ## Environment Variables
 

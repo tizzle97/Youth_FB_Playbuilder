@@ -72,10 +72,6 @@ confirm icons/zones/routes reload intact. (The smoke suite covers this flow with
 a mocked backend; this checks the real DB round trip once.) **Human task** —
 agents skip.
 
-### B-9 · Delete legacy `vercel.json`
-Deploys are Netlify; SPA routing is `public/_redirects`. `vercel.json` is dead
-config that misleads readers. Delete it and confirm nothing references it.
-
 ### B-10 · Play voting
 Upvotes on public/community plays: schema (new SQL file + SCHEMA.md), RLS
 (one vote per user per play), and UI on community cards. Prerequisite for B-11.
@@ -92,6 +88,10 @@ them in.
 
 ## Done
 
+- **2026-07-04 · B-9: Delete legacy `vercel.json`** — removed the dead Vercel
+  config (deploys are Netlify via `public/_redirects`). Also corrected the
+  now-stale Vercel deployment instructions in `README.md` to describe the
+  Netlify flow, and dropped the dangling `vercel.json` reference in `CLAUDE.md`.
 - **2026-07-03 · B-1: Server-enforced free-tier limits (15 plays / 2 playbooks)**
   — `supabase/free_tier_limits.sql` adds `BEFORE INSERT` triggers on `plays`/
   `playbooks` blocking a 16th play / 3rd playbook for non-`is_pro()` users
