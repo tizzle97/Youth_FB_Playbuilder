@@ -44,13 +44,13 @@ account UI. `useEntitlement().isFoundingMember` already exists. ⚠ requires SQL
 run. **Note:** run the backfill only right before Pro gates go live (B-1/B-2),
 so signups until then are included.
 
-### B-5 · Fix the 12 pre-existing tsc errors, then add tsc to verify
-`npx tsc --noEmit` currently fails in: `AccountSettings.tsx` (null `user`,
-`User` used as value), `UserMenu.tsx` (`icon_url` on `never`),
+### B-5 · Fix the remaining pre-existing tsc errors, then add tsc to verify
+`npx tsc --noEmit` currently fails in: `UserMenu.tsx` (`icon_url` on `never`),
 `AddToPlaybookModal.tsx` (null `user`), `SavePlayModal.tsx` (missing `playName`),
-`AddToPlaybookButton.tsx` (Set iteration). Fix all, then change the `verify`
-script to `tsc --noEmit && build && smoke`. **Acceptance:** `npx tsc --noEmit`
-exits 0.
+`AddToPlaybookButton.tsx` (Set iteration). (`AccountSettings.tsx`'s errors were
+fixed in the blank-page hotfix — one of them was crashing the page at runtime,
+proof these aren't cosmetic.) Fix all, then change the `verify` script to
+`tsc --noEmit && build && smoke`. **Acceptance:** `npx tsc --noEmit` exits 0.
 
 ### B-6 · Repair eslint (flat-config migration)
 `npm run lint` crashes: a config object uses `extends`, unsupported in eslint 9
@@ -90,8 +90,40 @@ Wire it to voting data and re-enable. **Blocked on:** B-10.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
+### B-13 · Account page: Plan & usage section
+Card on `/account` showing current plan (Free / Pro / **Founding Member** badge —
+overlaps B-4's badge), live usage meters ("9 of 15 plays · 1 of 2 playbooks"
+via `useEntitlement()` + `FREE_LIMITS` + count queries), and an upgrade CTA for
+free users. This section is also the future home of B-3's Stripe Customer
+Portal link. **Acceptance:** free user sees meters + CTA; founding user sees
+badge and no CTA.
+
+### B-14 · Team identity settings (name/logo on exports)
+Account settings for team name and optional logo, stamped onto single-play PDFs,
+playbook PDFs, and wristband exports. Include default game format (5v5/7v7) to
+prefill `SavePlayModal`. Needs a `user_preferences` store (new idempotent SQL +
+SCHEMA.md). ⚠ requires SQL run.
+
+### B-15 · Save & export default preferences
+Account settings for: default play visibility (private/public), default play
+type, paper size (Letter/A4), and default playbook export style (simple/
+detailed/grid). Store alongside B-14's preferences. **Blocked on:** B-14
+(shares the preferences store).
+
+### B-16 · Email change on account page
+`supabase.auth.updateUser({ email })` + confirmation-flow messaging (Supabase
+sends a verification email to the new address). Auth-adjacent → human review.
+
 ## Done
 
+- **2026-07-04 · Hotfix: Account Settings page rendered blank** — a type-only
+  `User` import was used as a JSX component (line 360), `undefined` at runtime,
+  crashing the whole `/account` route (this was one of the B-5 tsc errors —
+  `vite build` doesn't type-check, so it shipped). Same PR: wired up the
+  password-change form (its fields were previously ignored by save), removed
+  the self-report avatar flag (impossible by DB constraint:
+  `reporter_id != reported_user_id`), fixed the remaining AccountSettings tsc
+  errors, and added a smoke test that `/account` renders for a signed-in user.
 - **2026-07-03 · B-1: Server-enforced free-tier limits (15 plays / 2 playbooks)**
   — `supabase/free_tier_limits.sql` adds `BEFORE INSERT` triggers on `plays`/
   `playbooks` blocking a 16th play / 3rd playbook for non-`is_pro()` users
