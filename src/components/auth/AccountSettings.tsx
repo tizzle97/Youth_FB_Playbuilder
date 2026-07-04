@@ -186,8 +186,8 @@ export default function AccountSettings() {
       setUploadingAvatar(true);
       setError('');
 
-      const fileName = `${user.id}-${Math.random().toString(36).slice(2)}.jpg`;
-      const filePath = `avatars/${fileName}`;
+      const fileName = `${Math.random().toString(36).slice(2)}.jpg`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
