@@ -1,4 +1,12 @@
 import { test, expect, Page } from '@playwright/test';
+import { readFileSync } from 'fs';
+
+// Mocked-session tests must seed localStorage under the same key the real
+// supabase-js client reads (`sb-<project-ref>-auth-token`, derived from
+// VITE_SUPABASE_URL's hostname) or the app never picks up the fake session
+// and silently treats the user as signed out.
+const SUPABASE_URL = readFileSync('.env', 'utf-8').match(/^VITE_SUPABASE_URL=(.+)$/m)?.[1].trim() ?? '';
+const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
 
 /**
  * Smoke suite for the flows that matter most and break most quietly: the Play
@@ -129,7 +137,7 @@ test('free-tier play limit: server rejection surfaces as an upgrade prompt', asy
   // the trigger's friendly message rather than a raw/generic DB error. The
   // trigger itself runs only against a real Supabase instance and isn't
   // covered by this mocked-backend suite.
-  await page.addInitScript(() => {
+  await page.addInitScript((storageKey) => {
     const session = {
       access_token: 'test-access-token',
       refresh_token: 'test-refresh-token',
@@ -146,8 +154,8 @@ test('free-tier play limit: server rejection surfaces as an upgrade prompt', asy
         created_at: new Date(0).toISOString(),
       },
     };
-    localStorage.setItem('sb-your-project-auth-token', JSON.stringify(session));
-  });
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }, AUTH_STORAGE_KEY);
 
   await page.route('**/rest/v1/playbooks**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
@@ -199,8 +207,8 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
     created_at: '2025-09-01T00:00:00Z',
   };
 
-  await page.addInitScript((user) => {
-    localStorage.setItem('sb-your-project-auth-token', JSON.stringify({
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
       access_token: 'test-access-token',
       refresh_token: 'test-refresh-token',
       expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -208,7 +216,7 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
       token_type: 'bearer',
       user,
     }));
-  }, userJson);
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
 
   await page.route('**/auth/v1/user**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
