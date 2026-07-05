@@ -7,7 +7,7 @@ import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas } from './Canvas';
-import type { DrawMode } from './Canvas';
+import type { DrawMode, IconShape } from './Canvas';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
@@ -25,7 +25,7 @@ export function PlayDesigner() {
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean } | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null>(null);
   // Undo/redo availability, kept in sync by the Canvas via onHistoryChange —
   // the canvas's history stacks live below this component, so without this
   // callback the toolbar buttons go stale after canvas-only edits.

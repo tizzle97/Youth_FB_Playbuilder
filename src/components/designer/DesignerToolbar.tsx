@@ -1,7 +1,7 @@
 import React from 'react';
 import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers } from './PlayerToolbar';
-import type { DrawMode } from './Canvas';
+import type { DrawMode, IconShape } from './Canvas';
 
 export type PlayType = 'offense' | 'defense';
 
@@ -20,7 +20,7 @@ interface DesignerToolbarProps {
   deleteZoneMode: boolean;
   setDeleteZoneMode: (mode: boolean) => void;
   selectedPlayer: string | null;
-  onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean } | null) => void;
+  onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -90,13 +90,13 @@ export function DesignerToolbar({
     if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); onSelectPlayer(null); }
   };
 
-  const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean } | null) => {
+  const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => {
     if (player) {
       setDrawingMode(false);
       setDeleteRouteMode(false);
       setZoneMode(false);
       setDeleteZoneMode(false);
-      onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare) });
+      onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare), shape: player.shape });
     } else {
       onSelectPlayer(null);
     }

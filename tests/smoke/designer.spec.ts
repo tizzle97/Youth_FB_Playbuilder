@@ -23,7 +23,7 @@ const TAP_GAP = 450;
 
 type CanvasState = {
   paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string }>;
-  playerIcons: Array<{ x: number; y: number; letter: string; color: string }>;
+  playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
 };
 
@@ -176,19 +176,22 @@ test('customize a placed icon: new label, new color, route recolors to match', a
   await expect(labelInput).toBeVisible();
   await labelInput.fill('12'); // numbers allowed, not just roster letters
   await page.getByLabel('Color #E11D48').click();
+  await page.getByLabel('Shape star').click();
   await page.getByRole('button', { name: 'Apply' }).click();
 
   state = await canvasState(page);
   expect(state.playerIcons[0].letter).toBe('12');
   expect(state.playerIcons[0].color).toBe('#E11D48');
+  expect(state.playerIcons[0].shape).toBe('star');
   // The icon's existing route follows the new color
   expect(state.paths[0].color).toBe('#E11D48');
 
-  // The edit is a single undoable step: undo restores label, color, and route color
+  // The edit is a single undoable step: undo restores label, color, shape, and route color
   await btn(page, 'Undo').click();
   state = await canvasState(page);
   expect(state.playerIcons[0].letter).toBe('Q');
   expect(state.playerIcons[0].color).toBe(originalColor);
+  expect(state.playerIcons[0].shape).toBeUndefined();
   expect(state.paths[0].color).toBe(originalColor);
 });
 
@@ -200,6 +203,7 @@ test('custom toolbar player: place an icon with a custom label and color', async
   await expect(labelInput).toBeVisible();
   await labelInput.fill('WR1');
   await page.getByLabel('Color #14B8A6').click();
+  await page.getByLabel('Shape triangle').click();
   await page.getByRole('button', { name: 'Place Player' }).click();
 
   const spot = await canvasPoint(page, 0.6, 0.6);
@@ -209,6 +213,7 @@ test('custom toolbar player: place an icon with a custom label and color', async
   expect(state.playerIcons).toHaveLength(1);
   expect(state.playerIcons[0].letter).toBe('WR1');
   expect(state.playerIcons[0].color).toBe('#14B8A6');
+  expect(state.playerIcons[0].shape).toBe('triangle');
 });
 
 test('free-tier play limit: server rejection surfaces as an upgrade prompt', async ({ page }) => {

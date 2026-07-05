@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
+import type { IconShape } from './Canvas';
 
 interface PlayerIconProps {
   letter: string;
@@ -85,7 +86,7 @@ export const defensivePlayers = [
 
 interface PlayerToolbarProps {
   selectedPlayer: string | null;
-  onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean } | null) => void;
+  onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   roster?: typeof players;
 }
 
@@ -93,7 +94,7 @@ export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players
   const [showCustomEditor, setShowCustomEditor] = useState(false);
   // Remembered across placements within the session, so a coach placing
   // several similar custom players doesn't have to re-enter everything.
-  const [customDraft, setCustomDraft] = useState({ letter: '1', color: '#3B82F6' });
+  const [customDraft, setCustomDraft] = useState<{ letter: string; color: string; shape: IconShape }>({ letter: '1', color: '#3B82F6', shape: 'circle' });
 
   return (
     <div className="flex items-center gap-1">
@@ -141,11 +142,12 @@ export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players
             <PlayerStyleEditor
               initialLetter={customDraft.letter}
               initialColor={customDraft.color}
+              initialShape={customDraft.shape}
               applyLabel="Place Player"
-              onApply={(letter, color) => {
-                setCustomDraft({ letter, color });
+              onApply={(letter, color, shape) => {
+                setCustomDraft({ letter, color, shape });
                 setShowCustomEditor(false);
-                onSelectPlayer({ letter, color });
+                onSelectPlayer({ letter, color, shape });
               }}
               onCancel={() => setShowCustomEditor(false)}
             />

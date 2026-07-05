@@ -53,13 +53,22 @@ export type PathItem = {
   mode: DrawMode;
 };
 
+export type IconShape = 'circle' | 'square' | 'triangle' | 'star';
+
 type PlayerIcon = {
   x: number; // normalized 0–1
   y: number; // normalized 0–1
   letter: string;
   color: string;
+  /** Legacy flag from before `shape` existed — kept so old saved plays load.
+   *  `shape` wins when both are present (see iconShape()). */
   isSquare?: boolean;
+  shape?: IconShape;
 };
+
+/** Resolve an icon's shape, honoring the pre-`shape` isSquare flag. */
+const iconShape = (icon: { shape?: IconShape; isSquare?: boolean }): IconShape =>
+  icon.shape ?? (icon.isSquare ? 'square' : 'circle');
 
 /** A defender's zone of responsibility — an ellipse anchored to (but
  *  independently movable/resizable from) a player icon. */
@@ -81,8 +90,8 @@ type CanvasProps = {
   deleteRouteMode: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
-  selectedPlayer: { letter: string; color: string; isSquare?: boolean } | null;
-  setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean } | null) => void;
+  selectedPlayer: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null;
+  setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   onDrawingComplete?: (points: Pt[]) => void;
   /** Notifies the parent whenever undo/redo availability changes, so toolbar
    *  buttons reflect this canvas's internal history (which the parent can't
@@ -206,6 +215,49 @@ function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, 
   ctx.fill();
   ctx.restore();
 }
+
+/** Fill a player icon's shape centered at (cx, cy). Triangle and star are
+ *  drawn on a slightly larger circumradius so their visual weight matches
+ *  the circle/square. */
+function fillIconShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, shape: IconShape) {
+  const r = size / 2;
+  ctx.beginPath();
+  if (shape === 'square') {
+    ctx.rect(cx - r, cy - r, size, size);
+  } else if (shape === 'triangle') {
+    const R = r * 1.25;
+    for (let i = 0; i < 3; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / 3;
+      const x = cx + R * Math.cos(a);
+      const y = cy + R * Math.sin(a);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  } else if (shape === 'star') {
+    const outer = r * 1.3;
+    const inner = outer * 0.5;
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const R = i % 2 === 0 ? outer : inner;
+      const x = cx + R * Math.cos(a);
+      const y = cy + R * Math.sin(a);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  } else {
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+/** How much of the icon's width the label may occupy — narrower shapes
+ *  (triangle, star) leave less room around their center. */
+const TEXT_FIT: Record<IconShape, number> = {
+  circle: 0.85,
+  square: 0.9,
+  triangle: 0.6,
+  star: 0.55,
+};
 
 function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) {
   const pad = SIDELINE_PADDING * scale;
@@ -394,21 +446,16 @@ function renderScene(
   // Player icons
   playerIcons.forEach((icon) => {
     const c = toPx(icon);
+    const shape = iconShape(icon);
     ctx.save();
     ctx.fillStyle = icon.color;
-    if (icon.isSquare) {
-      ctx.fillRect(c.x - iconSize / 2, c.y - iconSize / 2, iconSize, iconSize);
-    } else {
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, iconSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    fillIconShape(ctx, c.x, c.y, iconSize, shape);
     ctx.fillStyle = '#fff';
     // Base sizes match the original fixed rosters (1 char full, 2 char 0.72);
     // longer custom labels shrink further until they fit inside the icon.
     let fontSize = (icon.letter.length > 1 ? PLAYER_FONT * 0.72 : PLAYER_FONT) * scale;
     ctx.font = `bold ${fontSize}px Inter, Arial, sans-serif`;
-    const maxTextWidth = iconSize * 0.85;
+    const maxTextWidth = iconSize * TEXT_FIT[shape];
     const textWidth = ctx.measureText(icon.letter).width;
     if (textWidth > maxTextWidth) {
       fontSize *= maxTextWidth / textWidth;
@@ -494,11 +541,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setRedoStack([]);
     }, [paths, playerIcons, zones]);
 
-    /** Restyle an icon (label and/or color) and keep its dependent artwork in
-     *  sync: routes drawn from it and its zone always match the icon's color. */
-    const applyIconStyle = useCallback((idx: number, letter: string, color: string) => {
+    /** Restyle an icon (label, color, shape) and keep its dependent artwork in
+     *  sync: routes drawn from it and its zone always match the icon's color.
+     *  isSquare stays mirrored so legacy readers of canvas_data still work. */
+    const applyIconStyle = useCallback((idx: number, letter: string, color: string, shape: IconShape) => {
       pushSnapshot();
-      setPlayerIcons((prev) => { const c = [...prev]; c[idx] = { ...c[idx], letter, color }; return c; });
+      setPlayerIcons((prev) => { const c = [...prev]; c[idx] = { ...c[idx], letter, color, shape, isSquare: shape === 'square' }; return c; });
       setPaths((prev) => prev.map((p) => (p.startIconIndex === idx ? { ...p, color } : p)));
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
@@ -856,12 +904,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (selectedPlayer && !drawingMode) {
         pushSnapshot();
         if (clicked >= 0) {
-          setPlayerIcons((prev) => { const c = [...prev]; c[clicked] = { ...c[clicked], letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare }; return c; });
+          setPlayerIcons((prev) => { const c = [...prev]; c[clicked] = { ...c[clicked], letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare, shape: selectedPlayer.shape }; return c; });
           // Keep the icon's existing artwork in sync with its new color
           setPaths((prev) => prev.map((p) => (p.startIconIndex === clicked ? { ...p, color: selectedPlayer.color } : p)));
           setZones((prev) => prev.map((z) => (z.iconIndex === clicked ? { ...z, color: selectedPlayer.color } : z)));
         } else {
-          setPlayerIcons((prev) => [...prev, { x: p.x, y: p.y, letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare }]);
+          setPlayerIcons((prev) => [...prev, { x: p.x, y: p.y, letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare, shape: selectedPlayer.shape }]);
         }
         setSelectedPlayer(null);
         return;
@@ -1095,7 +1143,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const data = JSON.parse(e.dataTransfer.getData('application/json'));
         if (data?.letter && data?.color) {
           pushSnapshot();
-          setPlayerIcons((prev) => [...prev, { x, y, letter: data.letter, color: data.color, isSquare: !!data.isSquare }]);
+          setPlayerIcons((prev) => [...prev, { x, y, letter: data.letter, color: data.color, isSquare: !!data.isSquare, shape: data.shape }]);
         }
       } catch { /* ignore */ }
     };
@@ -1207,9 +1255,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               key={editingIconIndex}
               initialLetter={editingIcon.letter}
               initialColor={editingIcon.color}
+              initialShape={iconShape(editingIcon)}
               applyLabel="Apply"
-              onApply={(letter, color) => {
-                applyIconStyle(editingIconIndex, letter, color);
+              onApply={(letter, color, shape) => {
+                applyIconStyle(editingIconIndex, letter, color, shape);
                 setEditingIconIndex(null);
               }}
               onCancel={() => setEditingIconIndex(null)}
