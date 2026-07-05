@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { UserPlus } from 'lucide-react';
+import { PlayerStyleEditor } from './PlayerStyleEditor';
 
 interface PlayerIconProps {
   letter: string;
@@ -88,6 +90,11 @@ interface PlayerToolbarProps {
 }
 
 export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players }: PlayerToolbarProps) {
+  const [showCustomEditor, setShowCustomEditor] = useState(false);
+  // Remembered across placements within the session, so a coach placing
+  // several similar custom players doesn't have to re-enter everything.
+  const [customDraft, setCustomDraft] = useState({ letter: '1', color: '#3B82F6' });
+
   return (
     <div className="flex items-center gap-1">
       <div className="h-6 w-px bg-chalk/10 mx-1"></div>
@@ -115,6 +122,36 @@ export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players
           }}
         />
       ))}
+
+      {/* Custom player: any label (letters or numbers) + any color */}
+      <button
+        onClick={() => setShowCustomEditor(true)}
+        title="Custom player (choose label and color)"
+        className="p-2 rounded-md transition-colors hover:bg-board-light"
+      >
+        <div className="w-8 h-8 rounded-full border-2 border-dashed border-chalk/40 flex items-center justify-center text-chalk/60 hover:text-chalk hover:border-chalk/70 transition-colors">
+          <UserPlus className="h-4 w-4" />
+        </div>
+      </button>
+
+      {showCustomEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCustomEditor(false)} />
+          <div className="relative">
+            <PlayerStyleEditor
+              initialLetter={customDraft.letter}
+              initialColor={customDraft.color}
+              applyLabel="Place Player"
+              onApply={(letter, color) => {
+                setCustomDraft({ letter, color });
+                setShowCustomEditor(false);
+                onSelectPlayer({ letter, color });
+              }}
+              onCancel={() => setShowCustomEditor(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

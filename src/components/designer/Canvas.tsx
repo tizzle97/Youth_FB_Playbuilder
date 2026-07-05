@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { PlayerStyleEditor } from './PlayerStyleEditor';
 
 // ---------------------------------------------
 // Config
@@ -403,8 +404,16 @@ function renderScene(
       ctx.fill();
     }
     ctx.fillStyle = '#fff';
-    const fontSize = (icon.letter.length > 1 ? PLAYER_FONT * 0.72 : PLAYER_FONT) * scale;
+    // Base sizes match the original fixed rosters (1 char full, 2 char 0.72);
+    // longer custom labels shrink further until they fit inside the icon.
+    let fontSize = (icon.letter.length > 1 ? PLAYER_FONT * 0.72 : PLAYER_FONT) * scale;
     ctx.font = `bold ${fontSize}px Inter, Arial, sans-serif`;
+    const maxTextWidth = iconSize * 0.85;
+    const textWidth = ctx.measureText(icon.letter).width;
+    if (textWidth > maxTextWidth) {
+      fontSize *= maxTextWidth / textWidth;
+      ctx.font = `bold ${fontSize}px Inter, Arial, sans-serif`;
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(icon.letter, c.x, c.y);
@@ -464,6 +473,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // would swallow the next undo press.
     const dragMovedRef = useRef(false);
 
+    // Icon being edited via the tap-to-customize popover (Select mode only).
+    const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
+
     // Zone creation: a single continuous drag from an icon outward. Held in
     // state (not just a ref) so the live preview redraws as it changes.
     const [zoneDraft, setZoneDraft] = useState<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number } | null>(null);
@@ -481,6 +493,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }]);
       setRedoStack([]);
     }, [paths, playerIcons, zones]);
+
+    /** Restyle an icon (label and/or color) and keep its dependent artwork in
+     *  sync: routes drawn from it and its zone always match the icon's color. */
+    const applyIconStyle = useCallback((idx: number, letter: string, color: string) => {
+      pushSnapshot();
+      setPlayerIcons((prev) => { const c = [...prev]; c[idx] = { ...c[idx], letter, color }; return c; });
+      setPaths((prev) => prev.map((p) => (p.startIconIndex === idx ? { ...p, color } : p)));
+      setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
+    }, [pushSnapshot]);
 
     // Current on-screen scaling helpers
     const screenScale = Math.min(width, height) / REF_SIZE;
@@ -688,6 +709,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setZoneDraft(null);
     }, [zoneMode, deleteZoneMode, drawingMode]);
 
+    // Close the icon-edit popover whenever any tool takes over the canvas —
+    // it only makes sense in plain Select mode.
+    useEffect(() => {
+      if (drawingMode || zoneMode || deleteRouteMode || deleteZoneMode || selectedPlayer) {
+        setEditingIconIndex(null);
+      }
+    }, [drawingMode, zoneMode, deleteRouteMode, deleteZoneMode, selectedPlayer]);
+
     // ------------------------------------------
     // Imperative handle
     // ------------------------------------------
@@ -736,6 +765,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setPlayerIcons(prevState.playerIcons);
         setZones(prevState.zones);
         setSelectedZoneIndex(null);
+        setEditingIconIndex(null);
       },
       redo: () => {
         // Mirrors the undo guard above: redoing a committed change could
@@ -752,11 +782,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setPlayerIcons(nextState.playerIcons);
         setZones(nextState.zones);
         setSelectedZoneIndex(null);
+        setEditingIconIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setSelectedZoneIndex(null); setZoneDraft(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
-      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); },
+      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); },
       canUndo: () => undoStack.length > 0 || waypointPoints.length > 0,
       canRedo: () => redoStack.length > 0 && waypointPoints.length === 0,
       getPaths: () => paths,
@@ -826,6 +857,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         pushSnapshot();
         if (clicked >= 0) {
           setPlayerIcons((prev) => { const c = [...prev]; c[clicked] = { ...c[clicked], letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare }; return c; });
+          // Keep the icon's existing artwork in sync with its new color
+          setPaths((prev) => prev.map((p) => (p.startIconIndex === clicked ? { ...p, color: selectedPlayer.color } : p)));
+          setZones((prev) => prev.map((z) => (z.iconIndex === clicked ? { ...z, color: selectedPlayer.color } : z)));
         } else {
           setPlayerIcons((prev) => [...prev, { x: p.x, y: p.y, letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare }]);
         }
@@ -923,9 +957,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Default Select/Move mode: a selected zone's resize handle takes
-      // priority, then its body (to move it), before falling through to
-      // icon dragging.
+      // Default Select/Move mode. Any tap here dismisses an open icon-edit
+      // popover (tapping an icon below may immediately reopen it on pointer-up).
+      if (editingIconIndex !== null) setEditingIconIndex(null);
+
+      // Hit priority: a selected zone's resize handles first, then icons
+      // (drawn on top of zones, so hits should match what's visible), then
+      // zone bodies (to select/move them).
       if (selectedZoneIndex !== null && zones[selectedZoneIndex]) {
         const axis = findZoneHandle(p, zones[selectedZoneIndex]);
         if (axis) {
@@ -933,6 +971,21 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           return;
         }
       }
+
+      // Drag icon — a tap without movement opens the customize popover instead
+      // (see handlePointerUp).
+      if (clicked >= 0) {
+        if (selectedZoneIndex !== null) setSelectedZoneIndex(null);
+        const icon = playerIcons[clicked];
+        draggingIndexRef.current = clicked;
+        dragOffsetRef.current = { x: p.x - icon.x, y: p.y - icon.y };
+        dragMovedRef.current = false;
+        setIsDragging(true);
+        // Snapshot is deferred to the first actual move (see handlePointerMove)
+        // so a plain tap doesn't push a no-op undo entry.
+        return;
+      }
+
       const hitZone = findZoneAt(p);
       if (hitZone >= 0) {
         setSelectedZoneIndex(hitZone);
@@ -941,17 +994,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
       if (selectedZoneIndex !== null) setSelectedZoneIndex(null);
-
-      // Drag icon
-      if (clicked >= 0) {
-        const icon = playerIcons[clicked];
-        draggingIndexRef.current = clicked;
-        dragOffsetRef.current = { x: p.x - icon.x, y: p.y - icon.y };
-        dragMovedRef.current = false;
-        setIsDragging(true);
-        // Snapshot is deferred to the first actual move (see handlePointerMove)
-        // so a plain tap doesn't push a no-op undo entry.
-      }
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1028,7 +1070,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      if (isDragging) { setIsDragging(false); draggingIndexRef.current = null; }
+      if (isDragging) {
+        // A press-and-release with no movement is a tap: open the customize
+        // popover for that icon (Select mode is the only mode that sets
+        // draggingIndexRef, so no other tool can trigger this).
+        if (!dragMovedRef.current && draggingIndexRef.current !== null) {
+          setEditingIconIndex(draggingIndexRef.current);
+        }
+        setIsDragging(false);
+        draggingIndexRef.current = null;
+      }
     };
 
     // Drag-and-drop from toolbar
@@ -1048,6 +1099,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         }
       } catch { /* ignore */ }
     };
+
+    // ── Icon-edit popover placement ───────────────────────────────
+    // Anchored under the icon, clamped inside the canvas; flips above the
+    // icon when there isn't enough room below.
+    const editingIcon = editingIconIndex !== null ? playerIcons[editingIconIndex] : null;
+    let editorLeft = 0;
+    let editorTop = 0;
+    if (editingIcon) {
+      const POPOVER_W = 230;
+      const POPOVER_H = 260;
+      editorLeft = Math.min(Math.max(editingIcon.x * width - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
+      editorTop = editingIcon.y * height + iconRadiusPx + 10;
+      if (editorTop + POPOVER_H > height - 8) {
+        editorTop = Math.max(8, editingIcon.y * height - iconRadiusPx - POPOVER_H - 10);
+      }
+    }
 
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
@@ -1130,6 +1197,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 : conflictFlash ? 'This player already has a route · Use Remove Route to clear it'
                 : instructionText}
             </div>
+          </div>
+        )}
+
+        {/* ── Icon customize popover (tap an icon in Select mode) ── */}
+        {editingIcon && editingIconIndex !== null && (
+          <div className="absolute z-20" style={{ left: editorLeft, top: editorTop }}>
+            <PlayerStyleEditor
+              key={editingIconIndex}
+              initialLetter={editingIcon.letter}
+              initialColor={editingIcon.color}
+              applyLabel="Apply"
+              onApply={(letter, color) => {
+                applyIconStyle(editingIconIndex, letter, color);
+                setEditingIconIndex(null);
+              }}
+              onCancel={() => setEditingIconIndex(null)}
+            />
           </div>
         )}
 

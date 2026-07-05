@@ -128,6 +128,87 @@ test('defense: place a safety and drag a zone of responsibility', async ({ page 
 
   // Play type locks once the canvas has content
   await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
+
+  // Customize the defender: icons render on top of zones, so tapping the
+  // icon (even inside its own zone) must open the editor — and the zone
+  // must recolor along with the icon.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  const labelInput = page.getByLabel('Player label');
+  await expect(labelInput).toBeVisible();
+  await labelInput.fill('FS');
+  await page.getByLabel('Color #8B5CF6').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[0].letter).toBe('FS');
+  expect(state.playerIcons[0].color).toBe('#8B5CF6');
+  expect(state.zones[0].color).toBe('#8B5CF6');
+});
+
+test('customize a placed icon: new label, new color, route recolors to match', async ({ page }) => {
+  await openDesigner(page);
+
+  // Place Q and draw a straight route from it
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  let state = await canvasState(page);
+  const originalColor = state.playerIcons[0].color;
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe(originalColor);
+
+  // Back to Select mode; tap the icon to open the customize popover
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+
+  const labelInput = page.getByLabel('Player label');
+  await expect(labelInput).toBeVisible();
+  await labelInput.fill('12'); // numbers allowed, not just roster letters
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[0].letter).toBe('12');
+  expect(state.playerIcons[0].color).toBe('#E11D48');
+  // The icon's existing route follows the new color
+  expect(state.paths[0].color).toBe('#E11D48');
+
+  // The edit is a single undoable step: undo restores label, color, and route color
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.playerIcons[0].letter).toBe('Q');
+  expect(state.playerIcons[0].color).toBe(originalColor);
+  expect(state.paths[0].color).toBe(originalColor);
+});
+
+test('custom toolbar player: place an icon with a custom label and color', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Custom player (choose label and color)').click();
+  const labelInput = page.getByLabel('Player label');
+  await expect(labelInput).toBeVisible();
+  await labelInput.fill('WR1');
+  await page.getByLabel('Color #14B8A6').click();
+  await page.getByRole('button', { name: 'Place Player' }).click();
+
+  const spot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+
+  const state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(1);
+  expect(state.playerIcons[0].letter).toBe('WR1');
+  expect(state.playerIcons[0].color).toBe('#14B8A6');
 });
 
 test('free-tier play limit: server rejection surfaces as an upgrade prompt', async ({ page }) => {
