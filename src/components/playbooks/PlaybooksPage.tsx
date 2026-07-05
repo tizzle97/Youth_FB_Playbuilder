@@ -18,10 +18,13 @@ import {
   Download,
   ChevronDown,
   FileText,
-  LayoutGrid
+  LayoutGrid,
+  Lock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { useEntitlement } from '../../lib/entitlements';
+import { UpgradePrompt } from '../UpgradePrompt';
 
 interface Playbook {
   id: string;
@@ -54,6 +57,8 @@ export function PlaybooksPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const { isPro, loading: entitlementLoading } = useEntitlement();
   const [newPlaybookName, setNewPlaybookName] = useState('');
   const [newPlaybookDescription, setNewPlaybookDescription] = useState('');
   const [createPlaybookError, setCreatePlaybookError] = useState<string | null>(null);
@@ -662,6 +667,12 @@ export function PlaybooksPage() {
       return;
     }
 
+    if (!entitlementLoading && !isPro) {
+      setShowExportMenu(false);
+      setShowUpgradePrompt(true);
+      return;
+    }
+
     try {
       let htmlContent = '';
 
@@ -925,8 +936,15 @@ export function PlaybooksPage() {
                                   className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
                                 >
                                   <FileText className="h-4 w-4 text-primary" />
-                                  <div>
-                                    <div className="font-medium">Simple (1 per page)</div>
+                                  <div className="flex-1">
+                                    <div className="font-medium flex items-center gap-2">
+                                      Simple (1 per page)
+                                      {!entitlementLoading && !isPro && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                          <Lock className="h-3 w-3" /> Pro
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-chalk/70">Play name + diagram only</div>
                                   </div>
                                 </button>
@@ -935,8 +953,15 @@ export function PlaybooksPage() {
                                   className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
                                 >
                                   <BookOpen className="h-4 w-4 text-primary" />
-                                  <div>
-                                    <div className="font-medium">Detailed (1 per page)</div>
+                                  <div className="flex-1">
+                                    <div className="font-medium flex items-center gap-2">
+                                      Detailed (1 per page)
+                                      {!entitlementLoading && !isPro && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                          <Lock className="h-3 w-3" /> Pro
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-chalk/70">Full metadata + diagram</div>
                                   </div>
                                 </button>
@@ -945,8 +970,15 @@ export function PlaybooksPage() {
                                   className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
                                 >
                                   <LayoutGrid className="h-4 w-4 text-primary" />
-                                  <div>
-                                    <div className="font-medium">Grid (all on one page)</div>
+                                  <div className="flex-1">
+                                    <div className="font-medium flex items-center gap-2">
+                                      Grid (all on one page)
+                                      {!entitlementLoading && !isPro && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                          <Lock className="h-3 w-3" /> Pro
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-chalk/70">Compact grid layout</div>
                                   </div>
                                 </button>
@@ -1116,12 +1148,18 @@ export function PlaybooksPage() {
 
         {/* Click outside to close export menu */}
         {showExportMenu && (
-          <div 
-            className="fixed inset-0 z-5" 
+          <div
+            className="fixed inset-0 z-5"
             onClick={() => setShowExportMenu(false)}
           />
         )}
       </div>
+      <UpgradePrompt
+        isOpen={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        feature="Playbook PDF export"
+        description="Exporting a full playbook to PDF is part of Playbuilder Pro ($39/yr). You can still export any single play for free from the Play Designer."
+      />
     </div>
   );
 }
