@@ -31,6 +31,13 @@ const HASH_TICK_LEN = 10;
 const LOS_COLOR = '#1a1a1a';
 const FIELD_YARDS_ABOVE_LOS = 15;
 const FIELD_YARDS_BELOW_LOS = 10;
+const TOTAL_FIELD_YARDS = FIELD_YARDS_ABOVE_LOS + FIELD_YARDS_BELOW_LOS;
+
+// Visio-style snapping: icons magnetize to other icons' rows/columns and the
+// field centerline within this screen-pixel radius; otherwise y quantizes to
+// the 1-yard grid. Guides render in amber (the app's "attention" color).
+const SNAP_PX = 8;
+const GUIDE_COLOR = '#f59e0b';
 const HASH_LEFT_X_RATIO = 70.75 / 160;
 const HASH_RIGHT_X_RATIO = 1 - HASH_LEFT_X_RATIO;
 
@@ -90,6 +97,7 @@ type CanvasProps = {
   deleteRouteMode: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
+  snapEnabled: boolean;
   selectedPlayer: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null;
   setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   onDrawingComplete?: (points: Pt[]) => void;
@@ -472,7 +480,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -523,6 +531,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Icon being edited via the tap-to-customize popover (Select mode only).
     const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
 
+    // Alignment guide lines shown while a drag is snapped to another icon's
+    // row/column or the field centerline (normalized coords, null = none).
+    const [activeGuides, setActiveGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+
     // Zone creation: a single continuous drag from an icon outward. Held in
     // state (not just a ref) so the live preview redraws as it changes.
     const [zoneDraft, setZoneDraft] = useState<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number } | null>(null);
@@ -550,6 +562,40 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setPaths((prev) => prev.map((p) => (p.startIconIndex === idx ? { ...p, color } : p)));
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
+
+    /** Visio-style snap for a prospective icon position. X magnetizes to other
+     *  icons' columns or the field centerline; Y magnetizes to other icons'
+     *  rows, falling back to the 1-yard grid (so depths stay consistent and
+     *  the LOS, itself a yard line, is always hittable). Icon alignment wins
+     *  over the grid; thresholds are in screen pixels, computed per axis since
+     *  the canvas is non-square. */
+    const computeSnap = useCallback((p: Pt, excludeIndex: number | null): { pos: Pt; guideX: number | null; guideY: number | null } => {
+      if (!snapEnabled) return { pos: p, guideX: null, guideY: null };
+      let x = p.x;
+      let y = p.y;
+      let guideX: number | null = null;
+      let guideY: number | null = null;
+
+      let bestDx = SNAP_PX;
+      const snapX = (cand: number) => {
+        const d = Math.abs(cand - p.x) * width;
+        if (d < bestDx) { bestDx = d; x = cand; guideX = cand; }
+      };
+      playerIcons.forEach((icon, i) => { if (i !== excludeIndex) snapX(icon.x); });
+      snapX(0.5); // field centerline — puts the Center/QB dead-center
+
+      let bestDy = SNAP_PX;
+      playerIcons.forEach((icon, i) => {
+        if (i === excludeIndex) return;
+        const d = Math.abs(icon.y - p.y) * height;
+        if (d < bestDy) { bestDy = d; y = icon.y; guideY = icon.y; }
+      });
+      if (guideY === null) {
+        y = Math.round(p.y * TOTAL_FIELD_YARDS) / TOTAL_FIELD_YARDS;
+      }
+
+      return { pos: { x, y }, guideX, guideY };
+    }, [snapEnabled, playerIcons, width, height]);
 
     // Current on-screen scaling helpers
     const screenScale = Math.min(width, height) / REF_SIZE;
@@ -610,6 +656,29 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
       renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex);
+
+      // Alignment guides while a drag is snapped to a row/column/centerline
+      if (activeGuides.x !== null || activeGuides.y !== null) {
+        ctx.save();
+        ctx.strokeStyle = GUIDE_COLOR;
+        ctx.lineWidth = Math.max(1, 1.5 * scale);
+        ctx.setLineDash([6 * scale, 4 * scale]);
+        ctx.globalAlpha = 0.9;
+        if (activeGuides.x !== null) {
+          ctx.beginPath();
+          ctx.moveTo(activeGuides.x * W, 0);
+          ctx.lineTo(activeGuides.x * W, H);
+          ctx.stroke();
+        }
+        if (activeGuides.y !== null) {
+          ctx.beginPath();
+          ctx.moveTo(0, activeGuides.y * H);
+          ctx.lineTo(W, activeGuides.y * H);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
 
       // In-progress zone creation preview (not yet committed to `zones`)
       if (zoneDraft) {
@@ -707,7 +776,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -909,7 +978,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           setPaths((prev) => prev.map((p) => (p.startIconIndex === clicked ? { ...p, color: selectedPlayer.color } : p)));
           setZones((prev) => prev.map((z) => (z.iconIndex === clicked ? { ...z, color: selectedPlayer.color } : z)));
         } else {
-          setPlayerIcons((prev) => [...prev, { x: p.x, y: p.y, letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare, shape: selectedPlayer.shape }]);
+          const { pos } = computeSnap(p, null);
+          setPlayerIcons((prev) => [...prev, { x: pos.x, y: pos.y, letter: selectedPlayer.letter, color: selectedPlayer.color, isSquare: selectedPlayer.isSquare, shape: selectedPlayer.shape }]);
         }
         setSelectedPlayer(null);
         return;
@@ -1080,9 +1150,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           dragMovedRef.current = true;
           pushSnapshot();
         }
+        const raw = { x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
+        const { pos, guideX, guideY } = computeSnap(raw, draggingIndexRef.current);
+        setActiveGuides({ x: guideX, y: guideY });
         setPlayerIcons((prev) => {
           const c = [...prev];
-          c[draggingIndexRef.current!] = { ...c[draggingIndexRef.current!], x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
+          c[draggingIndexRef.current!] = { ...c[draggingIndexRef.current!], x: pos.x, y: pos.y };
           return c;
         });
         return;
@@ -1127,6 +1200,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         }
         setIsDragging(false);
         draggingIndexRef.current = null;
+        setActiveGuides({ x: null, y: null });
       }
     };
 
@@ -1143,7 +1217,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const data = JSON.parse(e.dataTransfer.getData('application/json'));
         if (data?.letter && data?.color) {
           pushSnapshot();
-          setPlayerIcons((prev) => [...prev, { x, y, letter: data.letter, color: data.color, isSquare: !!data.isSquare, shape: data.shape }]);
+          const { pos } = computeSnap({ x, y }, null);
+          setPlayerIcons((prev) => [...prev, { x: pos.x, y: pos.y, letter: data.letter, color: data.color, isSquare: !!data.isSquare, shape: data.shape }]);
         }
       } catch { /* ignore */ }
     };

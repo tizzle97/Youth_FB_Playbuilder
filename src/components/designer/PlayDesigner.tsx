@@ -25,6 +25,8 @@ export function PlayDesigner() {
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
+  // Visio-style alignment snapping (icons/centerline/yard grid) — on by default
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null>(null);
   // Undo/redo availability, kept in sync by the Canvas via onHistoryChange —
   // the canvas's history stacks live below this component, so without this
@@ -361,6 +363,8 @@ export function PlayDesigner() {
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}
           setDeleteZoneMode={setDeleteZoneMode}
+          snapEnabled={snapEnabled}
+          setSnapEnabled={setSnapEnabled}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}
@@ -388,6 +392,7 @@ export function PlayDesigner() {
           deleteRouteMode={deleteRouteMode}
           zoneMode={zoneMode}
           deleteZoneMode={deleteZoneMode}
+          snapEnabled={snapEnabled}
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           onDrawingComplete={() => {}}
@@ -414,6 +419,8 @@ export function PlayDesigner() {
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}
           setDeleteZoneMode={setDeleteZoneMode}
+          snapEnabled={snapEnabled}
+          setSnapEnabled={setSnapEnabled}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
           onUndo={() => canvasRef.current?.undo()}

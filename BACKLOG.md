@@ -103,6 +103,13 @@ detailed/grid). Store alongside B-14's preferences. **Blocked on:** B-14
 `supabase.auth.updateUser({ email })` + confirmation-flow messaging (Supabase
 sends a verification email to the new address). Auth-adjacent → human review.
 
+### B-17 · Equal-spacing distribution guides in the designer
+Visio-style "distribute evenly": while dragging an icon between two others that
+share its row/column, snap to the equidistant point and show spacing guides.
+Follow-up to the alignment snapping shipped 2026-07-07 (`computeSnap` in
+`Canvas.tsx` is the extension point). Deferred by Jeremy to keep that change
+focused.
+
 ## Done
 
 - **2026-07-05 · B-2: UI export gates (Pro features)** — Playbook PDF export

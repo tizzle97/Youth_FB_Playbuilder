@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers } from './PlayerToolbar';
 import type { DrawMode, IconShape } from './Canvas';
 
@@ -19,6 +19,8 @@ interface DesignerToolbarProps {
   setZoneMode: (mode: boolean) => void;
   deleteZoneMode: boolean;
   setDeleteZoneMode: (mode: boolean) => void;
+  snapEnabled: boolean;
+  setSnapEnabled: (enabled: boolean) => void;
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   onUndo: () => void;
@@ -43,6 +45,8 @@ export function DesignerToolbar({
   setZoneMode,
   deleteZoneMode,
   setDeleteZoneMode,
+  snapEnabled,
+  setSnapEnabled,
   selectedPlayer,
   onSelectPlayer,
   onUndo,
@@ -118,6 +122,15 @@ export function DesignerToolbar({
           className={`${btnBase} p-2 min-w-[36px] ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode ? active : inactive}`}
         >
           <MousePointer className="h-4 w-4" />
+        </button>
+
+        {/* Snap to alignment (Visio-style guides + yard grid) */}
+        <button
+          onClick={() => setSnapEnabled(!snapEnabled)}
+          title="Snap to alignment"
+          className={`${btnBase} p-2 min-w-[36px] ${snapEnabled ? active : inactive}`}
+        >
+          <Magnet className="h-4 w-4" />
         </button>
 
         <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />

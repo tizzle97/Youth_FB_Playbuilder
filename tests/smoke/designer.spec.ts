@@ -146,6 +146,40 @@ test('defense: place a safety and drag a zone of responsibility', async ({ page 
   expect(state.zones[0].color).toBe('#8B5CF6');
 });
 
+test('snap: centerline + yard grid on placement, row alignment, magnet toggles off', async ({ page }) => {
+  await openDesigner(page);
+
+  // Q placed slightly off-center snaps to the field centerline (x = 0.5)
+  // and its y quantizes to the 1-yard grid (field is 25 yards tall).
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.505, 0.652);
+  await page.mouse.click(spot.x, spot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons[0].x).toBe(0.5);
+  const yards = state.playerIcons[0].y * 25;
+  expect(Math.abs(yards - Math.round(yards))).toBeLessThan(1e-9);
+
+  // A placed a few px off Q's row snaps to exactly Q's y — icon row
+  // alignment wins over the yard grid.
+  const qY = state.playerIcons[0].y;
+  await btn(page, 'Player A').click();
+  const spot2 = await canvasPoint(page, 0.3, qY);
+  await page.mouse.click(spot2.x, spot2.y + 5);
+
+  state = await canvasState(page);
+  expect(state.playerIcons[1].y).toBe(qY);
+
+  // Magnet off: a placement near the centerline stays freeform.
+  await btn(page, 'Snap to alignment').click();
+  await btn(page, 'Player B').click();
+  const spot3 = await canvasPoint(page, 0.505, 0.3);
+  await page.mouse.click(spot3.x, spot3.y);
+
+  state = await canvasState(page);
+  expect(state.playerIcons[2].x).not.toBe(0.5);
+});
+
 test('customize a placed icon: new label, new color, route recolors to match', async ({ page }) => {
   await openDesigner(page);
 
