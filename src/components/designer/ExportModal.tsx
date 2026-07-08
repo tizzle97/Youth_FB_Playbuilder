@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { X, FileText, Printer, BookOpen, Settings, Image, User, Tag, Grid3X3, Layout } from 'lucide-react';
+import { X, FileText, Printer, BookOpen, Settings, Image, User, Tag, Grid3X3, Layout, Lock } from 'lucide-react';
 
 // Import LocalPlayMetadata from the PlayDesigner component
 import type { PlayMetadata } from '../../types/play';
+import { useEntitlement } from '../../lib/entitlements';
+import { UpgradePrompt } from '../UpgradePrompt';
+
+const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook']);
 
 interface PlayData {
   metadata: PlayMetadata;
@@ -44,6 +48,8 @@ export function ExportModal({
   const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook'>('single-play');
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const { isPro, loading: entitlementLoading } = useEntitlement();
 
   if (!isOpen) return null;
   
@@ -200,7 +206,14 @@ export function ExportModal({
       font-weight: bold;
       color: #374151;
     }
-    
+
+    .free-footer {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 8pt;
+      color: #9ca3af;
+    }
+
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
     }
@@ -234,6 +247,7 @@ export function ExportModal({
         </div>
       </div>
     </div>
+    ${!isPro ? '<div class="free-footer">Made with playbuilderpro.com</div>' : ''}
   </div>
 </body>
 </html>`;
@@ -541,6 +555,10 @@ export function ExportModal({
   };
 
   const handleFormatClick = (formatId: string) => {
+    if (PRO_ONLY_FORMATS.has(formatId) && !entitlementLoading && !isPro) {
+      setShowUpgradePrompt(true);
+      return;
+    }
     setSelectedFormat(formatId as 'single-play' | 'detailed-playbook' | 'grid-playbook');
     setShowMetadataEditor(true);
   };
@@ -784,23 +802,31 @@ export function ExportModal({
               Choose a print format:
             </p>
             <div className="space-y-3">
-              {printFormatOptions.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => handleFormatClick(option.id)}
-                  className="w-full flex items-center p-4 bg-board hover:bg-board-light border border-chalk/10 rounded-lg transition-colors"
-                >
-                  <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md bg-primary/10 text-primary">
-                    <option.icon className="h-6 w-6" />
-                  </div>
-                  <div className="ml-4 text-left">
-                    <h4 className="text-lg font-medium text-chalk">
-                      {option.name}
-                    </h4>
-                    <p className="text-sm text-chalk/70">{option.description}</p>
-                  </div>
-                </button>
-              ))}
+              {printFormatOptions.map((option) => {
+                const locked = PRO_ONLY_FORMATS.has(option.id) && !entitlementLoading && !isPro;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => handleFormatClick(option.id)}
+                    className="w-full flex items-center p-4 bg-board hover:bg-board-light border border-chalk/10 rounded-lg transition-colors"
+                  >
+                    <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md bg-primary/10 text-primary">
+                      <option.icon className="h-6 w-6" />
+                    </div>
+                    <div className="ml-4 text-left">
+                      <h4 className="text-lg font-medium text-chalk flex items-center gap-2">
+                        {option.name}
+                        {locked && (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                            <Lock className="h-3 w-3" /> Pro
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-sm text-chalk/70">{option.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
             <div className="mt-6 flex justify-end">
               <button
@@ -813,6 +839,12 @@ export function ExportModal({
           </div>
         </div>
       </div>
+      <UpgradePrompt
+        isOpen={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        feature="Playbook PDF export"
+        description="Detailed and grid playbook layouts are part of Playbuilder Pro ($39/yr). Single-play export stays free."
+      />
     </div>
   );
 }

@@ -426,15 +426,17 @@ export function PlayDesigner() {
       </div>
 
       {/* ── MODALS ─────────────────────────────────────────────── */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        onExport={handleExportToPDF}
-        canvasRef={canvasRef}
-        playMetadata={currentPlayMetadata}
-        onUpdateMetadata={setCurrentPlayMetadata}
-        userHasAccount={!!user}
-      />
+      {showExportModal && (
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          onExport={handleExportToPDF}
+          canvasRef={canvasRef}
+          playMetadata={currentPlayMetadata}
+          onUpdateMetadata={setCurrentPlayMetadata}
+          userHasAccount={!!user}
+        />
+      )}
       <SavePlayModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}

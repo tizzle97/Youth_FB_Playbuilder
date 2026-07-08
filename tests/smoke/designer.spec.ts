@@ -378,3 +378,66 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
 });
+
+test('export gates (B-2): playbook PDF formats are Pro-locked, single-play stays free', async ({ page }) => {
+  // Anonymous users resolve to the free plan without a subscriptions row.
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+
+  await expect(page.getByText('Single Play Sheet')).toBeVisible();
+  await expect(page.getByText('Pro', { exact: true }).first()).toBeVisible();
+
+  // Locked format shows the upgrade prompt instead of advancing to the print screen.
+  await page.getByText('Playbook Grid').click();
+  await expect(page.getByText('Playbook PDF export is a Pro feature')).toBeVisible();
+  await page.getByRole('button', { name: 'Maybe later' }).click();
+
+  // Free single-play export is unaffected.
+  await page.getByText('Single Play Sheet').click();
+  await expect(page.getByRole('button', { name: /Print Play/ })).toBeVisible();
+});
+
+test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ page }) => {
+  const userJson = {
+    id: '22222222-2222-2222-2222-222222222222',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'pro-coach@example.com',
+    app_metadata: {},
+    user_metadata: {},
+    created_at: '2025-09-01T00:00:00Z',
+  };
+
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  // Entitlement is mocked (simulated Pro), per B-2's acceptance criteria.
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ plan: 'pro', current_period_end: null }),
+    }),
+  );
+
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+
+  await expect(page.getByText('Single Play Sheet')).toBeVisible();
+  await expect(page.getByText('Pro', { exact: true })).toHaveCount(0);
+
+  await page.getByText('Playbook Grid').click();
+  await expect(page.getByRole('button', { name: /Print Playbook/ })).toBeVisible();
+  await expect(page.getByText('is a Pro feature')).toHaveCount(0);
+});

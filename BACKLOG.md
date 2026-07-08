@@ -22,13 +22,6 @@ section); schema context lives in `supabase/SCHEMA.md`.
 
 ## Up next
 
-### B-2 · UI export gates (Pro features)
-Gate playbook PDF export (detailed + grid) and wristband export behind
-`useEntitlement().isPro` with an upgrade prompt for free users. Free single-play
-PDF stays available but gets a small "Made with playbuilderpro.com" footer
-credit; Pro output is clean. **Acceptance:** gates verified in browser for both
-a free and a pro state (pro state may be simulated by mocking the entitlement).
-
 ### B-3 · Stripe Checkout + Customer Portal + webhook (scaffold)
 Supabase Edge Function for a signature-verified Stripe webhook writing to
 `subscriptions` (service role); checkout session creation for the $39/yr
@@ -112,6 +105,23 @@ sends a verification email to the new address). Auth-adjacent → human review.
 
 ## Done
 
+- **2026-07-05 · B-2: UI export gates (Pro features)** — Playbook PDF export
+  (all formats: `ExportModal`'s detailed/grid layouts and `PlaybooksPage`'s
+  simple/detailed/grid playbook export, which all print multiple plays) now
+  requires `useEntitlement().isPro`; a free user sees a "Pro" lock badge on
+  those options and a new shared `UpgradePrompt` modal (`src/components/
+  UpgradePrompt.tsx`) instead of the print flow, linking back to the homepage
+  Pricing section. The single-play PDF sheet in `ExportModal` stays free for
+  everyone and now stamps a small "Made with playbuilderpro.com" footer credit
+  when the exporting user isn't Pro (Pro output has no footer). Also fixed a
+  latent bug this surfaced: `ExportModal` was unconditionally mounted in
+  `PlayDesigner.tsx` (toggled via an `isOpen` prop rather than being
+  conditionally rendered), so its new entitlement lookup fired on every
+  Designer page load instead of only when the modal opens — changed to mount
+  only while open. **Note:** wristband export isn't implemented anywhere in
+  the app yet (only referenced in marketing copy and a couple of type unions),
+  so there was nothing to gate for it — flagging rather than stubbing a
+  feature that doesn't exist.
 - **2026-07-04 · Hotfix: Account Settings page rendered blank** — a type-only
   `User` import was used as a JSX component (line 360), `undefined` at runtime,
   crashing the whole `/account` route (this was one of the B-5 tsc errors —
