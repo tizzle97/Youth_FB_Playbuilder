@@ -351,6 +351,9 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
   await page.route('**/rest/v1/avatar_icons**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'founding' }) }),
+  );
 
   await page.goto('/account');
 
@@ -359,7 +362,55 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
   // The username section is where the crash happened (icon next to the input)
   await expect(page.locator('#username')).toBeVisible();
   await expect(page.getByText('Delete Account').first()).toBeVisible();
+  // B-4: Founding Member badge (grandfathered subscriptions row)
+  await expect(page.getByText('Founding Member')).toBeVisible();
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
+});
+
+test('account settings: free-plan user sees no Founding Member badge', async ({ page }) => {
+  const userJson = {
+    id: '22222222-2222-2222-2222-222222222222',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'freeuser@example.com',
+    app_metadata: {},
+    user_metadata: { username: 'freeuser' },
+    created_at: '2025-09-01T00:00:00Z',
+  };
+
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  await page.route('**/rest/v1/user_reputation**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ avatar_type: 'icon', avatar_url: null, avatar_icon_id: null }),
+    }),
+  );
+  await page.route('**/rest/v1/avatar_icons**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  // No subscriptions row for this user (free plan) -- PostgREST returns 200 + null for maybeSingle().
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }),
+  );
+
+  await page.goto('/account');
+
+  await expect(page.getByRole('heading', { name: 'Account Settings' })).toBeVisible();
+  await expect(page.getByText('Founding Member')).toHaveCount(0);
 });
 
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {

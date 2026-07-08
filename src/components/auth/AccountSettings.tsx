@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save } from 'lucide-react';
+import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
@@ -8,6 +8,7 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 
 export default function AccountSettings() {
+  const [isFoundingMember, setIsFoundingMember] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,17 @@ export default function AccountSettings() {
       setUser(currentUser);
       const initialUsername = currentUser.user_metadata?.username || '';
       setUsername(initialUsername);
+
+      // Reads the subscriptions row directly rather than via useEntitlement():
+      // that hook makes its own supabase.auth.getUser() call, and running it
+      // concurrently with this effect's getUser() call deadlocks gotrue-js's
+      // internal session lock.
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('plan')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      setIsFoundingMember(sub?.plan === 'founding');
 
       // Fetch user's avatar preferences
       const { data: userRep } = await supabase
@@ -244,7 +256,15 @@ export default function AccountSettings() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-board-light rounded-xl shadow-lg border border-chalk/10 overflow-hidden">
           <div className="px-6 py-4 border-b border-chalk/10 flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-chalk">Account Settings</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-chalk">Account Settings</h2>
+              {isFoundingMember && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/40 text-primary text-xs font-semibold">
+                  <Trophy className="h-3.5 w-3.5" />
+                  Founding Member
+                </span>
+              )}
+            </div>
             {hasChanges && (
               <button
                 onClick={handleSaveChanges}
