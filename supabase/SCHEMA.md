@@ -17,10 +17,10 @@ idempotent `.sql` file and update this doc in the same change.
 | `plays_save.sql` | applied | Adds `plays.thumbnail`, `plays.is_public`, `plays.metadata`; public-read policy for public plays. |
 | `feedback_admin.sql` | applied | Admin RLS on `feedback`; `admin_list_feedback()`, `admin_list_users()`, `delete_user()`. |
 | `subscriptions.sql` | applied | `subscriptions` table, `is_pro()`, Founding-Member backfill. |
-| `security_hardening.sql` | **verify applied** | Pins `search_path` on `is_admin()`/`is_pro()`; drops the unsafe `user_reputation` write policy; switches `image_reports` moderator policies to `is_admin()`. |
-| `community_authors.sql` | **verify applied** | `get_community_authors(uuid[])` for Community post author display. |
-| `free_tier_limits.sql` | **verify applied** | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
-| `founding_member_backfill.sql` | **needs running** | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
+| `security_hardening.sql` | applied (2026-07-09) | Pins `search_path` on `is_admin()`/`is_pro()`; drops the unsafe `user_reputation` write policy; switches `image_reports` moderator policies to `is_admin()`. |
+| `community_authors.sql` | applied (2026-07-09) | `get_community_authors(uuid[])` for Community post author display. |
+| `free_tier_limits.sql` | applied (2026-07-04) | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
+| `founding_member_backfill.sql` | applied (2026-07-09) | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
