@@ -20,6 +20,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `security_hardening.sql` | **verify applied** | Pins `search_path` on `is_admin()`/`is_pro()`; drops the unsafe `user_reputation` write policy; switches `image_reports` moderator policies to `is_admin()`. |
 | `community_authors.sql` | **verify applied** | `get_community_authors(uuid[])` for Community post author display. |
 | `free_tier_limits.sql` | **verify applied** | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
+| `founding_member_backfill.sql` | **needs running** | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.

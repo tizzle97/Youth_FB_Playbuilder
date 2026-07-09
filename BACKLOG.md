@@ -30,13 +30,6 @@ Stripe account, price ID, and deploys the function — the PR delivers code +
 step-by-step setup doc. **Blocked on:** Stripe account decisions. Human review
 mandatory (money).
 
-### B-4 · Founding Member backfill + badge
-Idempotent SQL inserting all existing users into `subscriptions` as founding
-members (per the grandfathering decision), plus a "Founding Member" badge in the
-account UI. `useEntitlement().isFoundingMember` already exists. ⚠ requires SQL
-run. **Note:** run the backfill only right before Pro gates go live (B-1/B-2),
-so signups until then are included.
-
 ### B-5 · Fix the remaining pre-existing tsc errors, then add tsc to verify
 `npx tsc --noEmit` currently fails in: `UserMenu.tsx` (`icon_url` on `never`),
 `AddToPlaybookModal.tsx` (null `user`), `SavePlayModal.tsx` (missing `playName`),
@@ -112,6 +105,18 @@ focused.
 
 ## Done
 
+- **2026-07-08 · B-4: Founding Member backfill + badge** — `supabase/
+  founding_member_backfill.sql` re-runs the idempotent grandfathering `INSERT`
+  from `subscriptions.sql` to catch users who signed up between that original
+  backfill and now (free-tier gates are live, so anyone missed it defaults to
+  'free' and loses the grandfathering promise). ⚠ requires SQL run. Added a
+  "Founding Member" badge next to the `/account` page header. **Note:** the
+  badge reads `subscriptions.plan` directly with the `user` this component
+  already resolved, rather than via `useEntitlement()` — that hook makes its
+  own `supabase.auth.getUser()` call, and running it concurrently with
+  `AccountSettings`'s own `getUser()` effect deadlocks gotrue-js's internal
+  session lock (reproduced: page hangs on "Loading..." forever). Extended
+  `tests/smoke/` to cover both the founding-member and free-plan badge states.
 - **2026-07-05 · B-2: UI export gates (Pro features)** — Playbook PDF export
   (all formats: `ExportModal`'s detailed/grid layouts and `PlaybooksPage`'s
   simple/detailed/grid playbook export, which all print multiple plays) now
