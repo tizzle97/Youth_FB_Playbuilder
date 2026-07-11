@@ -229,6 +229,49 @@ test('customize a placed icon: new label, new color, route recolors to match', a
   expect(state.paths[0].color).toBe(originalColor);
 });
 
+test('tap-to-customize survives sub-pixel pointer jitter, real drags still move the icon', async ({ page }) => {
+  // Regression test: real mice/trackpads/touchscreens commonly fire at least
+  // one pointermove event during what a user experiences as a stationary
+  // tap. handlePointerDown/Move/Up in Canvas.tsx used to flag *any* move
+  // during a press as a drag (no distance threshold), so that jitter alone
+  // was enough to permanently block the tap-to-customize popover from
+  // opening on real hardware, even though synthetic test clicks (which never
+  // emit an intermediate pointermove) never triggered it.
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  // A "tap" with 1px of jitter between pointerdown and pointerup must still
+  // open the popover (DRAG_THRESHOLD_PX in Canvas.tsx is 4).
+  await page.mouse.move(icon.x, icon.y);
+  await page.mouse.down();
+  await page.mouse.move(icon.x + 1, icon.y + 1);
+  await page.mouse.up();
+
+  const labelInput = page.getByLabel('Player label');
+  await expect(labelInput).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(labelInput).not.toBeVisible();
+
+  // A real drag (past the threshold) must still move the icon and must NOT
+  // open the popover.
+  const target = await canvasPoint(page, 0.6, 0.4);
+  await page.mouse.move(icon.x, icon.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(labelInput).not.toBeVisible();
+  state = await canvasState(page);
+  expect(state.playerIcons[0].x).toBeCloseTo(0.6, 1);
+  expect(state.playerIcons[0].y).toBeCloseTo(0.4, 1);
+});
+
 test('custom toolbar player: place an icon with a custom label and color', async ({ page }) => {
   await openDesigner(page);
 

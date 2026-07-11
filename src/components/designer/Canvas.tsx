@@ -38,6 +38,11 @@ const TOTAL_FIELD_YARDS = FIELD_YARDS_ABOVE_LOS + FIELD_YARDS_BELOW_LOS;
 // the 1-yard grid. Guides render in amber (the app's "attention" color).
 const SNAP_PX = 8;
 const GUIDE_COLOR = '#f59e0b';
+
+// Minimum on-screen travel (in pixels) before a pointer-down-then-move on an
+// icon counts as a drag rather than tap jitter. Below this, pointer-up opens
+// the tap-to-customize popover instead.
+const DRAG_THRESHOLD_PX = 4;
 const HASH_LEFT_X_RATIO = 70.75 / 160;
 const HASH_RIGHT_X_RATIO = 1 - HASH_LEFT_X_RATIO;
 
@@ -522,10 +527,18 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
     const dragOffsetRef = useRef<Pt>({ x: 0, y: 0 });
+    // Pointer-down position, used to tell a real drag from tap jitter (see
+    // dragMovedRef below).
+    const dragStartRef = useRef<Pt>({ x: 0, y: 0 });
     // Whether the current drag has actually moved the icon yet. The undo
     // snapshot is pushed on the first real move, not on pointer-down, so a
     // plain tap (no movement) doesn't create a no-op history entry that
-    // would swallow the next undo press.
+    // would swallow the next undo press. Real pointer devices (mice,
+    // trackpads, touchscreens) commonly fire at least one pointermove event
+    // during what a user experiences as a stationary tap, so this only
+    // flips once the pointer has actually traveled past DRAG_THRESHOLD_PX —
+    // otherwise every real-world tap would register as a (near-zero) drag
+    // and the tap-to-customize popover below would never open.
     const dragMovedRef = useRef(false);
 
     // Icon being edited via the tap-to-customize popover (Select mode only).
@@ -1097,6 +1110,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const icon = playerIcons[clicked];
         draggingIndexRef.current = clicked;
         dragOffsetRef.current = { x: p.x - icon.x, y: p.y - icon.y };
+        dragStartRef.current = p;
         dragMovedRef.current = false;
         setIsDragging(true);
         // Snapshot is deferred to the first actual move (see handlePointerMove)
@@ -1145,8 +1159,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
 
       if (isDragging && draggingIndexRef.current !== null) {
-        // Record the pre-drag state exactly once, the moment the icon first moves.
+        // Ignore sub-threshold jitter (common on real mice/trackpads/
+        // touchscreens even during a stationary tap) so it doesn't get
+        // mistaken for the start of a drag — see dragMovedRef above.
         if (!dragMovedRef.current) {
+          const traveled = Math.hypot(
+            (p.x - dragStartRef.current.x) * width,
+            (p.y - dragStartRef.current.y) * height,
+          );
+          if (traveled < DRAG_THRESHOLD_PX) return;
+          // Record the pre-drag state exactly once, the moment the icon first moves.
           dragMovedRef.current = true;
           pushSnapshot();
         }
