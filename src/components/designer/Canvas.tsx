@@ -533,7 +533,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // Alignment guide lines shown while a drag is snapped to another icon's
     // row/column or the field centerline (normalized coords, null = none).
-    const [activeGuides, setActiveGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+    // distX/distY carry B-17 equal-spacing bracket geometry when the snap
+    // landed on the midpoint between two row/column neighbors.
+    const [activeGuides, setActiveGuides] = useState<{
+      x: number | null;
+      y: number | null;
+      distX?: { ax: number; bx: number; y: number } | null;
+      distY?: { ay: number; by: number; x: number } | null;
+    }>({ x: null, y: null, distX: null, distY: null });
 
     // Zone creation: a single continuous drag from an icon outward. Held in
     // state (not just a ref) so the live preview redraws as it changes.
@@ -568,13 +575,26 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
      *  rows, falling back to the 1-yard grid (so depths stay consistent and
      *  the LOS, itself a yard line, is always hittable). Icon alignment wins
      *  over the grid; thresholds are in screen pixels, computed per axis since
-     *  the canvas is non-square. */
-    const computeSnap = useCallback((p: Pt, excludeIndex: number | null): { pos: Pt; guideX: number | null; guideY: number | null } => {
-      if (!snapEnabled) return { pos: p, guideX: null, guideY: null };
+     *  the canvas is non-square.
+     *
+     *  B-17: when the position sits between two icons sharing its row (or
+     *  column), the equidistant midpoint competes in the same per-axis
+     *  nearest-candidate contest — winning produces distX/distY so the
+     *  overlay can render equal-spacing brackets instead of a plain line. */
+    const computeSnap = useCallback((p: Pt, excludeIndex: number | null): {
+      pos: Pt;
+      guideX: number | null;
+      guideY: number | null;
+      distX: { ax: number; bx: number; y: number } | null;
+      distY: { ay: number; by: number; x: number } | null;
+    } => {
+      if (!snapEnabled) return { pos: p, guideX: null, guideY: null, distX: null, distY: null };
       let x = p.x;
       let y = p.y;
       let guideX: number | null = null;
       let guideY: number | null = null;
+      let distX: { ax: number; bx: number; y: number } | null = null;
+      let distY: { ay: number; by: number; x: number } | null = null;
 
       let bestDx = SNAP_PX;
       const snapX = (cand: number) => {
@@ -590,11 +610,39 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const d = Math.abs(icon.y - p.y) * height;
         if (d < bestDy) { bestDy = d; y = icon.y; guideY = icon.y; }
       });
-      if (guideY === null) {
+
+      // Distribution X: midpoints of icon pairs on this row (the y resolved
+      // above), considered only while the position is between the pair. Ties
+      // go to plain column alignment, which ran first.
+      const others = playerIcons.filter((_, i) => i !== excludeIndex);
+      const rowIcons = others.filter((icon) => Math.abs(icon.y - y) * height < 0.5);
+      for (let i = 0; i < rowIcons.length; i++) {
+        for (let j = i + 1; j < rowIcons.length; j++) {
+          const ax = Math.min(rowIcons[i].x, rowIcons[j].x);
+          const bx = Math.max(rowIcons[i].x, rowIcons[j].x);
+          if (p.x <= ax || p.x >= bx) continue;
+          const d = Math.abs((ax + bx) / 2 - p.x) * width;
+          if (d < bestDx) { bestDx = d; x = (ax + bx) / 2; guideX = null; distX = { ax, bx, y }; }
+        }
+      }
+
+      // Distribution Y: same idea down a column (the x resolved above).
+      const colIcons = others.filter((icon) => Math.abs(icon.x - x) * width < 0.5);
+      for (let i = 0; i < colIcons.length; i++) {
+        for (let j = i + 1; j < colIcons.length; j++) {
+          const ay = Math.min(colIcons[i].y, colIcons[j].y);
+          const by = Math.max(colIcons[i].y, colIcons[j].y);
+          if (p.y <= ay || p.y >= by) continue;
+          const d = Math.abs((ay + by) / 2 - p.y) * height;
+          if (d < bestDy) { bestDy = d; y = (ay + by) / 2; guideY = null; distY = { ay, by, x }; }
+        }
+      }
+
+      if (guideY === null && distY === null) {
         y = Math.round(p.y * TOTAL_FIELD_YARDS) / TOTAL_FIELD_YARDS;
       }
 
-      return { pos: { x, y }, guideX, guideY };
+      return { pos: { x, y }, guideX, guideY, distX, distY };
     }, [snapEnabled, playerIcons, width, height]);
 
     // Current on-screen scaling helpers
@@ -677,6 +725,43 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           ctx.stroke();
         }
         ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      // B-17 equal-spacing brackets: two tick-ended segments (neighbor →
+      // dragged icon → neighbor) floating just off the row/column, showing
+      // the two gaps are equal.
+      if (activeGuides.distX || activeGuides.distY) {
+        ctx.save();
+        ctx.strokeStyle = GUIDE_COLOR;
+        ctx.lineWidth = Math.max(1, 1.5 * scale);
+        ctx.globalAlpha = 0.9;
+        const tick = 5 * scale;
+        const off = (PLAYER_SIZE * scale) / 2 + 10 * scale;
+        if (activeGuides.distX) {
+          const { ax, bx, y: ry } = activeGuides.distX;
+          const gy = ry * H - off;
+          const mx = ((ax + bx) / 2) * W;
+          for (const [x1, x2] of [[ax * W, mx], [mx, bx * W]] as const) {
+            ctx.beginPath();
+            ctx.moveTo(x1, gy); ctx.lineTo(x2, gy);
+            ctx.moveTo(x1, gy - tick); ctx.lineTo(x1, gy + tick);
+            ctx.moveTo(x2, gy - tick); ctx.lineTo(x2, gy + tick);
+            ctx.stroke();
+          }
+        }
+        if (activeGuides.distY) {
+          const { ay, by, x: cx } = activeGuides.distY;
+          const gx = cx * W - off;
+          const my = ((ay + by) / 2) * H;
+          for (const [y1, y2] of [[ay * H, my], [my, by * H]] as const) {
+            ctx.beginPath();
+            ctx.moveTo(gx, y1); ctx.lineTo(gx, y2);
+            ctx.moveTo(gx - tick, y1); ctx.lineTo(gx + tick, y1);
+            ctx.moveTo(gx - tick, y2); ctx.lineTo(gx + tick, y2);
+            ctx.stroke();
+          }
+        }
         ctx.restore();
       }
 
@@ -1151,8 +1236,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           pushSnapshot();
         }
         const raw = { x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
-        const { pos, guideX, guideY } = computeSnap(raw, draggingIndexRef.current);
-        setActiveGuides({ x: guideX, y: guideY });
+        const { pos, guideX, guideY, distX, distY } = computeSnap(raw, draggingIndexRef.current);
+        setActiveGuides({ x: guideX, y: guideY, distX, distY });
         setPlayerIcons((prev) => {
           const c = [...prev];
           c[draggingIndexRef.current!] = { ...c[draggingIndexRef.current!], x: pos.x, y: pos.y };
@@ -1200,7 +1285,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         }
         setIsDragging(false);
         draggingIndexRef.current = null;
-        setActiveGuides({ x: null, y: null });
+        setActiveGuides({ x: null, y: null, distX: null, distY: null });
       }
     };
 

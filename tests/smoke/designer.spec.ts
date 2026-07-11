@@ -180,6 +180,50 @@ test('snap: centerline + yard grid on placement, row alignment, magnet toggles o
   expect(state.playerIcons[2].x).not.toBe(0.5);
 });
 
+test('distribute: dragging between two row-mates snaps to the equidistant point (B-17)', async ({ page }) => {
+  await openDesigner(page);
+
+  // Two anchors on one row. The second click sits a few px off the first's
+  // row so row alignment proves the y matches exactly. Anchors avoid
+  // straddling x=0.5 symmetrically so the midpoint isn't also the
+  // centerline (which plain alignment would already snap to).
+  await btn(page, 'Player Q').click();
+  const a1 = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(a1.x, a1.y);
+
+  let state = await canvasState(page);
+  const rowY = state.playerIcons[0].y;
+
+  await btn(page, 'Player A').click();
+  const a2 = await canvasPoint(page, 0.56, rowY);
+  await page.mouse.click(a2.x, a2.y + 4);
+
+  state = await canvasState(page);
+  expect(state.playerIcons[1].y).toBe(rowY);
+  const mid = (state.playerIcons[0].x + state.playerIcons[1].x) / 2;
+
+  // Third icon placed away from the row, then dragged to a spot a few px
+  // off the midpoint — it should land exactly equidistant on the row.
+  await btn(page, 'Player B').click();
+  const spot = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+
+  state = await canvasState(page);
+  const from = await canvasPoint(page, state.playerIcons[2].x, state.playerIcons[2].y);
+  const target = await canvasPoint(page, mid, rowY);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 5, target.y + 3, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[2].y).toBe(rowY);
+  expect(state.playerIcons[2].x).toBeCloseTo(mid, 10);
+  // Equal gaps either side
+  const [q, a, b] = state.playerIcons;
+  expect(b.x - q.x).toBeCloseTo(a.x - b.x, 10);
+});
+
 test('customize a placed icon: new label, new color, route recolors to match', async ({ page }) => {
   await openDesigner(page);
 
