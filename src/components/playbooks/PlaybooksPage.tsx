@@ -22,7 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
-import { getUserPreferences, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
+import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 
 interface Playbook {
   id: string;
@@ -230,7 +230,7 @@ export function PlaybooksPage() {
   <title>${play.name}</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
     
@@ -311,7 +311,7 @@ export function PlaybooksPage() {
   <title>${play.name}</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
     
@@ -534,7 +534,7 @@ export function PlaybooksPage() {
   <title>${playbookName} - Grid View</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.5in;
     }
     
@@ -703,7 +703,7 @@ export function PlaybooksPage() {
   <title>${selectedPlaybook.name}</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
     .page-break {
@@ -941,57 +941,36 @@ export function PlaybooksPage() {
                           {showExportMenu && (
                             <div className="absolute right-0 mt-2 w-56 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-10">
                               <div className="py-2">
-                                <button
-                                  onClick={() => handleExportPDF('simple')}
-                                  className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
-                                >
-                                  <FileText className="h-4 w-4 text-primary" />
-                                  <div className="flex-1">
-                                    <div className="font-medium flex items-center gap-2">
-                                      Simple (1 per page)
-                                      {!entitlementLoading && !isPro && (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                          <Lock className="h-3 w-3" /> Pro
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-xs text-chalk/70">Play name + diagram only</div>
-                                  </div>
-                                </button>
-                                <button
-                                  onClick={() => handleExportPDF('detailed')}
-                                  className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
-                                >
-                                  <BookOpen className="h-4 w-4 text-primary" />
-                                  <div className="flex-1">
-                                    <div className="font-medium flex items-center gap-2">
-                                      Detailed (1 per page)
-                                      {!entitlementLoading && !isPro && (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                          <Lock className="h-3 w-3" /> Pro
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-xs text-chalk/70">Full metadata + diagram</div>
-                                  </div>
-                                </button>
-                                <button
-                                  onClick={() => handleExportPDF('grid')}
-                                  className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
-                                >
-                                  <LayoutGrid className="h-4 w-4 text-primary" />
-                                  <div className="flex-1">
-                                    <div className="font-medium flex items-center gap-2">
-                                      Grid (all on one page)
-                                      {!entitlementLoading && !isPro && (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                          <Lock className="h-3 w-3" /> Pro
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-xs text-chalk/70">Compact grid layout</div>
-                                  </div>
-                                </button>
+                                {/* The user's default export style (B-15) sorts first */}
+                                {[
+                                  { style: 'simple' as const, icon: FileText, label: 'Simple (1 per page)', hint: 'Play name + diagram only' },
+                                  { style: 'detailed' as const, icon: BookOpen, label: 'Detailed (1 per page)', hint: 'Full metadata + diagram' },
+                                  { style: 'grid' as const, icon: LayoutGrid, label: 'Grid (all on one page)', hint: 'Compact grid layout' },
+                                ]
+                                  .sort((a, b) => Number(b.style === (prefs?.default_export_style ?? 'detailed')) - Number(a.style === (prefs?.default_export_style ?? 'detailed')))
+                                  .map(({ style, icon: Icon, label, hint }) => (
+                                    <button
+                                      key={style}
+                                      onClick={() => handleExportPDF(style)}
+                                      className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
+                                    >
+                                      <Icon className="h-4 w-4 text-primary" />
+                                      <div className="flex-1">
+                                        <div className="font-medium flex items-center gap-2">
+                                          {label}
+                                          {style === (prefs?.default_export_style ?? 'detailed') && (
+                                            <span className="text-xs text-chalk/40">Default</span>
+                                          )}
+                                          {!entitlementLoading && !isPro && (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                              <Lock className="h-3 w-3" /> Pro
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-xs text-chalk/70">{hint}</div>
+                                      </div>
+                                    </button>
+                                  ))}
                               </div>
                             </div>
                           )}

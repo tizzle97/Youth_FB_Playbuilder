@@ -5,7 +5,7 @@ import { X, FileText, Printer, BookOpen, Grid3X3, Lock } from 'lucide-react';
 import type { PlayMetadata } from '../../types/play';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
-import { escapeHtml, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
+import { escapeHtml, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 
 const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook']);
 
@@ -80,7 +80,7 @@ export function ExportModal({
   <title>${playData.metadata.playName || 'Football Play'}</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
     
@@ -267,7 +267,7 @@ export function ExportModal({
   <title>Playbook - Detailed View</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
       margin: 0.5in;
     }
     
@@ -419,7 +419,7 @@ export function ExportModal({
   <title>Playbook - Grid View</title>
   <style>
     @page {
-      size: 8.5in 11in;
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
       margin: 0.5in;
     }
     

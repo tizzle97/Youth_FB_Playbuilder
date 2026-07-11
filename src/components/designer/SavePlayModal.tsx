@@ -64,7 +64,12 @@ export function SavePlayModal({
   // change everything per save.
   useEffect(() => {
     if (isOpen && preferences) {
-      setMetadata((prev) => ({ ...prev, gameType: preferences.default_game_format }));
+      setMetadata((prev) => ({
+        ...prev,
+        gameType: preferences.default_game_format,
+        playType: preferences.default_play_type,
+      }));
+      setIsPublic(preferences.default_visibility === 'public');
     }
   }, [isOpen, preferences]);
 

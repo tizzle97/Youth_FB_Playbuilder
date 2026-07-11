@@ -578,6 +578,79 @@ export default function AccountSettings() {
                   </button>
                 )}
               </div>
+
+              {/* Save & export defaults (B-15) */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="default-visibility" className="block text-sm font-medium text-chalk mb-1">
+                    Default Play Visibility
+                  </label>
+                  <select
+                    id="default-visibility"
+                    value={prefs.default_visibility}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_visibility: e.target.value as UserPreferences['default_visibility'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="private">Private (only you)</option>
+                    <option value="public">Public (community plays page)</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="default-play-type" className="block text-sm font-medium text-chalk mb-1">
+                    Default Play Type
+                  </label>
+                  <select
+                    id="default-play-type"
+                    value={prefs.default_play_type}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_play_type: e.target.value as UserPreferences['default_play_type'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="pass">Pass</option>
+                    <option value="run">Run</option>
+                    <option value="option">Option</option>
+                    <option value="reverse">Reverse</option>
+                    <option value="screen">Screen</option>
+                    <option value="trick">Trick Play</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="paper-size" className="block text-sm font-medium text-chalk mb-1">
+                    Paper Size (printing)
+                  </label>
+                  <select
+                    id="paper-size"
+                    value={prefs.paper_size}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, paper_size: e.target.value as UserPreferences['paper_size'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="letter">Letter (8.5 × 11 in)</option>
+                    <option value="a4">A4</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="default-export-style" className="block text-sm font-medium text-chalk mb-1">
+                    Default Playbook Export Style
+                  </label>
+                  <select
+                    id="default-export-style"
+                    value={prefs.default_export_style}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_export_style: e.target.value as UserPreferences['default_export_style'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="simple">Simple (1 per page)</option>
+                    <option value="detailed">Detailed (1 per page)</option>
+                    <option value="grid">Grid (all on one page)</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Username Section */}
