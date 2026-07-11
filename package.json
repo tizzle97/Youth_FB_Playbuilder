@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "smoke": "playwright test",
-    "verify": "npm run build && npm run smoke"
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build && npm run smoke"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",

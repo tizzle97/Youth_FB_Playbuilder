@@ -101,8 +101,8 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
       if (error) throw error;
 
       // Update local state
-      setPlayInPlaybooks(prev => new Set([...prev, playbookId]));
-      setJustAdded(prev => new Set([...prev, playbookId]));
+      setPlayInPlaybooks(prev => new Set(prev).add(playbookId));
+      setJustAdded(prev => new Set(prev).add(playbookId));
 
       // Call success callback
       onSuccess?.();

@@ -37,9 +37,13 @@ export function UserMenu({ user }: UserMenuProps) {
           setAvatarUrl(userRep.avatar_url);
         } else if (userRep.avatar_type === 'icon') {
           // avatar_icons may be returned as an array (joined rows) or an object depending on select
-          const iconUrl = Array.isArray(userRep.avatar_icons)
-            ? userRep.avatar_icons[0]?.icon_url
-            : userRep.avatar_icons?.icon_url;
+          const avatarIcons = userRep.avatar_icons as
+            | { icon_url: string }
+            | { icon_url: string }[]
+            | null;
+          const iconUrl = Array.isArray(avatarIcons)
+            ? avatarIcons[0]?.icon_url
+            : avatarIcons?.icon_url;
           if (iconUrl) setAvatarUrl(iconUrl);
         }
       }

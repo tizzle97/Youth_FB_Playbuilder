@@ -30,14 +30,6 @@ Stripe account, price ID, and deploys the function — the PR delivers code +
 step-by-step setup doc. **Blocked on:** Stripe account decisions. Human review
 mandatory (money).
 
-### B-5 · Fix the remaining pre-existing tsc errors, then add tsc to verify
-`npx tsc --noEmit` currently fails in: `UserMenu.tsx` (`icon_url` on `never`),
-`AddToPlaybookModal.tsx` (null `user`), `SavePlayModal.tsx` (missing `playName`),
-`AddToPlaybookButton.tsx` (Set iteration). (`AccountSettings.tsx`'s errors were
-fixed in the blank-page hotfix — one of them was crashing the page at runtime,
-proof these aren't cosmetic.) Fix all, then change the `verify` script to
-`tsc --noEmit && build && smoke`. **Acceptance:** `npx tsc --noEmit` exits 0.
-
 ### B-6 · Repair eslint (flat-config migration)
 `npm run lint` crashes: a config object uses `extends`, unsupported in eslint 9
 flat config. Migrate `eslint.config.js`, fix or explicitly disable surfaced
@@ -105,6 +97,21 @@ focused.
 
 ## Done
 
+- **2026-07-11 · B-5: Fix remaining pre-existing tsc errors, add typecheck to
+  verify** — `UserMenu.tsx`: the `avatar_icons` join result is now explicitly
+  typed (`{icon_url: string} | {icon_url: string}[] | null`) before the
+  array/object branch, since Supabase's select-string parser inferred the
+  non-array branch as `never` without a `Database` generic. `AddToPlaybookModal.tsx`:
+  `fetchPlaybooks` and `handleAddToPlaybook` now guard on `user` being non-null
+  at the top (both are only ever invoked once a signed-in `user` is present, so
+  no behavior change). `SavePlayModal.tsx`: both `metadata` initializations now
+  include `playName: ''` to satisfy `PlayMetadata` — it's immediately
+  overwritten by the caller (`PlayDesigner.handleSavePlay`) with the modal's own
+  `name` field, so this is a type-only fix. `AddToPlaybookButton.tsx`: replaced
+  `new Set([...prev, id])` (spreads a `Set`, needs `--downlevelIteration` under
+  the root `tsconfig.json`'s `es5` target) with `new Set(prev).add(id)`. Added
+  `npm run typecheck` (`tsc --noEmit`) and put it first in `verify`.
+  **Acceptance met:** `npx tsc --noEmit` exits 0.
 - **2026-07-08 · B-4: Founding Member backfill + badge** — `supabase/
   founding_member_backfill.sql` re-runs the idempotent grandfathering `INSERT`
   from `subscriptions.sql` to catch users who signed up between that original

@@ -44,7 +44,8 @@ export function SavePlayModal({
     formation: '',
     difficulty: 'beginner',
     tags: [],
-    description: ''
+    description: '',
+    playName: ''
   });
 
   // Load playbooks when modal opens
@@ -98,7 +99,8 @@ export function SavePlayModal({
       formation: '',
       difficulty: 'beginner',
       tags: [],
-      description: ''
+      description: '',
+      playName: ''
     });
     setIsPublic(false);
     setSelectedPlaybook('');
