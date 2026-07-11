@@ -46,6 +46,7 @@ export const AddToPlaybookModal: React.FC<AddToPlaybookModalProps> = ({
   }, [isOpen, user]);
 
   const fetchPlaybooks = async () => {
+    if (!user) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -64,7 +65,7 @@ export const AddToPlaybookModal: React.FC<AddToPlaybookModalProps> = ({
   };
 
   const handleAddToPlaybook = async () => {
-    if (!selectedPlaybook) return;
+    if (!selectedPlaybook || !user) return;
 
     try {
       setSaving(true);
