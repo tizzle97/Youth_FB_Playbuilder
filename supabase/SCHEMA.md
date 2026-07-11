@@ -21,6 +21,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `community_authors.sql` | applied (2026-07-09) | `get_community_authors(uuid[])` for Community post author display. |
 | `free_tier_limits.sql` | applied (2026-07-04) | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
 | `founding_member_backfill.sql` | applied (2026-07-09) | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
+| `play_votes.sql` | **pending — needs SQL run** | B-10 play voting: `plays.upvotes` cached counter, `play_votes` table (one vote per user per play), RLS, count-sync triggers. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -41,7 +42,7 @@ idempotent `.sql` file and update this doc in the same change.
 ### Play design
 | Table | Key columns | RLS summary |
 |---|---|---|
-| `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`. `BEFORE INSERT` trigger blocks a 16th row for non-`is_pro()` users (`free_tier_limits.sql`). |
+| `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, `upvotes int` (trigger-cached from `play_votes`), timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`. `BEFORE INSERT` trigger blocks a 16th row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbooks` | `id`, `user_id`, `name`, `description`, timestamps | Owner full access. `BEFORE INSERT` trigger blocks a 3rd row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbook_plays` | `id`, `playbook_id`, `play_id`, `order_position`; UNIQUE`(playbook_id,play_id)` & `(playbook_id,order_position)` | Access via owning playbook (`playbooks.user_id=auth.uid()`). |
 | `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. |
@@ -53,6 +54,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `posts` | `id`, `user_id`, `title`, `content`, `upvotes`, `downvotes`, timestamps | SELECT public (`true`); insert/update/delete own. |
 | `comments` | `id`, `user_id`, `post_id`, `parent_id`, `content`, `upvotes`, `downvotes` | SELECT public; CRUD own; admins can delete any. |
 | `votes` | `id`, `user_id`, `post_id?`, `comment_id?`, `vote_type bool`; UNIQUE per user+target | SELECT public; CRUD own. Target check: exactly one of post/comment. |
+| `play_votes` | `id`, `user_id`, `play_id`, `created_at`; UNIQUE`(user_id,play_id)` | SELECT public; INSERT own **and only on public plays**; DELETE own. Triggers keep `plays.upvotes` in sync (`play_votes.sql`, B-10). |
 | `user_reputation` | `id`, `user_id` (unique), `reputation int`, `avatar_type`, `avatar_url`, `avatar_icon_id→avatar_icons` | SELECT public; user may UPDATE own (avatar). **Writes to reputation happen via trigger only** (the old catch-all write policy was dropped in `security_hardening.sql`). |
 | `avatar_icons` | `id`, `icon_url`, `name` | SELECT public; seeded with default bot avatars. |
 | `image_reports` | `id`, `reporter_id`, `reported_user_id`, `image_url`, `reason`, `status`, `resolver_id` | Reporter inserts/reads own; **admins** (via `is_admin()`) read/update all. |
@@ -83,6 +85,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `update_updated_at_column()` | Generic `updated_at` touch trigger. |
 | `update_user_reputation()` | Trigger fn: bumps poster reputation on new post/comment. |
 | `update_post_vote_counts()` / comment equivalent | Trigger fns: maintain `upvotes`/`downvotes` from `votes`. |
+| `update_play_vote_counts()` | Trigger fn: maintains `plays.upvotes` from `play_votes`. `SECURITY DEFINER`, pinned `search_path` (voters can't UPDATE others' plays rows under RLS). |
 | `enforce_admin_blog_posts()` | Trigger fn: blocks non-admins from writing `blog_posts`. |
 | `handle_approved_report()` | Trigger fn for `image_reports` resolution. |
 
