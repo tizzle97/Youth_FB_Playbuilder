@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
@@ -23,6 +23,7 @@ export default function AccountSettings() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -129,10 +130,11 @@ export default function AccountSettings() {
       avatarUrl !== initialValues.avatarUrl ||
       selectedIconId !== initialValues.selectedIconId ||
       newPassword !== '' ||
+      newEmail !== '' ||
       JSON.stringify(prefs) !== JSON.stringify(initialPrefs);
 
     setHasChanges(hasUnsavedChanges);
-  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, initialValues, prefs, initialPrefs]);
+  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, newEmail, initialValues, prefs, initialPrefs]);
 
   const handleSaveChanges = async () => {
     if (!user) return;
@@ -162,6 +164,23 @@ export default function AccountSettings() {
           data: { username }
         });
         if (usernameError) throw usernameError;
+      }
+
+      // Request email change (B-16). Supabase doesn't switch the address
+      // immediately — it emails a confirmation link (to the new address, and
+      // to the old one too when "Secure email change" is enabled), so tell
+      // the user what to expect instead of claiming it's done.
+      let emailNotice = '';
+      if (newEmail && newEmail !== user.email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+          throw new Error('Please enter a valid email address.');
+        }
+        const { error: emailError } = await supabase.auth.updateUser({
+          email: newEmail
+        });
+        if (emailError) throw emailError;
+        emailNotice = ` A confirmation link has been sent to ${newEmail} — your email address will change once you confirm it (check the old inbox too if it asks).`;
+        setNewEmail('');
       }
 
       // Update avatar settings if changed
@@ -194,7 +213,7 @@ export default function AccountSettings() {
         selectedIconId
       });
 
-      setSuccess('Changes saved successfully!');
+      setSuccess('Changes saved successfully!' + emailNotice);
       setHasChanges(false);
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to save changes'));
@@ -668,6 +687,33 @@ export default function AccountSettings() {
                     id="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Email Section (B-16) */}
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="new-email" className="block text-sm font-medium text-chalk">
+                  Email Address
+                </label>
+                <p className="mt-1 text-sm text-chalk/50">
+                  Currently <span className="text-chalk/80">{user.email}</span>. Changing it sends a
+                  confirmation link — the switch only happens after you confirm.
+                </p>
+                <div className="mt-2 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
+                    <Mail className="h-5 w-5 text-chalk/50" />
+                  </div>
+                  <input
+                    type="email"
+                    id="new-email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="New email address"
+                    autoComplete="email"
                     className="block w-full pl-10 pr-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
                 </div>
