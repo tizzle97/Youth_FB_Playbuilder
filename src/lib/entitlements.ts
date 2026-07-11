@@ -16,8 +16,12 @@ export interface Entitlement {
   isFoundingMember: boolean;
 }
 
-/** True if the subscription row grants active Pro access. */
-function rowIsPro(row: { plan?: string; current_period_end?: string | null } | null): boolean {
+/** True if the subscription row grants active Pro access. Exported for
+ *  components that must read `subscriptions` directly instead of via
+ *  useEntitlement() — e.g. AccountSettings, where the hook's own
+ *  auth.getUser() call would deadlock gotrue-js's session lock (see the
+ *  B-4 note in BACKLOG.md). */
+export function rowIsPro(row: { plan?: string; current_period_end?: string | null } | null): boolean {
   if (!row) return false;
   if (row.plan !== 'founding' && row.plan !== 'pro') return false;
   if (row.current_period_end && new Date(row.current_period_end) <= new Date()) return false;

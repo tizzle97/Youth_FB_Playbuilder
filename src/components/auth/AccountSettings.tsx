@@ -6,9 +6,14 @@ import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
+import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
 
 export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
+  const [plan, setPlan] = useState<Plan>('free');
+  const [isProPlan, setIsProPlan] = useState(false);
+  const [playCount, setPlayCount] = useState<number | null>(null);
+  const [playbookCount, setPlaybookCount] = useState<number | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
@@ -50,10 +55,21 @@ export default function AccountSettings() {
       // internal session lock.
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('plan')
+        .select('plan, current_period_end')
         .eq('user_id', currentUser.id)
         .maybeSingle();
       setIsFoundingMember(sub?.plan === 'founding');
+      setPlan((sub?.plan as Plan) || 'free');
+      setIsProPlan(rowIsPro(sub));
+
+      // Usage counts for the Plan & Usage card (head:true fetches only the
+      // count, no rows).
+      const [playsRes, playbooksRes] = await Promise.all([
+        supabase.from('plays').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+        supabase.from('playbooks').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+      ]);
+      setPlayCount(playsRes.count ?? 0);
+      setPlaybookCount(playbooksRes.count ?? 0);
 
       // Fetch user's avatar preferences
       const { data: userRep } = await supabase
@@ -285,6 +301,69 @@ export default function AccountSettings() {
                   {format(new Date(user.created_at), 'MMMM d, yyyy')}
                 </p>
               </div>
+            </div>
+
+            {/* Plan & Usage (B-13). Also the future home of the Stripe
+                Customer Portal link once B-3 ships. */}
+            <div className="p-4 bg-board rounded-lg border border-chalk/10 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-chalk font-medium">Plan &amp; Usage</h3>
+                {isFoundingMember ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/40 text-primary text-xs font-semibold">
+                    <Trophy className="h-3.5 w-3.5" />
+                    Founding Member
+                  </span>
+                ) : (
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      isProPlan
+                        ? 'bg-primary/10 border border-primary/40 text-primary'
+                        : 'bg-board-light border border-chalk/20 text-chalk/70'
+                    }`}
+                  >
+                    {plan === 'pro' ? 'Pro' : 'Free plan'}
+                  </span>
+                )}
+              </div>
+
+              {isProPlan ? (
+                <p className="text-sm text-chalk/70">
+                  {playCount ?? 0} {playCount === 1 ? 'play' : 'plays'} ·{' '}
+                  {playbookCount ?? 0} {playbookCount === 1 ? 'playbook' : 'playbooks'} — unlimited
+                  on your plan.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Plays', used: playCount ?? 0, limit: FREE_LIMITS.plays },
+                      { label: 'Playbooks', used: playbookCount ?? 0, limit: FREE_LIMITS.playbooks },
+                    ].map((m) => (
+                      <div key={m.label}>
+                        <div className="flex justify-between text-sm text-chalk/80 mb-1">
+                          <span>{m.label}</span>
+                          <span>
+                            {m.used} of {m.limit}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-chalk/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${m.used >= m.limit ? 'bg-red-500' : 'bg-primary'}`}
+                            style={{ width: `${Math.min(100, (m.used / m.limit) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/')}
+                    className="w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    Upgrade to Pro — $39/yr
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Avatar Section */}
