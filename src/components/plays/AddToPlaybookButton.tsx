@@ -1,7 +1,7 @@
 // Create this file: src/components/plays/AddToPlaybookButton.tsx
 
 import React, { useState, useEffect } from 'react';
-import { Book, Plus, Check, ChevronDown, Trash2 } from 'lucide-react';
+import { Book, Plus, Check, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 // Playbook interface

@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { X, FolderPlus, Plus } from 'lucide-react';
+import { X, FolderPlus } from 'lucide-react';
 import type { Play } from '../../types/play';
 import { supabase } from '../../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { getSafeErrorMessage } from '../../lib/errors';
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- required by TS for ambient JSX augmentation
   namespace JSX {
     interface IntrinsicElements {
       [elemName: string]: any;

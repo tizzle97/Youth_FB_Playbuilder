@@ -12,7 +12,7 @@ interface ImageCropModalProps {
 
 export function ImageCropModal({ isOpen, onClose, imageUrl, onCropComplete }: ImageCropModalProps) {
   const [crop, setCrop] = useState<Crop>({
-    unit: '%' as '%',
+    unit: '%' as const,
     width: 100,
     height: 100,
     x: 0,
@@ -31,11 +31,11 @@ export function ImageCropModal({ isOpen, onClose, imageUrl, onCropComplete }: Im
   function centerAspectCrop(
     mediaWidth: number,
     mediaHeight: number,
-    aspect: number,
+    _aspect: number,
   ) {
     const size = Math.min(mediaWidth, mediaHeight);
     return {
-      unit: '%' as '%',
+      unit: '%' as const,
       width: (size * 100) / mediaWidth,
       height: (size * 100) / mediaHeight,
       x: ((mediaWidth - size) * 100) / (2 * mediaWidth),

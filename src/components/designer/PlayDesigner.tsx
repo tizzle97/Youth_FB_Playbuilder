@@ -39,7 +39,7 @@ export function PlayDesigner() {
   // every time.
   const [playType, setPlayType] = useState<PlayType>('offense');
 
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);

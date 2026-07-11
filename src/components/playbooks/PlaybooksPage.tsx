@@ -2,19 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BookOpen, 
-  Plus, 
-  Play, 
-  Edit3, 
-  Trash2, 
+import {
+  BookOpen,
+  Plus,
+  Play,
+  Edit3,
+  Trash2,
   Search,
-  Filter,
   Grid,
   List,
-  Star,
   Clock,
-  User,
   Download,
   ChevronDown,
   FileText,
@@ -147,7 +144,7 @@ export function PlaybooksPage() {
 
     try {
       setCreatePlaybookError(null);
-      const { data: playbook, error } = await supabase
+      const { error } = await supabase
         .from('playbooks')
         .insert([
             {

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { PlayCircle, Users, BookOpen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserMenu } from './auth/UserMenu';
 import { supabase } from '../lib/supabase';
