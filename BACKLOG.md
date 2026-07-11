@@ -30,12 +30,6 @@ Stripe account, price ID, and deploys the function — the PR delivers code +
 step-by-step setup doc. **Blocked on:** Stripe account decisions. Human review
 mandatory (money).
 
-### B-6 · Repair eslint (flat-config migration)
-`npm run lint` crashes: a config object uses `extends`, unsupported in eslint 9
-flat config. Migrate `eslint.config.js`, fix or explicitly disable surfaced
-rules, then add lint to the `verify` script. **Acceptance:** `npm run lint`
-exits 0.
-
 ### B-7 · Homepage Pricing accuracy pass
 Audit `src/components/Pricing.tsx` against the monetization plan: Free = 15
 plays / 2 playbooks / single-play PDF / community; Pro = $39/yr annual-only with
@@ -97,6 +91,34 @@ focused.
 
 ## Done
 
+- **2026-07-11 · B-6: Repair eslint (flat-config migration)** — `eslint.config.js`
+  no longer uses the eslintrc-only `extends` key (unsupported by eslint 9 flat
+  config, which is why `npm run lint` was crashing outright); it's now a
+  `tseslint.config(...)` array built from `js.configs.recommended` and
+  `tseslint.configs.recommended`. That surfaced two more compat breaks:
+  `@typescript-eslint/eslint-plugin`/`parser` were still on v6 (eslintrc-only
+  configs, no flat-config export), so swapped them for the unified
+  `typescript-eslint` v8 meta-package; and `eslint-plugin-react-hooks` v4.6.0
+  crashed with `context.getSource is not a function` against eslint 9.12
+  (`getSource` was removed) — bumped to v5.2.0. `public/**` (just the GA
+  `gtag-init.js` snippet, using ad-hoc browser globals) is now excluded from
+  lint, same treatment as `dist`. With the crash fixed, lint then surfaced 66
+  real errors: fixed the mechanical/safe ones directly (removed unused
+  imports and genuinely dead local code — e.g. `ExportModal.tsx`'s orphaned
+  `addTag`/`removeTag`/`safeMetadata`, `FormationSelector.tsx`'s unused LOS
+  computation; two `as const` literal fixes in `ImageCropModal.tsx`; a
+  targeted `eslint-disable` on `AddToPlaybookModal.tsx`'s `declare global {
+  namespace JSX }`, which needs TS namespace syntax for ambient augmentation —
+  no ES-module equivalent exists). Left `@typescript-eslint/no-explicit-any`
+  as a rule-level downgrade to `warn` rather than retyping the ~30 call sites
+  (mostly untyped Supabase query results) — real fixes there are follow-up
+  work, not a config-repair PR, and touching that many files risked
+  reintroducing the tsc errors B-5 just cleaned up. Added `argsIgnorePattern`/
+  `varsIgnorePattern: '^_'` to `no-unused-vars` (the codebase already had an
+  `_format` var using that convention that the old broken config never even
+  reached). Added `npm run lint` to `verify`. **Acceptance met:** `npm run
+  lint` exits 0 (0 errors, 40 warnings — all `no-explicit-any` or pre-existing
+  `react-hooks/exhaustive-deps`/`react-refresh` warnings, none new).
 - **2026-07-11 · B-5: Fix remaining pre-existing tsc errors, add typecheck to
   verify** — `UserMenu.tsx`: the `avatar_icons` join result is now explicitly
   typed (`{icon_url: string} | {icon_url: string}[] | null`) before the

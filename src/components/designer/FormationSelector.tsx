@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Layout } from 'lucide-react';
 import * as fabric from 'fabric';
-import type { Canvas, Object as FabricObject, Line } from 'fabric/fabric-impl';
+import type { Canvas, Object as FabricObject } from 'fabric/fabric-impl';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 
@@ -182,16 +182,6 @@ export function FormationSelector({
         const height = canvas.height!;
         const leftSidelineX = width * 0.05;
         const rightSidelineX = width * 0.95;
-        
-        // Find LOS
-        const losLine = canvas.getObjects().find((obj) => {
-          const lineObj = obj as FabricObject & { name?: string; stroke?: string };
-          return lineObj.name === 'field-line' && 
-                 lineObj.type === 'line' &&
-                 lineObj.stroke === '#60A5FA';
-        }) as Line;
-        
-        const losY = losLine ? losLine.y1! : height * 0.67;
         
         // Add each player from the template
         template.objects.forEach((obj: any) => {

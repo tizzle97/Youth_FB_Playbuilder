@@ -11,7 +11,7 @@ interface PostListProps {
   searchQuery: string;
 }
 
-export function PostList({ posts, loading, timeRange, searchQuery }: PostListProps) {
+export function PostList({ posts, loading, timeRange: _timeRange, searchQuery }: PostListProps) {
   const handleVote = async (postId: string, voteType: boolean) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();

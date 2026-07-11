@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileText, Printer, BookOpen, Settings, Image, User, Tag, Grid3X3, Layout, Lock } from 'lucide-react';
+import { X, FileText, Printer, BookOpen, Grid3X3, Lock } from 'lucide-react';
 
 // Import LocalPlayMetadata from the PlayDesigner component
 import type { PlayMetadata } from '../../types/play';
@@ -25,12 +25,11 @@ interface ExportModalProps {
   onGetAllPlays?: () => PlayData[];
 }
 
-export function ExportModal({ 
-  isOpen, 
-  onClose, 
-  onExport, 
+export function ExportModal({
+  isOpen,
+  onClose,
   canvasRef,
-  playMetadata = { 
+  playMetadata = {
     playName: 'Untitled Play',
     gameType: '11v11',
     playType: 'pass',
@@ -40,45 +39,21 @@ export function ExportModal({
     description: ''
   } as PlayMetadata,
   onUpdateMetadata,
-  userHasAccount = true,
   allPlays = [],
   onGetAllPlays
 }: ExportModalProps) {
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook'>('single-play');
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
 
   if (!isOpen) return null;
-  
-  // Ensure required fields have default values
-  const safeMetadata: PlayMetadata = {
-    ...metadata,
-    gameType: metadata.gameType || '11v11',
-    playType: metadata.playType || 'pass',
-    formation: metadata.formation || '',
-    difficulty: metadata.difficulty || 'beginner',
-    tags: metadata.tags || [],
-    description: metadata.description || '',
-    playName: metadata.playName || 'Untitled Play'
-  };
 
   const updateMetadata = (field: keyof PlayMetadata, value: any) => {
     const updated = { ...metadata, [field]: value };
     setMetadata(updated);
     onUpdateMetadata?.(updated);
-  };
-
-  const addTag = (newTag: string) => {
-    if (newTag.trim() && !metadata.tags?.includes(newTag.trim())) {
-      updateMetadata('tags', [...(metadata.tags || []), newTag.trim()]);
-    }
-  };
-
-  const removeTag = (tagToRemove: string) => {
-    updateMetadata('tags', metadata.tags?.filter(tag => tag !== tagToRemove) || []);
   };
 
   const getCurrentCanvasData = (): string => {

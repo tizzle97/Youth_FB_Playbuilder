@@ -9,7 +9,6 @@ import { supabase } from '../../lib/supabase';
 
 export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
