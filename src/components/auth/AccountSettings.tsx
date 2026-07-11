@@ -13,6 +13,7 @@ import {
   saveUserPreferences,
   type UserPreferences,
 } from '../../lib/userPreferences';
+import { BILLING_ENABLED, openBillingPortal, startProCheckout } from '../../lib/billing';
 
 export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
@@ -406,11 +407,24 @@ export default function AccountSettings() {
               </div>
 
               {isProPlan ? (
-                <p className="text-sm text-chalk/70">
-                  {playCount ?? 0} {playCount === 1 ? 'play' : 'plays'} ·{' '}
-                  {playbookCount ?? 0} {playbookCount === 1 ? 'playbook' : 'playbooks'} — unlimited
-                  on your plan.
-                </p>
+                <>
+                  <p className="text-sm text-chalk/70">
+                    {playCount ?? 0} {playCount === 1 ? 'play' : 'plays'} ·{' '}
+                    {playbookCount ?? 0} {playbookCount === 1 ? 'playbook' : 'playbooks'} — unlimited
+                    on your plan.
+                  </p>
+                  {/* Stripe Customer Portal (B-3) — paid subscribers only;
+                      Founding Members have no Stripe customer to manage. */}
+                  {BILLING_ENABLED && plan === 'pro' && (
+                    <button
+                      type="button"
+                      onClick={() => openBillingPortal().catch((err) => setError(getSafeErrorMessage(err, 'Could not open the billing portal')))}
+                      className="px-4 py-2 text-sm font-medium text-chalk bg-board-light border border-chalk/20 rounded-lg hover:bg-board transition-colors"
+                    >
+                      Manage billing
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="space-y-3">
@@ -436,7 +450,11 @@ export default function AccountSettings() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => navigate('/')}
+                    onClick={() =>
+                      BILLING_ENABLED
+                        ? startProCheckout().catch((err) => setError(getSafeErrorMessage(err, 'Could not start checkout')))
+                        : navigate('/')
+                    }
                     className="w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
                   >
                     Upgrade to Pro — $39/yr
