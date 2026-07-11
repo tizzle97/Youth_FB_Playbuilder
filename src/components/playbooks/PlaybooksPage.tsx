@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
+import { getUserPreferences, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 
 interface Playbook {
   id: string;
@@ -71,6 +72,15 @@ export function PlaybooksPage() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Team identity / export defaults (B-14/B-15), stamped onto playbook PDFs
+  const [prefs, setPrefs] = useState<UserPreferences | null>(null);
+  useEffect(() => {
+    if (!user) { setPrefs(null); return; }
+    let cancelled = false;
+    getUserPreferences(user.id).then((p) => { if (!cancelled) setPrefs(p); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -279,6 +289,7 @@ export function PlaybooksPage() {
 </head>
 <body>
   <div class="page">
+    ${teamBrandHTML(prefs)}
     <div class="play-title">${play.name}</div>
     <div class="diagram-container">
       ${play.thumbnail ? 
@@ -421,6 +432,7 @@ export function PlaybooksPage() {
 </head>
 <body>
   <div class="page">
+    ${teamBrandHTML(prefs)}
     <div class="header">
       <div class="play-title">${play.name}</div>
       <div class="play-type">${play.type} Play</div>
@@ -643,6 +655,7 @@ export function PlaybooksPage() {
 </head>
 <body>
   <div class="header">
+    ${teamBrandHTML(prefs)}
     <div class="playbook-title">${playbookName}</div>
     <div class="playbook-subtitle">Complete Playbook Grid</div>
   </div>

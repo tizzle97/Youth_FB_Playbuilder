@@ -7,6 +7,12 @@ import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
+import {
+  DEFAULT_PREFERENCES,
+  getUserPreferences,
+  saveUserPreferences,
+  type UserPreferences,
+} from '../../lib/userPreferences';
 
 export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
@@ -29,6 +35,9 @@ export default function AccountSettings() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
+  const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [initialPrefs, setInitialPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [initialValues, setInitialValues] = useState({
     username: '',
@@ -70,6 +79,11 @@ export default function AccountSettings() {
       ]);
       setPlayCount(playsRes.count ?? 0);
       setPlaybookCount(playbooksRes.count ?? 0);
+
+      // Team identity + save/export defaults (B-14/B-15)
+      const loadedPrefs = await getUserPreferences(currentUser.id);
+      setPrefs(loadedPrefs);
+      setInitialPrefs(loadedPrefs);
 
       // Fetch user's avatar preferences
       const { data: userRep } = await supabase
@@ -114,10 +128,11 @@ export default function AccountSettings() {
       avatarType !== initialValues.avatarType ||
       avatarUrl !== initialValues.avatarUrl ||
       selectedIconId !== initialValues.selectedIconId ||
-      newPassword !== '';
+      newPassword !== '' ||
+      JSON.stringify(prefs) !== JSON.stringify(initialPrefs);
 
     setHasChanges(hasUnsavedChanges);
-  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, initialValues]);
+  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, initialValues, prefs, initialPrefs]);
 
   const handleSaveChanges = async () => {
     if (!user) return;
@@ -163,6 +178,12 @@ export default function AccountSettings() {
           .eq('user_id', user.id);
         
         if (avatarError) throw avatarError;
+      }
+
+      // Persist team identity / defaults if changed (B-14/B-15)
+      if (JSON.stringify(prefs) !== JSON.stringify(initialPrefs)) {
+        await saveUserPreferences(user.id, prefs);
+        setInitialPrefs(prefs);
       }
 
       // Update initial values
@@ -241,6 +262,45 @@ export default function AccountSettings() {
     setAvatarType('icon');
     setSelectedIconId(iconId);
     setAvatarUrl('');
+  };
+
+  // Team logo upload (B-14). Reuses the avatars bucket — same per-user
+  // folder policy and 2MB image limit; no crop step since logos aren't
+  // forced square. The URL only persists via Save Changes.
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !user) return;
+
+    try {
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('File size must be less than 2MB');
+      }
+      if (!file.type.startsWith('image/')) {
+        throw new Error('File must be an image');
+      }
+      setUploadingLogo(true);
+      setError('');
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const filePath = `${user.id}/team-logo-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      setPrefs((p) => ({ ...p, team_logo_url: publicUrl }));
+    } catch (err) {
+      setError(getSafeErrorMessage(err, 'Failed to upload logo'));
+    } finally {
+      setUploadingLogo(false);
+      input.value = '';
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -445,6 +505,79 @@ export default function AccountSettings() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Team & Defaults (B-14): stamped on printed plays/playbooks and
+                used to prefill the save dialog in the designer */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-medium text-chalk">Team &amp; Defaults</h3>
+                <p className="text-sm text-chalk/50 mt-1">
+                  Your team name and logo appear on printed plays and playbook PDFs.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="team-name" className="block text-sm font-medium text-chalk mb-1">
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    id="team-name"
+                    value={prefs.team_name ?? ''}
+                    onChange={(e) => setPrefs((p) => ({ ...p, team_name: e.target.value || null }))}
+                    placeholder="e.g., Eastside Eagles"
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="default-game-format" className="block text-sm font-medium text-chalk mb-1">
+                    Default Game Format
+                  </label>
+                  <select
+                    id="default-game-format"
+                    value={prefs.default_game_format}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_game_format: e.target.value as UserPreferences['default_game_format'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="5v5">5v5 Flag Football</option>
+                    <option value="7v7">7v7 Flag Football</option>
+                    <option value="11v11">11v11 Traditional</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                {prefs.team_logo_url && (
+                  <img
+                    src={prefs.team_logo_url}
+                    alt="Team logo"
+                    className="h-12 w-12 object-contain rounded bg-board border border-chalk/10"
+                  />
+                )}
+                <label className="px-4 py-2 bg-board hover:bg-board-light border border-chalk/20 rounded-lg cursor-pointer text-sm text-chalk/70 hover:text-chalk transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoFileSelect}
+                    disabled={uploadingLogo}
+                  />
+                  {uploadingLogo ? 'Uploading…' : prefs.team_logo_url ? 'Replace Logo' : 'Upload Team Logo'}
+                </label>
+                {prefs.team_logo_url && (
+                  <button
+                    type="button"
+                    onClick={() => setPrefs((p) => ({ ...p, team_logo_url: null }))}
+                    className="text-sm text-chalk/50 hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Username Section */}

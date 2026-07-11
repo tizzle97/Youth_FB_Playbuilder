@@ -5,6 +5,7 @@ import { X, FileText, Printer, BookOpen, Grid3X3, Lock } from 'lucide-react';
 import type { PlayMetadata } from '../../types/play';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
+import { escapeHtml, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 
 const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook']);
 
@@ -23,6 +24,8 @@ interface ExportModalProps {
   userHasAccount?: boolean;
   allPlays?: PlayData[];
   onGetAllPlays?: () => PlayData[];
+  /** Team identity + export defaults (B-14/B-15); null when signed out. */
+  preferences?: UserPreferences | null;
 }
 
 export function ExportModal({
@@ -40,7 +43,8 @@ export function ExportModal({
   } as PlayMetadata,
   onUpdateMetadata,
   allPlays = [],
-  onGetAllPlays
+  onGetAllPlays,
+  preferences = null
 }: ExportModalProps) {
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook'>('single-play');
@@ -196,6 +200,7 @@ export function ExportModal({
 </head>
 <body>
   <div class="page">
+    ${teamBrandHTML(preferences)}
     <div class="header">
       <div class="play-title">${playData.metadata.playName || 'Untitled Play'}</div>
       <div class="play-info">
@@ -378,7 +383,8 @@ export function ExportModal({
 </head>
 <body>
   <div class="playbook-header">
-    <div class="playbook-title">Football Playbook</div>
+    ${teamBrandHTML(preferences)}
+    <div class="playbook-title">${preferences?.team_name ? `${escapeHtml(preferences.team_name)} Playbook` : 'Football Playbook'}</div>
     <div class="playbook-subtitle">Detailed Play Collection</div>
   </div>
   
@@ -514,7 +520,8 @@ export function ExportModal({
 </head>
 <body>
   <div class="playbook-header">
-    <div class="playbook-title">Football Playbook</div>
+    ${teamBrandHTML(preferences)}
+    <div class="playbook-title">${preferences?.team_name ? `${escapeHtml(preferences.team_name)} Playbook` : 'Football Playbook'}</div>
     <div class="playbook-subtitle">Quick Reference Grid</div>
   </div>
   

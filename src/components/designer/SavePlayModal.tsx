@@ -4,6 +4,7 @@ import { X, FolderPlus } from 'lucide-react';
 import { PlayMetadata } from '../../types/play';
 import { PlayMetadataForm } from './PlayMetadataForm';
 import { supabase } from '../../lib/supabase';
+import type { UserPreferences } from '../../lib/userPreferences';
 
 interface Playbook {
   id: string;
@@ -22,14 +23,17 @@ interface SavePlayModalProps {
   }) => void;
   user: any;
   previewThumbnail?: string; // Optional thumbnail preview
+  /** Save defaults from account settings (B-14/B-15); null when signed out. */
+  preferences?: UserPreferences | null;
 }
 
-export function SavePlayModal({ 
-  isOpen, 
-  onClose, 
-  onSave, 
-  user, 
-  previewThumbnail 
+export function SavePlayModal({
+  isOpen,
+  onClose,
+  onSave,
+  user,
+  previewThumbnail,
+  preferences = null
 }: SavePlayModalProps) {
   // ALL THE MISSING STATE VARIABLES
   const [step, setStep] = useState<'metadata' | 'playbook'>('metadata');
@@ -54,6 +58,15 @@ export function SavePlayModal({
       fetchPlaybooks();
     }
   }, [isOpen, user]);
+
+  // Prefill from account-settings defaults each time the modal opens
+  // (B-14 game format; B-15 play type + visibility). The user can still
+  // change everything per save.
+  useEffect(() => {
+    if (isOpen && preferences) {
+      setMetadata((prev) => ({ ...prev, gameType: preferences.default_game_format }));
+    }
+  }, [isOpen, preferences]);
 
   // MISSING FUNCTION: fetchPlaybooks
   const fetchPlaybooks = async () => {

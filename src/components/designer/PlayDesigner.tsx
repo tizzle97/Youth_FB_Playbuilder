@@ -12,6 +12,7 @@ import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { getUserPreferences, type UserPreferences } from '../../lib/userPreferences';
 
 export function PlayDesigner() {
   const navigate = useNavigate();
@@ -74,6 +75,17 @@ export function PlayDesigner() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
+
+  // Team identity / save & export defaults (B-14/B-15), passed down to the
+  // save and export modals. Fetched here with the already-resolved user —
+  // see userPreferences.ts for why helpers don't call getUser() themselves.
+  const [preferences, setPreferences] = useState<UserPreferences | null>(null);
+  useEffect(() => {
+    if (!user) { setPreferences(null); return; }
+    let cancelled = false;
+    getUserPreferences(user.id).then((p) => { if (!cancelled) setPreferences(p); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Fetch an existing play when opened via /designer?play=<id>.
   // The parsed scene is stashed in pendingLoad and applied to the canvas by a
@@ -442,6 +454,7 @@ export function PlayDesigner() {
           playMetadata={currentPlayMetadata}
           onUpdateMetadata={setCurrentPlayMetadata}
           userHasAccount={!!user}
+          preferences={preferences}
         />
       )}
       <SavePlayModal
@@ -450,6 +463,7 @@ export function PlayDesigner() {
         onSave={handleSavePlay}
         user={user}
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
+        preferences={preferences}
       />
 
       {error && (
