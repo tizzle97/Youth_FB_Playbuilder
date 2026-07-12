@@ -18,15 +18,66 @@ secrets store, and Netlify env vars.
 
 ## 2. Deploy the Edge Functions
 
-Requires the Supabase CLI, logged in and linked to the project
-(`supabase link --project-ref <ref>`).
+Everything below runs in a terminal **from the repo root** (the folder
+containing `supabase/`) — the CLI finds each function by its folder name
+under `supabase/functions/`.
+
+### 2a. Install the Supabase CLI
 
 ```sh
-# Secrets used by the functions (SUPABASE_* vars are injected automatically)
-supabase secrets set STRIPE_SECRET_KEY=sk_test_...
-supabase secrets set STRIPE_PRICE_ID=price_...
-supabase secrets set SITE_URL=https://playbuilderpro.com
+brew install supabase/tap/supabase
+```
 
+No Homebrew? `npm install supabase --save-dev` in the repo also works —
+then prefix every `supabase` command below with `npx` (e.g.
+`npx supabase login`). Check with `supabase --version`. If a later step
+complains "Docker is not running", the CLI is outdated — upgrade
+(`brew upgrade supabase`); current versions deploy through Supabase's
+API and don't need Docker.
+
+### 2b. Log in
+
+```sh
+supabase login
+```
+
+Opens a browser to generate an access token and stores it locally. If
+the browser flow fails, create a token manually at
+https://supabase.com/dashboard/account/tokens and paste it when prompted.
+
+### 2c. Link the repo to the project
+
+The project ref is the subdomain of the Supabase URL — the
+`abcdefghijklm` in `https://abcdefghijklm.supabase.co` (it's in `.env`
+as `VITE_SUPABASE_URL`, and in the dashboard URL:
+`supabase.com/dashboard/project/<ref>`).
+
+```sh
+supabase link --project-ref <that-ref>
+```
+
+If it prompts for the **database password** (the Postgres password from
+project creation, not the Supabase login), just press Enter to skip —
+deploying functions doesn't need it. With multiple projects,
+`supabase projects list` shows which one is linked.
+
+### 2d. Set the secrets
+
+```sh
+# SUPABASE_* vars are injected automatically — never set those here
+supabase secrets set STRIPE_SECRET_KEY=sk_test_...   # from step 1
+supabase secrets set STRIPE_PRICE_ID=price_...       # from step 1
+supabase secrets set SITE_URL=https://playbuilderpro.com
+```
+
+Use the **test-mode** `sk_test_` key for now; swap in `sk_live_` when
+going live. `STRIPE_WEBHOOK_SECRET` is set in step 3, *after* the
+webhook endpoint exists — secrets apply without redeploying. Verify with
+`supabase secrets list` (shows names + digests, never values).
+
+### 2e. Deploy
+
+```sh
 # Checkout + portal keep default JWT verification (signed-in users only)
 supabase functions deploy create-checkout-session
 supabase functions deploy create-portal-session
@@ -35,6 +86,18 @@ supabase functions deploy create-portal-session
 # security is the Stripe signature check inside the function
 supabase functions deploy stripe-webhook --no-verify-jwt
 ```
+
+### 2f. Confirm it worked
+
+- Dashboard → **Edge Functions**: all three listed. `stripe-webhook`'s
+  details must show JWT verification **disabled**; the other two
+  **enabled**.
+- Sanity check from the terminal:
+  ```sh
+  curl -i https://<ref>.supabase.co/functions/v1/create-checkout-session -X POST
+  ```
+  A `401` response is the **correct** result — the function is deployed
+  and rejecting unauthenticated callers.
 
 ## 3. Webhook endpoint
 
