@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileText, Printer, BookOpen, Grid3X3, Lock } from 'lucide-react';
+import { X, FileText, Printer, BookOpen, Grid3X3, Lock, Watch } from 'lucide-react';
 
 // Import LocalPlayMetadata from the PlayDesigner component
 import type { PlayMetadata } from '../../types/play';
@@ -7,7 +7,7 @@ import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { escapeHtml, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 
-const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook']);
+const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook', 'wristband-playbook']);
 
 interface PlayData {
   metadata: PlayMetadata;
@@ -47,7 +47,7 @@ export function ExportModal({
   preferences = null
 }: ExportModalProps) {
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook'>('single-play');
+  const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook' | 'wristband-playbook'>('single-play');
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
@@ -536,12 +536,169 @@ export function ExportModal({
 </html>`;
   };
 
+  const generateWristbandPlaybookHTML = (plays: PlayData[]): string => {
+    const cards = plays.map((play, index) => `
+      <div class="wb-card">
+        <div class="wb-number">${index + 1}</div>
+        <div class="wb-body">
+          <div class="wb-name">${play.metadata.playName || 'Untitled'}</div>
+          <div class="wb-image">
+            <img src="${play.canvasDataURL}" alt="${play.metadata.playName}" />
+          </div>
+          <div class="wb-info">
+            ${play.metadata.playType ? `<span class="play-type">${play.metadata.playType}</span>` : ''}
+            ${play.metadata.formation ? ` &middot; ${play.metadata.formation}` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Playbook - Wristband Call Sheet</title>
+  <style>
+    @page {
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
+      margin: 0.4in;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 8pt;
+      line-height: 1.2;
+      color: #000;
+      background: white;
+    }
+
+    .playbook-header {
+      text-align: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #2563eb;
+    }
+
+    .playbook-title {
+      font-size: 18pt;
+      font-weight: bold;
+      color: #1e40af;
+      margin-bottom: 4px;
+    }
+
+    .playbook-subtitle {
+      font-size: 10pt;
+      color: #64748b;
+    }
+
+    .wb-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .wb-card {
+      display: flex;
+      border: 1px dashed #9ca3af;
+      border-radius: 4px;
+      padding: 6px;
+      background: #fafafa;
+      page-break-inside: avoid;
+      align-items: center;
+    }
+
+    .wb-number {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #1e40af;
+      color: white;
+      font-weight: bold;
+      font-size: 10pt;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 6px;
+    }
+
+    .wb-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .wb-name {
+      font-weight: bold;
+      color: #1e40af;
+      font-size: 8pt;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wb-image {
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 3px;
+      margin: 3px 0;
+    }
+
+    .wb-image img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .wb-info {
+      font-size: 7pt;
+      color: #6b7280;
+    }
+
+    .play-type {
+      text-transform: capitalize;
+      font-weight: 500;
+    }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact !important; }
+      .wb-card { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="playbook-header">
+    ${teamBrandHTML(preferences)}
+    <div class="playbook-title">${preferences?.team_name ? `${escapeHtml(preferences.team_name)} Playbook` : 'Football Playbook'}</div>
+    <div class="playbook-subtitle">Wristband Call Sheet &mdash; cut along dashed lines</div>
+  </div>
+
+  <div class="wb-grid">
+    ${cards}
+  </div>
+
+  <div style="margin-top: 15px; text-align: center; font-size: 8pt; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 8px;">
+    Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} | Total Plays: ${plays.length}
+  </div>
+</body>
+</html>`;
+  };
+
   const handleFormatClick = (formatId: string) => {
     if (PRO_ONLY_FORMATS.has(formatId) && !entitlementLoading && !isPro) {
       setShowUpgradePrompt(true);
       return;
     }
-    setSelectedFormat(formatId as 'single-play' | 'detailed-playbook' | 'grid-playbook');
+    setSelectedFormat(formatId as 'single-play' | 'detailed-playbook' | 'grid-playbook' | 'wristband-playbook');
     setShowMetadataEditor(true);
   };
 
@@ -579,6 +736,8 @@ export function ExportModal({
         
         if (selectedFormat === 'detailed-playbook') {
           htmlContent = generatePlaybookDetailedHTML(plays);
+        } else if (selectedFormat === 'wristband-playbook') {
+          htmlContent = generateWristbandPlaybookHTML(plays);
         } else {
           htmlContent = generatePlaybookGridHTML(plays);
         }
@@ -634,6 +793,12 @@ export function ExportModal({
       name: 'Playbook Grid',
       description: 'All plays in a compact grid layout on one page',
       icon: Grid3X3
+    },
+    {
+      id: 'wristband-playbook',
+      name: 'Wristband Sheet',
+      description: 'Numbered call sheet, cut for a wristband',
+      icon: Watch
     }
   ];
 
@@ -648,6 +813,7 @@ export function ExportModal({
                 {selectedFormat === 'single-play' && 'Single Play Sheet'}
                 {selectedFormat === 'detailed-playbook' && 'Detailed Playbook'}
                 {selectedFormat === 'grid-playbook' && 'Playbook Grid'}
+                {selectedFormat === 'wristband-playbook' && 'Wristband Sheet'}
               </h3>
               <button
                 onClick={() => setShowMetadataEditor(false)}
@@ -721,19 +887,20 @@ export function ExportModal({
               )}
 
               {/* Playbook format info */}
-              {(selectedFormat === 'detailed-playbook' || selectedFormat === 'grid-playbook') && (
+              {(selectedFormat === 'detailed-playbook' || selectedFormat === 'grid-playbook' || selectedFormat === 'wristband-playbook') && (
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
                   <div className="flex items-center">
                     <BookOpen className="h-5 w-5 text-primary mr-2" />
                     <div>
                       <p className="text-sm font-medium text-chalk">
-                        {selectedFormat === 'detailed-playbook' ? 'Detailed Playbook' : 'Grid Playbook'}
+                        {selectedFormat === 'detailed-playbook' && 'Detailed Playbook'}
+                        {selectedFormat === 'grid-playbook' && 'Grid Playbook'}
+                        {selectedFormat === 'wristband-playbook' && 'Wristband Sheet'}
                       </p>
                       <p className="text-xs text-chalk/70 mt-1">
-                        {selectedFormat === 'detailed-playbook' 
-                          ? 'This will print all plays in your playbook with detailed information'
-                          : 'This will print all plays in a compact grid format on one page'
-                        }
+                        {selectedFormat === 'detailed-playbook' && 'This will print all plays in your playbook with detailed information'}
+                        {selectedFormat === 'grid-playbook' && 'This will print all plays in a compact grid format on one page'}
+                        {selectedFormat === 'wristband-playbook' && 'This will print a numbered call sheet sized to cut and slide into a wristband'}
                       </p>
                     </div>
                   </div>

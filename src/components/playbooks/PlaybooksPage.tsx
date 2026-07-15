@@ -16,7 +16,8 @@ import {
   ChevronDown,
   FileText,
   LayoutGrid,
-  Lock
+  Lock,
+  Watch
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -671,7 +672,181 @@ export function PlaybooksPage() {
 </html>`;
   };
 
-  const handleExportPDF = async (format: 'simple' | 'detailed' | 'grid') => {
+  const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string): string => {
+    const cards = plays.map((play, index) => `
+      <div class="wb-card">
+        <div class="wb-number">${index + 1}</div>
+        <div class="wb-body">
+          <div class="wb-name">${play.name}</div>
+          <div class="wb-image">
+            ${play.thumbnail ?
+              `<img src="${play.thumbnail}" alt="${play.name}" />` :
+              `<div class="no-image">No Image</div>`
+            }
+          </div>
+          <div class="wb-info">
+            <span class="play-type">${play.type}</span>
+            ${play.metadata?.formation ? ` &middot; ${play.metadata.formation}` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${playbookName} - Wristband Call Sheet</title>
+  <style>
+    @page {
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
+      margin: 0.4in;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 8pt;
+      line-height: 1.2;
+      color: #000;
+      background: white;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #2563eb;
+    }
+
+    .playbook-title {
+      font-size: 18pt;
+      font-weight: bold;
+      color: #1e40af;
+      margin-bottom: 4px;
+    }
+
+    .playbook-subtitle {
+      font-size: 10pt;
+      color: #64748b;
+    }
+
+    .wb-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .wb-card {
+      display: flex;
+      border: 1px dashed #9ca3af;
+      border-radius: 4px;
+      padding: 6px;
+      background: #fafafa;
+      page-break-inside: avoid;
+      align-items: center;
+    }
+
+    .wb-number {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #1e40af;
+      color: white;
+      font-weight: bold;
+      font-size: 10pt;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 6px;
+    }
+
+    .wb-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .wb-name {
+      font-weight: bold;
+      color: #1e40af;
+      font-size: 8pt;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wb-image {
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 3px;
+      margin: 3px 0;
+    }
+
+    .wb-image img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .no-image {
+      color: #9ca3af;
+      font-size: 7pt;
+    }
+
+    .wb-info {
+      font-size: 7pt;
+      color: #6b7280;
+    }
+
+    .play-type {
+      text-transform: capitalize;
+      font-weight: 500;
+    }
+
+    .footer {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 8pt;
+      color: #6b7280;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 8px;
+    }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact !important; }
+      .wb-card { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    ${teamBrandHTML(prefs)}
+    <div class="playbook-title">${playbookName}</div>
+    <div class="playbook-subtitle">Wristband Call Sheet &mdash; cut along dashed lines</div>
+  </div>
+
+  <div class="wb-grid">
+    ${cards}
+  </div>
+
+  <div class="footer">
+    Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} | Total Plays: ${plays.length}
+  </div>
+</body>
+</html>`;
+  };
+
+  const handleExportPDF = async (format: 'simple' | 'detailed' | 'grid' | 'wristband') => {
     if (!selectedPlaybook || playsInPlaybook.length === 0) {
       alert('Please select a playbook with plays to export.');
       return;
@@ -686,7 +861,9 @@ export function PlaybooksPage() {
     try {
       let htmlContent = '';
 
-      if (format === 'grid') {
+      if (format === 'wristband') {
+        htmlContent = generateWristbandPlaybookHTML(playsInPlaybook, selectedPlaybook.name);
+      } else if (format === 'grid') {
         htmlContent = generateGridPlaybookHTML(playsInPlaybook, selectedPlaybook.name);
       } else {
         // For simple and detailed, create multiple pages
@@ -971,12 +1148,30 @@ export function PlaybooksPage() {
                                       </div>
                                     </button>
                                   ))}
+                                <div className="my-1 border-t border-chalk/10" />
+                                <button
+                                  onClick={() => handleExportPDF('wristband')}
+                                  className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
+                                >
+                                  <Watch className="h-4 w-4 text-primary" />
+                                  <div className="flex-1">
+                                    <div className="font-medium flex items-center gap-2">
+                                      Wristband Sheet
+                                      {!entitlementLoading && !isPro && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                          <Lock className="h-3 w-3" /> Pro
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-chalk/70">Numbered call sheet, cut for a wristband</div>
+                                  </div>
+                                </button>
                               </div>
                             </div>
                           )}
                         </div>
                       )}
-                      
+
                       <button
                         onClick={handleNewPlay}
                         className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm transition-colors"
