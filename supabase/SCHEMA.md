@@ -21,8 +21,8 @@ idempotent `.sql` file and update this doc in the same change.
 | `community_authors.sql` | applied (2026-07-09) | `get_community_authors(uuid[])` for Community post author display. |
 | `free_tier_limits.sql` | applied (2026-07-04) | `BEFORE INSERT` triggers on `plays`/`playbooks` blocking free-plan users past `FREE_LIMITS` (15 plays / 2 playbooks). |
 | `founding_member_backfill.sql` | applied (2026-07-09) | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
-| `play_votes.sql` | **pending — needs SQL run** | B-10 play voting: `plays.upvotes` cached counter, `play_votes` table (one vote per user per play), RLS, count-sync triggers. |
-| `user_preferences.sql` | **pending — needs SQL run** | B-14/B-15 per-user settings: team identity (name/logo for export stamping), default game format, save & export defaults. |
+| `play_votes.sql` | applied (2026-07-15) | B-10 play voting: `plays.upvotes` cached counter, `play_votes` table (one vote per user per play), RLS, count-sync triggers. |
+| `user_preferences.sql` | applied (2026-07-15) | B-14/B-15 per-user settings: team identity (name/logo for export stamping), default game format, save & export defaults. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
