@@ -36,27 +36,27 @@ export function Hero() {
       {/* Route doodles, echoing the logo's curl route */}
       <svg
         className="absolute pointer-events-none hidden lg:block"
-        style={{ left: '6%', top: '110px' }}
-        width="120"
-        height="150"
+        style={{ left: '5%', top: '80px' }}
+        width="230"
+        height="290"
         viewBox="0 0 120 150"
         aria-hidden="true"
       >
         <circle cx="20" cy="130" r="8" fill="none" stroke="#101D2E" strokeOpacity="0.25" strokeWidth="4" />
         <path d="M20 116 V40 Q20 26 34 26 H74" fill="none" stroke="#101D2E" strokeOpacity="0.25" strokeWidth="5" strokeLinecap="round" />
-        <path d="M86 26 L70 17 L70 35 Z" fill="#1FA75D" fillOpacity="0.6" />
+        <path d="M92 26 L72 16 L72 36 Z" fill="#1FA75D" fillOpacity="0.6" />
       </svg>
       <svg
         className="absolute pointer-events-none hidden lg:block"
-        style={{ right: '5%', top: '170px' }}
-        width="130"
-        height="150"
+        style={{ right: '4%', top: '120px' }}
+        width="250"
+        height="290"
         viewBox="0 0 130 150"
         aria-hidden="true"
       >
         <circle cx="110" cy="130" r="8" fill="none" stroke="#101D2E" strokeOpacity="0.25" strokeWidth="4" />
-        <path d="M110 116 V60 L60 25" fill="none" stroke="#101D2E" strokeOpacity="0.25" strokeWidth="5" strokeLinecap="round" />
-        <path d="M50 18 L64 20 L56 36 Z" fill="#1FA75D" fillOpacity="0.6" />
+        <path d="M110 116 V60 L64 27.8" fill="none" stroke="#101D2E" strokeOpacity="0.25" strokeWidth="5" strokeLinecap="round" />
+        <path d="M48.5 17 L67.9 20.7 L58.7 33.9 Z" fill="#1FA75D" fillOpacity="0.6" />
       </svg>
 
       <div className="max-w-7xl mx-auto">
