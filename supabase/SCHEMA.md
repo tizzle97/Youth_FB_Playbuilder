@@ -23,7 +23,8 @@ idempotent `.sql` file and update this doc in the same change.
 | `founding_member_backfill.sql` | applied (2026-07-09) | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
 | `play_votes.sql` | applied (2026-07-15) | B-10 play voting: `plays.upvotes` cached counter, `play_votes` table (one vote per user per play), RLS, count-sync triggers. |
 | `user_preferences.sql` | applied (2026-07-15) | B-14/B-15 per-user settings: team identity (name/logo for export stamping), default game format, save & export defaults. |
-| `blog_seo.sql` | **pending — needs SQL run** | SEO: adds `blog_posts.slug` (unique, backfilled), `description`, `status ('draft'\|'published')`; public SELECT now shows published only (admins see drafts). |
+| `blog_seo.sql` | applied (2026-07-15) | SEO: adds `blog_posts.slug` (unique, backfilled), `description`, `status ('draft'\|'published')`; public SELECT now shows published only (admins see drafts). |
+| `football_avatars.sql` | **pending — needs SQL run** | Replaces the seeded Dicebear "bottts" robot avatar icons with 8 self-contained football-themed SVG data URIs (football, helmet, flag, whistle, goalpost, cleat, playbook, trophy). Repoints any user on an old icon to the new default first. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -58,7 +59,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `votes` | `id`, `user_id`, `post_id?`, `comment_id?`, `vote_type bool`; UNIQUE per user+target | SELECT public; CRUD own. Target check: exactly one of post/comment. |
 | `play_votes` | `id`, `user_id`, `play_id`, `created_at`; UNIQUE`(user_id,play_id)` | SELECT public; INSERT own **and only on public plays**; DELETE own. Triggers keep `plays.upvotes` in sync (`play_votes.sql`, B-10). |
 | `user_reputation` | `id`, `user_id` (unique), `reputation int`, `avatar_type`, `avatar_url`, `avatar_icon_id→avatar_icons` | SELECT public; user may UPDATE own (avatar). **Writes to reputation happen via trigger only** (the old catch-all write policy was dropped in `security_hardening.sql`). |
-| `avatar_icons` | `id`, `icon_url`, `name` | SELECT public; seeded with default bot avatars. |
+| `avatar_icons` | `id`, `icon_url`, `name` | SELECT public; seeded with 8 football-themed SVG data-URI icons (`football_avatars.sql`) — no external image host. |
 | `image_reports` | `id`, `reporter_id`, `reported_user_id`, `image_url`, `reason`, `status`, `resolver_id` | Reporter inserts/reads own; **admins** (via `is_admin()`) read/update all. |
 
 ### Platform
