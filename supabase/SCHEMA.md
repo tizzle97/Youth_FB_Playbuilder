@@ -23,6 +23,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `founding_member_backfill.sql` | applied (2026-07-09) | Re-runs the Founding Member grandfathering `INSERT` from `subscriptions.sql` to catch users who signed up between that original run and now (free-tier gates went live in the meantime). Idempotent — safe to run again. |
 | `play_votes.sql` | applied (2026-07-15) | B-10 play voting: `plays.upvotes` cached counter, `play_votes` table (one vote per user per play), RLS, count-sync triggers. |
 | `user_preferences.sql` | applied (2026-07-15) | B-14/B-15 per-user settings: team identity (name/logo for export stamping), default game format, save & export defaults. |
+| `blog_seo.sql` | **pending — needs SQL run** | SEO: adds `blog_posts.slug` (unique, backfilled), `description`, `status ('draft'\|'published')`; public SELECT now shows published only (admins see drafts). |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -64,7 +65,7 @@ idempotent `.sql` file and update this doc in the same change.
 | Table | Key columns | RLS summary |
 |---|---|---|
 | `feedback` | `id`, `user_id`, `type ('bug'\|'feature'\|'general')`, `content`, `status ('pending'\|'reviewed'\|'resolved')`, timestamps | User inserts/reads own; admins read+update all (`feedback_admin.sql`). |
-| `blog_posts` | `id`, `author_id`, `title`, `content`, `published_at`, timestamps | SELECT public; only admins manage (RLS + `enforce_admin_blog_posts` trigger). |
+| `blog_posts` | `id`, `author_id`, `title`, `content`, `slug` (unique), `description`, `status ('draft'\|'published')`, `published_at`, timestamps | Public SELECT of published rows only; admins see drafts and manage all (RLS + `enforce_admin_blog_posts` trigger). Served at `/blog/<slug>`; listed in `/sitemap.xml` (edge fn `sitemap`). |
 | `admin_users` | `user_id` (PK→auth.users), `created_at` | Only admins can SELECT. Insert via SQL only. Grant admin: `INSERT INTO admin_users (user_id) SELECT id FROM auth.users WHERE email='you@example.com';` |
 | `subscriptions` | `user_id` (PK), `plan ('free'\|'founding'\|'pro')`, `status`, `stripe_customer_id`, `stripe_subscription_id`, `current_period_end`, timestamps | User reads **own only**. Writes via Stripe webhook (service role) / admin SQL only — never the client. |
 | `user_preferences` | `user_id` (PK), `team_name`, `team_logo_url`, `default_game_format ('5v5'\|'7v7'\|'11v11')`, `default_visibility ('private'\|'public')`, `default_play_type`, `paper_size ('letter'\|'a4')`, `default_export_style ('simple'\|'detailed'\|'grid')`, timestamps | User CRUD **own row only** (`user_preferences.sql`, B-14/B-15). Absent row = client defaults. |

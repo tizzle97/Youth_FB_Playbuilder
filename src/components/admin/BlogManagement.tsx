@@ -4,10 +4,18 @@ import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { getSafeErrorMessage } from '../../lib/errors';
 
+/** URL-safe slug from a title, e.g. "5 Best Flag Plays!" -> "5-best-flag-plays". */
+function slugify(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 interface BlogPost {
   id: string;
   title: string;
   content: string;
+  slug: string;
+  description: string | null;
+  status: 'draft' | 'published';
   author_id: string;
   published_at: string;
   created_at: string;
@@ -160,6 +168,8 @@ export function BlogManagement() {
           {
             title: postData.title,
             content: postData.content,
+            slug: slugify(postData.title),
+            description: postData.content.slice(0, 155),
             author_id: user.id
           }
         ]);
@@ -189,6 +199,23 @@ export function BlogManagement() {
       setEditingPost(null);
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to update blog post'));
+    }
+  };
+
+  const handleToggleStatus = async (post: BlogPost) => {
+    try {
+      const next = post.status === 'published' ? 'draft' : 'published';
+      const { error } = await supabase
+        .from('blog_posts')
+        .update({
+          status: next,
+          ...(next === 'published' ? { published_at: new Date().toISOString() } : {}),
+        })
+        .eq('id', post.id);
+      if (error) throw error;
+      await fetchPosts();
+    } catch (err) {
+      setError(getSafeErrorMessage(err, 'Failed to update post status'));
     }
   };
 
@@ -250,7 +277,16 @@ export function BlogManagement() {
             <div key={post.id} className="p-4 bg-board rounded-lg border border-chalk/10">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-chalk mb-2">{post.title}</h3>
+                  <h3 className="text-lg font-semibold text-chalk mb-2 flex items-center gap-2">
+                    {post.title}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      post.status === 'published'
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-yellow-500/10 text-yellow-400'
+                    }`}>
+                      {post.status === 'published' ? 'Published' : 'Draft'}
+                    </span>
+                  </h3>
                   <div className="flex items-center gap-4 text-sm text-chalk/70 mb-3">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
@@ -266,6 +302,17 @@ export function BlogManagement() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 ml-4">
+                  <button
+                    onClick={() => handleToggleStatus(post)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      post.status === 'published'
+                        ? 'text-chalk/70 hover:bg-board-light border border-chalk/20'
+                        : 'bg-primary text-white hover:bg-primary-dark'
+                    }`}
+                    title={post.status === 'published' ? 'Unpublish (back to draft)' : 'Publish this post'}
+                  >
+                    {post.status === 'published' ? 'Unpublish' : 'Publish'}
+                  </button>
                   <button
                     onClick={() => {
                       setEditingPost(post);
