@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { UserMenu } from './auth/UserMenu';
 import { supabase } from '../lib/supabase';
 
@@ -13,7 +13,6 @@ const gridPaper: React.CSSProperties = {
 
 export function Hero() {
   const [user, setUser] = useState<User | null>(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     // Get initial session
@@ -89,12 +88,12 @@ export function Hero() {
                   </div>
                 ) : (
                   <div className="flex gap-4">
-                    <button
-                      onClick={() => navigate('/auth')}
+                    <Link
+                      to="/designer"
                       className="flex items-center justify-center px-8 py-3 border border-transparent text-base font-bold rounded-md text-white bg-primary hover:bg-primary-dark md:py-4 md:text-lg md:px-10"
                     >
                       Start Drawing — Free
-                    </button>
+                    </Link>
                     <Link to="/blog" className="flex items-center justify-center px-8 py-3 border-2 border-board/25 text-base font-medium rounded-md text-board hover:border-board/50 md:py-4 md:text-lg md:px-10">
                       Learn More
                     </Link>
