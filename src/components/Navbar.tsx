@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
-import { Logo } from './Logo';
+import { Logo, Wordmark } from './Logo';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { UserMenu } from './auth/UserMenu';
@@ -48,8 +48,8 @@ export function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <Link to="/" className="flex-shrink-0 flex items-center">
-              <Logo className="h-8 w-8 text-chalk" />
-              <span className="ml-2 text-xl font-chalk font-bold text-chalk">Playbuilder Pro</span>
+              <Logo className="h-8 w-8" />
+              <span className="ml-2"><Wordmark /></span>
             </Link>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navItems.map(({ path, label, newTab }) => (

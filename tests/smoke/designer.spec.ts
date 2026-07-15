@@ -55,7 +55,7 @@ test('home page renders without uncaught errors', async ({ page }) => {
   page.on('pageerror', (err) => errors.push(err));
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Flag Football League');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Win the day');
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
 });
 
