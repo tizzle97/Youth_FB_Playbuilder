@@ -18,6 +18,11 @@ import { PlaysPage } from './components/plays/PlaysPage';
 import { PlaybooksPage } from './components/playbooks/PlaybooksPage';
 import { FeedbackButton } from './components/FeedbackButton';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { Footer } from './components/Footer';
+import { NotFound } from './components/NotFound';
+import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
+import { TermsOfService } from './components/legal/TermsOfService';
+import { ContactPage } from './components/legal/ContactPage';
 
 function HomePage() {
   return (
@@ -70,21 +75,28 @@ function App() {
   return (
     <Router>
       <RecoveryRedirect />
-      <div className="min-h-screen bg-board">
+      <div className="min-h-screen bg-board flex flex-col">
         <Navbar />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/community" element={<CommunityPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/blog/:slug" element={<BlogPostPage />} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/account" element={<AccountSettings />} />
-          <Route path="/plays" element={<PlaysPage />} />
-          <Route path="/playbooks" element={<PlaybooksPage />} />
-          <Route path="/designer" element={<PlayDesigner />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-        </Routes>
+        <div className="flex-1">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/community" element={<CommunityPage />} />
+            <Route path="/blog" element={<BlogPage />} />
+            <Route path="/blog/:slug" element={<BlogPostPage />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/account" element={<AccountSettings />} />
+            <Route path="/plays" element={<PlaysPage />} />
+            <Route path="/playbooks" element={<PlaybooksPage />} />
+            <Route path="/designer" element={<PlayDesigner />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </div>
+        <Footer />
         <FeedbackButton />
       </div>
     </Router>

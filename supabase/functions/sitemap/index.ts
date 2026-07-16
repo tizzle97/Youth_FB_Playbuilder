@@ -16,7 +16,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_ANON_KEY') ?? '',
 );
 
-const STATIC_ROUTES = ['/', '/blog', '/community', '/plays'];
+const STATIC_ROUTES = ['/', '/blog', '/community', '/plays', '/privacy', '/terms', '/contact'];
 
 Deno.serve(async () => {
   const { data: posts } = await supabase
