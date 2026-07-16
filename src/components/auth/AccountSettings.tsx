@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { assertReasonableUpload, downscaleImage } from '../../lib/imageResize';
 import { supabase } from '../../lib/supabase';
 import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
 import {
@@ -228,15 +229,9 @@ export default function AccountSettings() {
     if (!file) return;
 
     try {
-      // Check file size (max 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error('File size must be less than 2MB');
-      }
-
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        throw new Error('File must be an image');
-      }
+      // Any real photo is fine — the crop step downscales to ≤512px before
+      // upload, so the original's size doesn't matter (25MB sanity cap only).
+      assertReasonableUpload(file);
 
       // Create temporary URL for the image
       const imageUrl = URL.createObjectURL(file);
@@ -287,29 +282,26 @@ export default function AccountSettings() {
   };
 
   // Team logo upload (B-14). Reuses the avatars bucket — same per-user
-  // folder policy and 2MB image limit; no crop step since logos aren't
-  // forced square. The URL only persists via Save Changes.
+  // folder policy; no crop step since logos aren't forced square. Logos are
+  // downscaled client-side (≤1024px, PNG keeps transparency for print) so
+  // any original size works. The URL only persists via Save Changes.
   const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     const file = input.files?.[0];
     if (!file || !user) return;
 
     try {
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error('File size must be less than 2MB');
-      }
-      if (!file.type.startsWith('image/')) {
-        throw new Error('File must be an image');
-      }
+      assertReasonableUpload(file);
       setUploadingLogo(true);
       setError('');
 
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const resized = await downscaleImage(file, 1024);
+      const ext = resized.type === 'image/png' ? 'png' : 'jpg';
       const filePath = `${user.id}/team-logo-${Math.random().toString(36).slice(2)}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file);
+        .upload(filePath, resized, { contentType: resized.type });
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
@@ -518,7 +510,7 @@ export default function AccountSettings() {
                       {uploadingAvatar ? 'Uploading...' : 'Upload Photo'}
                     </label>
                     <p className="mt-2 text-sm text-chalk/50">
-                      Maximum file size: 2MB. Supported formats: JPEG, PNG. 
+                      JPEG or PNG — large photos are resized automatically.
                       Please ensure your image is appropriate and follows our guidelines.
                     </p>
                   </div>

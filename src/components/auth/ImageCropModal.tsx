@@ -53,19 +53,25 @@ export function ImageCropModal({ isOpen, onClose, imageUrl, onCropComplete }: Im
     const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
     const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
 
-    canvas.width = completedCrop.width;
-    canvas.height = completedCrop.height;
+    // Output in natural (source) pixels, capped at 512 — plenty for an
+    // avatar, tiny to store, and independent of the on-screen preview size.
+    const AVATAR_MAX_PX = 512;
+    const cropPxW = completedCrop.width * scaleX;
+    const cropPxH = completedCrop.height * scaleY;
+    const outScale = Math.min(1, AVATAR_MAX_PX / Math.max(cropPxW, cropPxH));
+    canvas.width = Math.max(1, Math.round(cropPxW * outScale));
+    canvas.height = Math.max(1, Math.round(cropPxH * outScale));
 
     ctx.drawImage(
       imgRef.current,
       completedCrop.x * scaleX,
       completedCrop.y * scaleY,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY,
+      cropPxW,
+      cropPxH,
       0,
       0,
-      completedCrop.width,
-      completedCrop.height
+      canvas.width,
+      canvas.height
     );
 
     canvas.toBlob((blob) => {
@@ -73,7 +79,7 @@ export function ImageCropModal({ isOpen, onClose, imageUrl, onCropComplete }: Im
         onCropComplete(blob);
         onClose();
       }
-    }, 'image/jpeg', 0.95);
+    }, 'image/jpeg', 0.9);
   }, [completedCrop, onCropComplete, onClose]);
 
   if (!isOpen) return null;
