@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy, Shield } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { assertReasonableUpload, downscaleImage } from '../../lib/imageResize';
+import { checkIsAdmin } from '../../lib/admin';
 import { supabase } from '../../lib/supabase';
 import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
 import {
@@ -20,6 +21,7 @@ import { usePageMeta } from '../../lib/seo';
 export default function AccountSettings() {
   usePageMeta({ title: 'Account Settings', path: '/account' });
   const [isFoundingMember, setIsFoundingMember] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
   const [isProPlan, setIsProPlan] = useState(false);
   const [playCount, setPlayCount] = useState<number | null>(null);
@@ -75,6 +77,8 @@ export default function AccountSettings() {
       setIsFoundingMember(sub?.plan === 'founding');
       setPlan((sub?.plan as Plan) || 'free');
       setIsProPlan(rowIsPro(sub));
+
+      checkIsAdmin(currentUser.id).then(setIsAdmin);
 
       // Usage counts for the Plan & Usage card (head:true fetches only the
       // count, no rows).
@@ -376,6 +380,21 @@ export default function AccountSettings() {
                 </p>
               </div>
             </div>
+
+            {/* Admin shortcut — visible only to real admin_users members
+                (server-verified via checkIsAdmin, not user metadata). */}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-4 p-4 bg-board rounded-lg border border-chalk/10 hover:border-primary/40 transition-colors group"
+              >
+                <Shield className="h-6 w-6 text-primary" />
+                <div className="flex-1">
+                  <h3 className="text-chalk font-medium group-hover:text-primary transition-colors">Admin Dashboard</h3>
+                  <p className="text-chalk/70 text-sm">Manage users and feedback</p>
+                </div>
+              </Link>
+            )}
 
             {/* Plan & Usage (B-13). Also the future home of the Stripe
                 Customer Portal link once B-3 ships. */}

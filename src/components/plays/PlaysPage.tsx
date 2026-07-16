@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { checkIsAdmin } from '../../lib/admin';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
 import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -46,7 +47,7 @@ export function PlaysPage() {
 
         if (currentUser) {
           // User is authenticated - show their plays
-          setIsAdmin(currentUser.user_metadata?.is_admin === true);
+          checkIsAdmin(currentUser.id).then(setIsAdmin);
 
           let query = supabase
             .from('plays')

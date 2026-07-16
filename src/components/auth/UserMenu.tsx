@@ -3,6 +3,7 @@ import { User, LogOut, Settings, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { checkIsAdmin } from '../../lib/admin';
 
 interface UserMenuProps {
   user: SupabaseUser;
@@ -48,8 +49,8 @@ export function UserMenu({ user }: UserMenuProps) {
         }
       }
 
-      // Check admin status from user metadata
-      setIsAdmin(user.user_metadata?.is_admin === true);
+      // Server-verified — never trust user_metadata for authorization
+      checkIsAdmin(user.id).then(setIsAdmin);
     } catch (error) {
       console.error('Error fetching avatar:', error);
     }
