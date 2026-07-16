@@ -22,6 +22,34 @@ section); schema context lives in `supabase/SCHEMA.md`.
 
 ## Up next
 
+### B-18 · Stripe go-live: swap sandbox → live mode (human)
+The sandbox end-to-end test passed on 2026-07-15 (checkout with test card →
+webhook → `subscriptions` row → Pro badge + billing portal, all verified).
+What's left to accept real money: in the Stripe **live** account (not the
+sandbox), create the $39/yr price and webhook endpoint, then
+`supabase secrets set` the live `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and
+`STRIPE_WEBHOOK_SECRET`, redeploy the three Edge Functions, and run one real
+transaction. **Human task.** Blocked on B-21 (attorney review) by choice.
+
+### B-21 · Attorney review of legal pages (human)
+`/privacy` and `/terms` (shipped 2026-07-16) are engineering-informed drafts
+matched to actual data practices. Have a licensed attorney review before
+flipping Stripe to live mode. **Human task** — agents skip.
+
+### B-20 · Register DMCA designated agent (human, $6)
+File at dmca.copyright.gov: service provider "Jeremy Knepp" with alternate
+names "Playbuilder Pro" / "playbuilderpro.com", agent email
+support@playbuilderpro.com (live via Zoho as of 2026-07-16). Renew every
+3 years. The ToS §8 takedown channel is already published; registration is
+what secures the §512 safe harbor. **Human task** — agents skip.
+
+### B-19 · Google Analytics consent banner
+GA4 currently loads unconditionally (`index.html` + `public/gtag-init.js`).
+Add a lightweight consent banner: GA loads only after acceptance; decline =
+no analytics cookies; store the choice in localStorage; link to `/privacy`.
+Keep it self-contained (no consent-platform dependency). The last RED item
+from the 2026-07-15 legal audit.
+
 ### B-8 · Manual QA: defensive play save→reload against real Supabase (human)
 The one untested seam from the defensive-playbook feature: with a real signed-in
 session, save a defensive play with zones, reopen via `/designer?play=<id>`,
@@ -34,13 +62,57 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-18 · Stripe go-live (human)
-Work through `supabase/STRIPE_SETUP.md`: create the Stripe product/$39-yr
-price, set secrets, deploy the three Edge Functions, register the webhook,
-set `VITE_BILLING_ENABLED=true` in Netlify, run the test-mode checklist.
-**Human task** — the B-3 code scaffold is merged and inert until this.
+### B-22 · Proactive free-tier limit warning
+Free users only learn they've hit the 15-play/2-playbook cap when the server
+rejects the save (PBP01/PBP02 → upgrade prompt). Add an early nudge: show
+"14 of 15 plays used" style warnings near the caps (SavePlayModal /
+PlaysPage / PlaybooksPage) before the wall, reusing the `/account` Plan &
+Usage counting approach. UX polish, not correctness.
 
 ## Done
+
+- **2026-07-16 · Legal pages + footer + 404** (`94a7358`) — real `/privacy`,
+  `/terms`, `/contact` routes (were blank SPA catch-all pages), written around
+  actual data practices: Supabase/Stripe/GA4/Netlify processor disclosure,
+  public-content notice, self-serve deletion, 13+/COPPA clause, DNT statement,
+  auto-renewal + cancellation + refund disclosure for the $39/yr plan, Founding
+  Member benefit defined, DMCA notice channel, liability cap, Indiana governing
+  law. Site-wide footer (hidden on `/designer`) links them; unknown routes get
+  a 404 page; legal pages added to the sitemap edge function. Follow-ups
+  spawned: B-19 (GA consent), B-20 (DMCA agent), B-21 (attorney review).
+  support@playbuilderpro.com is live (Zoho Mail, DNS via Netlify).
+- **2026-07-15 · PR #9 merged: tap-to-edit icon fix** — 4px drag threshold so
+  real-pointer jitter doesn't swallow the tap-to-customize popover; PR was 18
+  commits stale with a `Canvas.tsx` conflict against B-17's snap guides —
+  resolved (threshold check runs before snap logic), 14th smoke test added.
+- **2026-07-15 · Football avatar icons** (⚠ SQL run: `football_avatars.sql`,
+  applied) — replaced the seeded Dicebear robot avatars with 8 self-contained
+  football-themed SVG data URIs (no external image host); repointed existing
+  users; dropped `api.dicebear.com` from the CSP.
+- **2026-07-15 · SEO foundation + weekly blog workflow** (`9f52677`, ⚠ SQL run:
+  `blog_seo.sql`, applied) — blog posts get real `/blog/<slug>` URLs,
+  per-page title/meta/OG/JSON-LD via `src/lib/seo.ts`, `robots.txt`, dynamic
+  `sitemap.xml` (edge function proxied through Netlify), draft/published
+  workflow with admin Publish toggle. A weekly scheduled agent (Mondays 8am,
+  local) researches a topic and inserts a draft for human review; first post
+  published 2026-07-15.
+- **2026-07-15 · Rebrand: navy/chalk/turf** (`3e70aa3` + follow-ups) — brand
+  tokens swapped (orange→turf `#1FA75D`, black→navy `#101D2E`/`#16283D`,
+  chalk→`#F8F6F1`), route-P logo + wordmark, chalk graph-paper hero with
+  "Draw the play. Run the play. Win the day.", favicon + brand SVGs in
+  `public/`. Hero CTA opens the designer for signed-out visitors.
+- **2026-07-15 · Wristband export (Pro)** (`5bdd2f5`) — the missing Pro
+  feature from the pricing page now exists: numbered 4-per-row call-sheet
+  card grid with dashed cut lines, in both export surfaces (ExportModal +
+  PlaybooksPage), gated behind the same Pro entitlement as playbook PDFs.
+  Closes the gap flagged in B-2/B-14.
+- **2026-07-15 · B-18 (partial): Stripe sandbox verified end-to-end** — all
+  three Edge Functions deployed, sandbox secrets set, webhook registered;
+  test checkout with `4242…` card upgraded a fresh free account to Pro via
+  the webhook and the billing portal opened. Live-mode swap remains (see
+  B-18 in Up next). Gotchas hit and fixed: `VITE_BILLING_ENABLED` must be
+  lowercase `true`; sandbox and live mode each have their own price ID,
+  secret key, and webhook secret.
 
 - **2026-07-11 · Backlog sweep (B-7, B-13, B-10, B-11, B-14, B-15, B-16, B-17,
   B-3 scaffold)** — one branch, one commit per item:
