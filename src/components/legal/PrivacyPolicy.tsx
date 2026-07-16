@@ -62,11 +62,13 @@ export function PrivacyPolicy() {
 
       <LegalSection heading="Cookies and analytics">
         <p>
-          We use Google Analytics 4 to understand aggregate site usage. It sets cookies and may collect your
-          IP-derived approximate location and device information. You can opt out with the{' '}
-          <a className="text-primary hover:underline" href="https://tools.google.com/dlpage/gaoptout" rel="noopener noreferrer" target="_blank">Google Analytics opt-out browser add-on</a>{' '}
-          or by using a content blocker. Apart from analytics, we use browser storage only for essential
-          functions such as keeping you signed in.
+          We use Google Analytics 4 to understand aggregate site usage, but only after you accept the cookie
+          consent banner shown on your first visit. It sets cookies and may collect your IP-derived approximate
+          location and device information. Declining means Google Analytics never loads and no analytics
+          cookies are set; you can change your mind at any time by clearing your browser&rsquo;s local storage
+          for this site, or opt out with the{' '}
+          <a className="text-primary hover:underline" href="https://tools.google.com/dlpage/gaoptout" rel="noopener noreferrer" target="_blank">Google Analytics opt-out browser add-on</a>.
+          Apart from analytics, we use browser storage only for essential functions such as keeping you signed in.
         </p>
         <p>
           Some browsers send a &ldquo;Do Not Track&rdquo; signal. Like most sites, we do not currently respond
