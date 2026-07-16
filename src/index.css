@@ -3,21 +3,5 @@
 @tailwind utilities;
 
 body {
-  background-color: #1A1A1A;
-}
-
-.hero-background {
-  background-image: url('https://images.unsplash.com/photo-1532939163844-547f958e91b4?ixlib=rb-1.2.1&auto=format&fit=crop&q=80');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.15;
-}
-
-.play-diagram {
-  background-image: url('https://raw.githubusercontent.com/stackblitz/stackblitz-blog/main/public/images/chalkboard-play.png');
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.1;
+  background-color: #101D2E;
 }

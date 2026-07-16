@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
+import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
+import {
+  DEFAULT_PREFERENCES,
+  getUserPreferences,
+  saveUserPreferences,
+  type UserPreferences,
+} from '../../lib/userPreferences';
+import { BILLING_ENABLED, openBillingPortal, startProCheckout } from '../../lib/billing';
 
 export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
+  const [plan, setPlan] = useState<Plan>('free');
+  const [isProPlan, setIsProPlan] = useState(false);
+  const [playCount, setPlayCount] = useState<number | null>(null);
+  const [playbookCount, setPlaybookCount] = useState<number | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,6 +37,9 @@ export default function AccountSettings() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
+  const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [initialPrefs, setInitialPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [initialValues, setInitialValues] = useState({
     username: '',
@@ -50,10 +66,26 @@ export default function AccountSettings() {
       // internal session lock.
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('plan')
+        .select('plan, current_period_end')
         .eq('user_id', currentUser.id)
         .maybeSingle();
       setIsFoundingMember(sub?.plan === 'founding');
+      setPlan((sub?.plan as Plan) || 'free');
+      setIsProPlan(rowIsPro(sub));
+
+      // Usage counts for the Plan & Usage card (head:true fetches only the
+      // count, no rows).
+      const [playsRes, playbooksRes] = await Promise.all([
+        supabase.from('plays').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+        supabase.from('playbooks').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+      ]);
+      setPlayCount(playsRes.count ?? 0);
+      setPlaybookCount(playbooksRes.count ?? 0);
+
+      // Team identity + save/export defaults (B-14/B-15)
+      const loadedPrefs = await getUserPreferences(currentUser.id);
+      setPrefs(loadedPrefs);
+      setInitialPrefs(loadedPrefs);
 
       // Fetch user's avatar preferences
       const { data: userRep } = await supabase
@@ -98,10 +130,12 @@ export default function AccountSettings() {
       avatarType !== initialValues.avatarType ||
       avatarUrl !== initialValues.avatarUrl ||
       selectedIconId !== initialValues.selectedIconId ||
-      newPassword !== '';
+      newPassword !== '' ||
+      newEmail !== '' ||
+      JSON.stringify(prefs) !== JSON.stringify(initialPrefs);
 
     setHasChanges(hasUnsavedChanges);
-  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, initialValues]);
+  }, [username, avatarType, avatarUrl, selectedIconId, newPassword, newEmail, initialValues, prefs, initialPrefs]);
 
   const handleSaveChanges = async () => {
     if (!user) return;
@@ -133,6 +167,23 @@ export default function AccountSettings() {
         if (usernameError) throw usernameError;
       }
 
+      // Request email change (B-16). Supabase doesn't switch the address
+      // immediately — it emails a confirmation link (to the new address, and
+      // to the old one too when "Secure email change" is enabled), so tell
+      // the user what to expect instead of claiming it's done.
+      let emailNotice = '';
+      if (newEmail && newEmail !== user.email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+          throw new Error('Please enter a valid email address.');
+        }
+        const { error: emailError } = await supabase.auth.updateUser({
+          email: newEmail
+        });
+        if (emailError) throw emailError;
+        emailNotice = ` A confirmation link has been sent to ${newEmail} — your email address will change once you confirm it (check the old inbox too if it asks).`;
+        setNewEmail('');
+      }
+
       // Update avatar settings if changed
       if (avatarType !== initialValues.avatarType ||
           avatarUrl !== initialValues.avatarUrl ||
@@ -149,6 +200,12 @@ export default function AccountSettings() {
         if (avatarError) throw avatarError;
       }
 
+      // Persist team identity / defaults if changed (B-14/B-15)
+      if (JSON.stringify(prefs) !== JSON.stringify(initialPrefs)) {
+        await saveUserPreferences(user.id, prefs);
+        setInitialPrefs(prefs);
+      }
+
       // Update initial values
       setInitialValues({
         username,
@@ -157,7 +214,7 @@ export default function AccountSettings() {
         selectedIconId
       });
 
-      setSuccess('Changes saved successfully!');
+      setSuccess('Changes saved successfully!' + emailNotice);
       setHasChanges(false);
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to save changes'));
@@ -227,6 +284,45 @@ export default function AccountSettings() {
     setAvatarUrl('');
   };
 
+  // Team logo upload (B-14). Reuses the avatars bucket — same per-user
+  // folder policy and 2MB image limit; no crop step since logos aren't
+  // forced square. The URL only persists via Save Changes.
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !user) return;
+
+    try {
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('File size must be less than 2MB');
+      }
+      if (!file.type.startsWith('image/')) {
+        throw new Error('File must be an image');
+      }
+      setUploadingLogo(true);
+      setError('');
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const filePath = `${user.id}/team-logo-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      setPrefs((p) => ({ ...p, team_logo_url: publicUrl }));
+    } catch (err) {
+      setError(getSafeErrorMessage(err, 'Failed to upload logo'));
+    } finally {
+      setUploadingLogo(false);
+      input.value = '';
+    }
+  };
+
   const handleDeleteAccount = async () => {
     try {
       const { error } = await supabase.rpc('delete_user');
@@ -285,6 +381,86 @@ export default function AccountSettings() {
                   {format(new Date(user.created_at), 'MMMM d, yyyy')}
                 </p>
               </div>
+            </div>
+
+            {/* Plan & Usage (B-13). Also the future home of the Stripe
+                Customer Portal link once B-3 ships. */}
+            <div className="p-4 bg-board rounded-lg border border-chalk/10 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-chalk font-medium">Plan &amp; Usage</h3>
+                {isFoundingMember ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/40 text-primary text-xs font-semibold">
+                    <Trophy className="h-3.5 w-3.5" />
+                    Founding Member
+                  </span>
+                ) : (
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      isProPlan
+                        ? 'bg-primary/10 border border-primary/40 text-primary'
+                        : 'bg-board-light border border-chalk/20 text-chalk/70'
+                    }`}
+                  >
+                    {plan === 'pro' ? 'Pro' : 'Free plan'}
+                  </span>
+                )}
+              </div>
+
+              {isProPlan ? (
+                <>
+                  <p className="text-sm text-chalk/70">
+                    {playCount ?? 0} {playCount === 1 ? 'play' : 'plays'} ·{' '}
+                    {playbookCount ?? 0} {playbookCount === 1 ? 'playbook' : 'playbooks'} — unlimited
+                    on your plan.
+                  </p>
+                  {/* Stripe Customer Portal (B-3) — paid subscribers only;
+                      Founding Members have no Stripe customer to manage. */}
+                  {BILLING_ENABLED && plan === 'pro' && (
+                    <button
+                      type="button"
+                      onClick={() => openBillingPortal().catch((err) => setError(getSafeErrorMessage(err, 'Could not open the billing portal')))}
+                      className="px-4 py-2 text-sm font-medium text-chalk bg-board-light border border-chalk/20 rounded-lg hover:bg-board transition-colors"
+                    >
+                      Manage billing
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Plays', used: playCount ?? 0, limit: FREE_LIMITS.plays },
+                      { label: 'Playbooks', used: playbookCount ?? 0, limit: FREE_LIMITS.playbooks },
+                    ].map((m) => (
+                      <div key={m.label}>
+                        <div className="flex justify-between text-sm text-chalk/80 mb-1">
+                          <span>{m.label}</span>
+                          <span>
+                            {m.used} of {m.limit}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-chalk/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${m.used >= m.limit ? 'bg-red-500' : 'bg-primary'}`}
+                            style={{ width: `${Math.min(100, (m.used / m.limit) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      BILLING_ENABLED
+                        ? startProCheckout().catch((err) => setError(getSafeErrorMessage(err, 'Could not start checkout')))
+                        : navigate('/')
+                    }
+                    className="w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    Upgrade to Pro — $39/yr
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Avatar Section */}
@@ -368,6 +544,152 @@ export default function AccountSettings() {
               )}
             </div>
 
+            {/* Team & Defaults (B-14): stamped on printed plays/playbooks and
+                used to prefill the save dialog in the designer */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-medium text-chalk">Team &amp; Defaults</h3>
+                <p className="text-sm text-chalk/50 mt-1">
+                  Your team name and logo appear on printed plays and playbook PDFs.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="team-name" className="block text-sm font-medium text-chalk mb-1">
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    id="team-name"
+                    value={prefs.team_name ?? ''}
+                    onChange={(e) => setPrefs((p) => ({ ...p, team_name: e.target.value || null }))}
+                    placeholder="e.g., Eastside Eagles"
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="default-game-format" className="block text-sm font-medium text-chalk mb-1">
+                    Default Game Format
+                  </label>
+                  <select
+                    id="default-game-format"
+                    value={prefs.default_game_format}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_game_format: e.target.value as UserPreferences['default_game_format'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="5v5">5v5 Flag Football</option>
+                    <option value="7v7">7v7 Flag Football</option>
+                    <option value="11v11">11v11 Traditional</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                {prefs.team_logo_url && (
+                  <img
+                    src={prefs.team_logo_url}
+                    alt="Team logo"
+                    className="h-12 w-12 object-contain rounded bg-board border border-chalk/10"
+                  />
+                )}
+                <label className="px-4 py-2 bg-board hover:bg-board-light border border-chalk/20 rounded-lg cursor-pointer text-sm text-chalk/70 hover:text-chalk transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoFileSelect}
+                    disabled={uploadingLogo}
+                  />
+                  {uploadingLogo ? 'Uploading…' : prefs.team_logo_url ? 'Replace Logo' : 'Upload Team Logo'}
+                </label>
+                {prefs.team_logo_url && (
+                  <button
+                    type="button"
+                    onClick={() => setPrefs((p) => ({ ...p, team_logo_url: null }))}
+                    className="text-sm text-chalk/50 hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              {/* Save & export defaults (B-15) */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="default-visibility" className="block text-sm font-medium text-chalk mb-1">
+                    Default Play Visibility
+                  </label>
+                  <select
+                    id="default-visibility"
+                    value={prefs.default_visibility}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_visibility: e.target.value as UserPreferences['default_visibility'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="private">Private (only you)</option>
+                    <option value="public">Public (community plays page)</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="default-play-type" className="block text-sm font-medium text-chalk mb-1">
+                    Default Play Type
+                  </label>
+                  <select
+                    id="default-play-type"
+                    value={prefs.default_play_type}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_play_type: e.target.value as UserPreferences['default_play_type'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="pass">Pass</option>
+                    <option value="run">Run</option>
+                    <option value="option">Option</option>
+                    <option value="reverse">Reverse</option>
+                    <option value="screen">Screen</option>
+                    <option value="trick">Trick Play</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="paper-size" className="block text-sm font-medium text-chalk mb-1">
+                    Paper Size (printing)
+                  </label>
+                  <select
+                    id="paper-size"
+                    value={prefs.paper_size}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, paper_size: e.target.value as UserPreferences['paper_size'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="letter">Letter (8.5 × 11 in)</option>
+                    <option value="a4">A4</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="default-export-style" className="block text-sm font-medium text-chalk mb-1">
+                    Default Playbook Export Style
+                  </label>
+                  <select
+                    id="default-export-style"
+                    value={prefs.default_export_style}
+                    onChange={(e) =>
+                      setPrefs((p) => ({ ...p, default_export_style: e.target.value as UserPreferences['default_export_style'] }))
+                    }
+                    className="block w-full px-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="simple">Simple (1 per page)</option>
+                    <option value="detailed">Detailed (1 per page)</option>
+                    <option value="grid">Grid (all on one page)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             {/* Username Section */}
             <div className="space-y-4">
               <div>
@@ -383,6 +705,33 @@ export default function AccountSettings() {
                     id="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Email Section (B-16) */}
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="new-email" className="block text-sm font-medium text-chalk">
+                  Email Address
+                </label>
+                <p className="mt-1 text-sm text-chalk/50">
+                  Currently <span className="text-chalk/80">{user.email}</span>. Changing it sends a
+                  confirmation link — the switch only happens after you confirm.
+                </p>
+                <div className="mt-2 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
+                    <Mail className="h-5 w-5 text-chalk/50" />
+                  </div>
+                  <input
+                    type="email"
+                    id="new-email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="New email address"
+                    autoComplete="email"
                     className="block w-full pl-10 pr-3 py-2 border border-chalk/20 rounded-lg bg-board text-chalk placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
                 </div>

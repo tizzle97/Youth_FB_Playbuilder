@@ -22,21 +22,6 @@ section); schema context lives in `supabase/SCHEMA.md`.
 
 ## Up next
 
-### B-3 · Stripe Checkout + Customer Portal + webhook (scaffold)
-Supabase Edge Function for a signature-verified Stripe webhook writing to
-`subscriptions` (service role); checkout session creation for the $39/yr
-subscription; portal link on the account page. Human (Jeremy) supplies the
-Stripe account, price ID, and deploys the function — the PR delivers code +
-step-by-step setup doc. **Blocked on:** Stripe account decisions. Human review
-mandatory (money).
-
-### B-7 · Homepage Pricing accuracy pass
-Audit `src/components/Pricing.tsx` against the monetization plan: Free = 15
-plays / 2 playbooks / single-play PDF / community; Pro = $39/yr annual-only with
-unlimited + full playbook PDFs + wristband export. Remove any leftover
-non-functional Donate buttons or unfulfillable perk tiers. CTA can say "coming
-soon" until B-3 ships — no fake checkout.
-
 ### B-8 · Manual QA: defensive play save→reload against real Supabase (human)
 The one untested seam from the defensive-playbook feature: with a real signed-in
 session, save a defensive play with zones, reopen via `/designer?play=<id>`,
@@ -44,52 +29,58 @@ confirm icons/zones/routes reload intact. (The smoke suite covers this flow with
 a mocked backend; this checks the real DB round trip once.) **Human task** —
 agents skip.
 
-### B-10 · Play voting
-Upvotes on public/community plays: schema (new SQL file + SCHEMA.md), RLS
-(one vote per user per play), and UI on community cards. Prerequisite for B-11.
-⚠ requires SQL run.
-
-### B-11 · Re-enable TopPlays homepage section (real data)
-`<TopPlays />` is disabled in `App.tsx` until backed by real top-voted plays.
-Wire it to voting data and re-enable. **Blocked on:** B-10.
-
 ### B-12 · Testimonials from real user feedback (human-gated)
 `<Testimonials />` stays disabled until there are real quotes with permission to
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-13 · Account page: Plan & usage section
-Card on `/account` showing current plan (Free / Pro / **Founding Member** badge —
-overlaps B-4's badge), live usage meters ("9 of 15 plays · 1 of 2 playbooks"
-via `useEntitlement()` + `FREE_LIMITS` + count queries), and an upgrade CTA for
-free users. This section is also the future home of B-3's Stripe Customer
-Portal link. **Acceptance:** free user sees meters + CTA; founding user sees
-badge and no CTA.
-
-### B-14 · Team identity settings (name/logo on exports)
-Account settings for team name and optional logo, stamped onto single-play PDFs,
-playbook PDFs, and wristband exports. Include default game format (5v5/7v7) to
-prefill `SavePlayModal`. Needs a `user_preferences` store (new idempotent SQL +
-SCHEMA.md). ⚠ requires SQL run.
-
-### B-15 · Save & export default preferences
-Account settings for: default play visibility (private/public), default play
-type, paper size (Letter/A4), and default playbook export style (simple/
-detailed/grid). Store alongside B-14's preferences. **Blocked on:** B-14
-(shares the preferences store).
-
-### B-16 · Email change on account page
-`supabase.auth.updateUser({ email })` + confirmation-flow messaging (Supabase
-sends a verification email to the new address). Auth-adjacent → human review.
-
-### B-17 · Equal-spacing distribution guides in the designer
-Visio-style "distribute evenly": while dragging an icon between two others that
-share its row/column, snap to the equidistant point and show spacing guides.
-Follow-up to the alignment snapping shipped 2026-07-07 (`computeSnap` in
-`Canvas.tsx` is the extension point). Deferred by Jeremy to keep that change
-focused.
+### B-18 · Stripe go-live (human)
+Work through `supabase/STRIPE_SETUP.md`: create the Stripe product/$39-yr
+price, set secrets, deploy the three Edge Functions, register the webhook,
+set `VITE_BILLING_ENABLED=true` in Netlify, run the test-mode checklist.
+**Human task** — the B-3 code scaffold is merged and inert until this.
 
 ## Done
+
+- **2026-07-11 · Backlog sweep (B-7, B-13, B-10, B-11, B-14, B-15, B-16, B-17,
+  B-3 scaffold)** — one branch, one commit per item:
+  - **B-7 Pricing accuracy:** card content already matched the plan; fixed the
+    real inaccuracy — Founding/Pro users no longer see Free as "Your current
+    plan" / Pro as "Coming soon" (now "Yours free for life").
+  - **B-13 Plan & Usage card** on `/account`: plan badge, live meters vs
+    `FREE_LIMITS` via head-count queries, upgrade CTA for free users only.
+    Reads `subscriptions` directly (exported `rowIsPro()`) — the B-4 gotrue
+    deadlock rules out `useEntitlement()` here. Smoke tests cover both states.
+  - **B-10 Play voting** (⚠ requires SQL run: `play_votes.sql`): `play_votes`
+    table, one vote per user per play, votes only on public plays,
+    trigger-cached `plays.upvotes` (mirrors posts votes), `PlayVoteButton` on
+    PlaysPage cards with optimistic toggle.
+  - **B-11 TopPlays re-enabled**, querying real top-voted public plays;
+    renders nothing until at least one public play has a vote (no placeholder
+    content, and homepage-safe before the SQL run).
+  - **B-14 Team identity** (⚠ requires SQL run: `user_preferences.sql`, also
+    carries B-15's columns): team name/logo (avatars bucket) + default game
+    format on `/account`; name/logo stamped on the single-play sheet and all
+    playbook print layouts (both ExportModal and PlaybooksPage); SavePlayModal
+    prefills game format. Wristband export still doesn't exist in the app
+    (same finding as B-2) — nothing to stamp there.
+  - **B-15 Save & export defaults:** default visibility/play type prefill the
+    save dialog; paper size (Letter/A4) applied to every `@page` rule; default
+    playbook export style listed first in PlaybooksPage's export menu.
+  - **B-16 Email change** on `/account` via `supabase.auth.updateUser({email})`
+    with honest confirmation-flow messaging. **Auth — human review + manual
+    end-to-end test needed** (Supabase email settings involved).
+  - **B-17 Distribution guides:** `computeSnap()` now snaps to the equidistant
+    point between two row/column mates (midpoint competes in the same
+    nearest-candidate contest; ties go to alignment) with equal-spacing
+    bracket guides; smoke test asserts exact equidistance.
+  - **B-3 Stripe scaffold (money — human review):** Edge Functions
+    `stripe-webhook` (signature-verified, service-role writer of
+    `subscriptions`, never downgrades founding members),
+    `create-checkout-session` (JWT-verified, $39/yr), `create-portal-session`;
+    client `billing.ts` gated behind `VITE_BILLING_ENABLED` (UI stays
+    "coming soon" until go-live); `supabase/STRIPE_SETUP.md` has the human
+    checklist (now B-18).
 
 - **2026-07-11 · B-6: Repair eslint (flat-config migration)** — `eslint.config.js`
   no longer uses the eslintrc-only `extends` key (unsupported by eslint 9 flat

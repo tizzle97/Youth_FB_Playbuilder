@@ -4,11 +4,12 @@ import { supabase } from './lib/supabase';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Features } from './components/Features';
-// TopPlays and Testimonials are temporarily disabled on the homepage until
-// backed by real data (top-voted plays + collected user feedback).
+import { TopPlays } from './components/TopPlays';
+// Testimonials stays disabled on the homepage until backed by real,
+// permission-granted user quotes (see BACKLOG B-12).
 import { Pricing } from './components/Pricing';
 import { CommunityPage } from './components/community/CommunityPage';
-import { BlogPage } from './components/blog/BlogPage';
+import { BlogPage, BlogPostPage } from './components/blog/BlogPage';
 import { AuthPage } from './components/auth/AuthPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { AccountSettings } from './components/auth/AccountSettings';
@@ -23,13 +24,13 @@ function HomePage() {
     <>
       <Hero />
       <Features />
+      {/* TopPlays self-hides until at least one public play has real votes
+          (and until play_votes.sql has been run). */}
+      <TopPlays />
       {/*
-        TODO: Re-enable once backed by real data.
-        - <TopPlays />: replace placeholder data with real top-voted plays
-          once play voting is implemented.
-        - <Testimonials />: replace placeholder quotes with real, collected
-          user feedback.
-        Components are kept in src/components/ for future use.
+        TODO: Re-enable <Testimonials /> once there are real, collected user
+        quotes with permission to publish (BACKLOG B-12). Component kept in
+        src/components/ for future use.
       */}
       <Pricing />
     </>
@@ -75,6 +76,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:slug" element={<BlogPostPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
           <Route path="/account" element={<AccountSettings />} />

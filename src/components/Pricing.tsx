@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
 import { useEntitlement, FREE_LIMITS } from '../lib/entitlements';
+import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
+import { getSafeErrorMessage } from '../lib/errors';
 
 const freeFeatures = [
   'All Play Designer tools',
@@ -20,7 +22,20 @@ const proFeatures = [
 ];
 
 export function Pricing() {
-  const { isFoundingMember } = useEntitlement();
+  const { isFoundingMember, isPro } = useEntitlement();
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const handleUpgrade = async () => {
+    try {
+      setCheckoutError(null);
+      setCheckoutBusy(true);
+      await startProCheckout(); // redirects away on success
+    } catch (err) {
+      setCheckoutError(getSafeErrorMessage(err, 'Could not start checkout. Please try again.'));
+      setCheckoutBusy(false);
+    }
+  };
 
   return (
     <div className="py-16 bg-board-light border-t border-chalk/10">
@@ -61,17 +76,19 @@ export function Pricing() {
               ))}
             </ul>
             <div className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk/70">
-              Your current plan
+              {isPro ? 'Included in your plan' : 'Your current plan'}
             </div>
           </div>
 
-          {/* Pro — coming soon */}
+          {/* Pro — live checkout once billing is enabled (B-3), otherwise coming soon */}
           <div className="relative bg-board rounded-2xl shadow-xl border border-primary p-8">
-            <div className="absolute -top-4 inset-x-0 flex justify-center">
-              <div className="inline-block bg-primary px-4 py-1 rounded-full text-sm font-semibold text-white">
-                Coming soon
+            {!BILLING_ENABLED && (
+              <div className="absolute -top-4 inset-x-0 flex justify-center">
+                <div className="inline-block bg-primary px-4 py-1 rounded-full text-sm font-semibold text-white">
+                  Coming soon
+                </div>
               </div>
-            </div>
+            )}
             <h3 className="text-xl font-bold text-chalk">Pro</h3>
             <div className="mt-4 flex items-baseline text-chalk">
               <span className="text-4xl font-bold tracking-tight">$39</span>
@@ -86,12 +103,31 @@ export function Pricing() {
                 </li>
               ))}
             </ul>
-            <button
-              disabled
-              className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary/40 text-white/80 cursor-not-allowed"
-            >
-              Coming soon
-            </button>
+            {isPro ? (
+              <div className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary/15 border border-primary/40 text-primary">
+                {isFoundingMember ? 'Yours free for life' : 'Your current plan'}
+              </div>
+            ) : BILLING_ENABLED ? (
+              <>
+                <button
+                  onClick={handleUpgrade}
+                  disabled={checkoutBusy}
+                  className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                >
+                  {checkoutBusy ? 'Redirecting to checkout…' : 'Upgrade to Pro — $39/yr'}
+                </button>
+                {checkoutError && (
+                  <p className="mt-3 text-sm text-red-400 text-center">{checkoutError}</p>
+                )}
+              </>
+            ) : (
+              <button
+                disabled
+                className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary/40 text-white/80 cursor-not-allowed"
+              >
+                Coming soon
+              </button>
+            )}
           </div>
         </div>
       </div>

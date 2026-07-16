@@ -3,6 +3,7 @@ import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
+import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
 
 interface Play {
@@ -14,6 +15,7 @@ interface Play {
   thumbnail?: string;
   user_id: string;
   is_public: boolean;
+  upvotes?: number;
   metadata?: any;
   profiles?: {
     username: string;
@@ -26,6 +28,7 @@ export function PlaysPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'offense' | 'defense' | 'special_teams' | 'all'>('all');
+  const [votedPlayIds, setVotedPlayIds] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const navigate = useNavigate();
@@ -57,6 +60,22 @@ export function PlaysPage() {
 
           if (fetchError) throw fetchError;
           setPlays(data || []);
+
+          // Which of these plays has the current user already voted for?
+          // One query for the whole page. Vote data is additive (B-10) — if
+          // the play_votes table isn't migrated yet this just leaves the set
+          // empty rather than failing the page.
+          const ids = (data || []).filter((p) => p.is_public).map((p) => p.id);
+          if (ids.length > 0) {
+            const { data: votes } = await supabase
+              .from('play_votes')
+              .select('play_id')
+              .eq('user_id', currentUser.id)
+              .in('play_id', ids);
+            setVotedPlayIds(new Set((votes || []).map((v) => v.play_id)));
+          } else {
+            setVotedPlayIds(new Set());
+          }
         } else {
           // User is not authenticated - show public plays (limited to 10)
           let query = supabase
@@ -402,7 +421,7 @@ export function PlaysPage() {
 
           {/* Action buttons for authenticated users */}
           <div className="flex items-center gap-2">
-            <AddToPlaybookButton 
+            <AddToPlaybookButton
               playId={play.id}
               playName={play.name}
               onSuccess={() => {
@@ -410,7 +429,17 @@ export function PlaysPage() {
                 console.log(`"${play.name}" added to playbook successfully!`);
               }}
             />
-            
+
+            {play.is_public && (
+              <PlayVoteButton
+                playId={play.id}
+                upvotes={play.upvotes ?? 0}
+                voted={votedPlayIds.has(play.id)}
+                userId={user.id}
+                onError={setError}
+              />
+            )}
+
             {isAdmin && (
               <button
                 onClick={() => handleDeletePlay(play.id)}
@@ -441,6 +470,11 @@ export function PlaysPage() {
               </p>
             )}
           </div>
+          {play.is_public && (
+            <div className="mt-2">
+              <PlayVoteButton playId={play.id} upvotes={play.upvotes ?? 0} voted={false} onError={setError} />
+            </div>
+          )}
         </div>
       )}
     </div>

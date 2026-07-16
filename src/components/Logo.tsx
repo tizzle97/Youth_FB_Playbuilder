@@ -1,55 +1,58 @@
 import React from 'react';
 
 /**
- * Playbuilder Pro logo — a football resting in a trophy cup.
- * Inherits text color for the trophy (use text-chalk on dark backgrounds);
- * the football is always brand orange.
+ * Playbuilder Pro brand icon — a curl route tracing a "P" on a navy field
+ * tile, with a turf-green arrowhead. Matches public/brand-icon.svg.
  */
 export function Logo({ className = 'h-8 w-8' }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 64 64"
+      viewBox="0 0 100 100"
       className={className}
-      fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="Playbuilder Pro logo"
     >
-      {/* Football (drawn first; lower half tucks behind the cup rim) */}
-      <ellipse cx="32" cy="15" rx="12.5" ry="8.5" fill="#FF5722" />
-      {/* Lace */}
-      <line x1="25.5" y1="15" x2="38.5" y2="15" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="28" y1="12.8" x2="28" y2="17.2" stroke="#FFFFFF" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="32" y1="12.8" x2="32" y2="17.2" stroke="#FFFFFF" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="36" y1="12.8" x2="36" y2="17.2" stroke="#FFFFFF" strokeWidth="1.4" strokeLinecap="round" />
-
-      {/* Trophy handles */}
+      <defs>
+        <linearGradient id="pbp-tile" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#16283D" />
+          <stop offset="1" stopColor="#101D2E" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#pbp-tile)" />
+      {/* faint yard hashes */}
+      <g stroke="#F8F6F1" strokeOpacity="0.10" strokeWidth="2.6" strokeLinecap="round">
+        <path d="M14 22 H22" />
+        <path d="M14 40 H22" />
+        <path d="M14 58 H22" />
+        <path d="M78 22 H86" />
+        <path d="M78 40 H86" />
+        <path d="M78 58 H86" />
+      </g>
+      {/* player */}
+      <circle cx="38" cy="79" r="7.5" fill="none" stroke="#F8F6F1" strokeWidth="6" />
+      {/* curl route tracing a P */}
       <path
-        d="M12 24 C5 24 3 30 6 34 C8.5 37.5 12 39 16 39.5"
-        stroke="currentColor"
-        strokeWidth="3.2"
+        d="M38 66 V38 Q38 27 49 27 H55 Q68 27 68 40 V43 Q68 56 55 56 H53"
+        fill="none"
+        stroke="#F8F6F1"
+        strokeWidth="7"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <path
-        d="M52 24 C59 24 61 30 58 34 C55.5 37.5 52 39 48 39.5"
-        stroke="currentColor"
-        strokeWidth="3.2"
-        strokeLinecap="round"
-      />
-
-      {/* Trophy cup */}
-      <path
-        d="M12 20 H52 V27 C52 38.5 43.5 46.5 32 46.5 C20.5 46.5 12 38.5 12 27 Z"
-        fill="currentColor"
-      />
-
-      {/* Stem */}
-      <path d="M28.5 46.5 L27 53 H37 L35.5 46.5 Z" fill="currentColor" />
-
-      {/* Base */}
-      <path
-        d="M23 53 H41 C42.7 53 44 54.3 44 56 V59 H20 V56 C20 54.3 21.3 53 23 53 Z"
-        fill="currentColor"
-      />
+      {/* arrowhead (turf) closing the curl */}
+      <path d="M42 56 L55 47.5 L55 64.5 Z" fill="#1FA75D" />
     </svg>
+  );
+}
+
+/**
+ * Wordmark: PLAYBUILDER in ink, PRO in turf green. Pass `light` when the
+ * background is chalk/light so the ink flips to navy.
+ */
+export function Wordmark({ light = false, className = 'text-xl' }: { light?: boolean; className?: string }) {
+  return (
+    <span className={`font-bold tracking-tight ${className} ${light ? 'text-board' : 'text-chalk'}`}>
+      PLAYBUILDER<span className="text-primary">PRO</span>
+    </span>
   );
 }

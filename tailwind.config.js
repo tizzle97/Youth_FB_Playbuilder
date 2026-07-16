@@ -5,16 +5,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#FF5722', // Vibrant orange
-          dark: '#F4511E',
+          DEFAULT: '#1FA75D', // Turf green (brand accent)
+          dark: '#178B4D',
         },
         chalk: {
-          DEFAULT: '#E3E3E3',
-          dim: '#A0A0A0',
+          DEFAULT: '#F8F6F1', // Warm chalk cream (brand)
+          dim: '#8FA0B5',
         },
         board: {
-          DEFAULT: '#1A1A1A',
-          light: '#2A2A2A',
+          DEFAULT: '#101D2E', // Deep navy (brand)
+          light: '#16283D',
         },
       },
       fontFamily: {

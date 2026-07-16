@@ -55,7 +55,7 @@ test('home page renders without uncaught errors', async ({ page }) => {
   page.on('pageerror', (err) => errors.push(err));
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Flag Football League');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Win the day');
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
 });
 
@@ -178,6 +178,50 @@ test('snap: centerline + yard grid on placement, row alignment, magnet toggles o
 
   state = await canvasState(page);
   expect(state.playerIcons[2].x).not.toBe(0.5);
+});
+
+test('distribute: dragging between two row-mates snaps to the equidistant point (B-17)', async ({ page }) => {
+  await openDesigner(page);
+
+  // Two anchors on one row. The second click sits a few px off the first's
+  // row so row alignment proves the y matches exactly. Anchors avoid
+  // straddling x=0.5 symmetrically so the midpoint isn't also the
+  // centerline (which plain alignment would already snap to).
+  await btn(page, 'Player Q').click();
+  const a1 = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(a1.x, a1.y);
+
+  let state = await canvasState(page);
+  const rowY = state.playerIcons[0].y;
+
+  await btn(page, 'Player A').click();
+  const a2 = await canvasPoint(page, 0.56, rowY);
+  await page.mouse.click(a2.x, a2.y + 4);
+
+  state = await canvasState(page);
+  expect(state.playerIcons[1].y).toBe(rowY);
+  const mid = (state.playerIcons[0].x + state.playerIcons[1].x) / 2;
+
+  // Third icon placed away from the row, then dragged to a spot a few px
+  // off the midpoint — it should land exactly equidistant on the row.
+  await btn(page, 'Player B').click();
+  const spot = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+
+  state = await canvasState(page);
+  const from = await canvasPoint(page, state.playerIcons[2].x, state.playerIcons[2].y);
+  const target = await canvasPoint(page, mid, rowY);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 5, target.y + 3, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[2].y).toBe(rowY);
+  expect(state.playerIcons[2].x).toBeCloseTo(mid, 10);
+  // Equal gaps either side
+  const [q, a, b] = state.playerIcons;
+  expect(b.x - q.x).toBeCloseTo(a.x - b.x, 10);
 });
 
 test('customize a placed icon: new label, new color, route recolors to match', async ({ page }) => {
@@ -397,6 +441,14 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
   await page.route('**/rest/v1/subscriptions**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'founding' }) }),
   );
+  // Usage counts (B-13) arrive as HEAD requests; supabase-js reads the count
+  // from the Content-Range header.
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/23', 'access-control-expose-headers': 'content-range' }, body: '' }),
+  );
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/4', 'access-control-expose-headers': 'content-range' }, body: '' }),
+  );
 
   await page.goto('/account');
 
@@ -405,8 +457,13 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
   // The username section is where the crash happened (icon next to the input)
   await expect(page.locator('#username')).toBeVisible();
   await expect(page.getByText('Delete Account').first()).toBeVisible();
-  // B-4: Founding Member badge (grandfathered subscriptions row)
-  await expect(page.getByText('Founding Member')).toBeVisible();
+  // B-4: Founding Member badge (grandfathered subscriptions row) — in the
+  // page header and again in the B-13 Plan & Usage card.
+  await expect(page.getByText('Founding Member').first()).toBeVisible();
+  // B-13: founding user sees the unlimited summary and NO upgrade CTA
+  await expect(page.getByText('Plan & Usage')).toBeVisible();
+  await expect(page.getByText('unlimited on your plan')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Upgrade to Pro/ })).toHaveCount(0);
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
 });
 
@@ -449,11 +506,22 @@ test('account settings: free-plan user sees no Founding Member badge', async ({ 
   await page.route('**/rest/v1/subscriptions**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }),
   );
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/9', 'access-control-expose-headers': 'content-range' }, body: '' }),
+  );
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' }),
+  );
 
   await page.goto('/account');
 
   await expect(page.getByRole('heading', { name: 'Account Settings' })).toBeVisible();
   await expect(page.getByText('Founding Member')).toHaveCount(0);
+  // B-13: free user sees live usage meters + the upgrade CTA
+  await expect(page.getByText('Free plan')).toBeVisible();
+  await expect(page.getByText('9 of 15')).toBeVisible();
+  await expect(page.getByText('1 of 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Upgrade to Pro/ })).toBeVisible();
 });
 
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
