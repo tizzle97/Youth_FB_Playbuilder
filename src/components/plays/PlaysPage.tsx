@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
 import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { usePageMeta } from '../../lib/seo';
 
 interface Play {
   id: string;
@@ -24,6 +25,7 @@ interface Play {
 }
 
 export function PlaysPage() {
+  usePageMeta({ title: 'My Plays', description: 'Your saved football plays in Playbuilder Pro.', path: '/plays' });
   const [plays, setPlays] = useState<Play[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -73,7 +73,7 @@ export function Hero() {
                 <span className="block text-primary-dark">Win the day.</span>
               </h1>
               <p className="mt-3 text-base text-board/65 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl">
-                Playbuilder Pro is the play designer for flag and youth coaches — draw routes
+                Playbuilder Pro is the play designer for youth and flag football coaches — draw routes
                 on a real field, organize by situation, and print what your players need on game day.
               </p>
               <div className="mt-5 sm:mt-8 sm:flex sm:justify-center">

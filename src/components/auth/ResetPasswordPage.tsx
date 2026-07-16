@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { usePageMeta } from '../../lib/seo';
 
 /**
  * Landing page for Supabase password-recovery links
@@ -10,6 +11,7 @@ import { supabase } from '../../lib/supabase';
  * which the user can set a new password.
  */
 export function ResetPasswordPage() {
+  usePageMeta({ title: 'Reset Password', path: '/auth/reset-password' });
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');

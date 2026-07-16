@@ -25,8 +25,10 @@ import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { TermsOfService } from './components/legal/TermsOfService';
 import { ContactPage } from './components/legal/ContactPage';
 import { initAnalyticsFromStoredConsent } from './lib/analytics';
+import { usePageMeta } from './lib/seo';
 
 function HomePage() {
+  usePageMeta({ path: '/' });
   return (
     <>
       <Hero />

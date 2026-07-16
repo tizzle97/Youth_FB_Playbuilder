@@ -17,7 +17,7 @@ export function PrivacyPolicy() {
       <LegalSection heading="Who we are">
         <p>
           Playbuilder Pro (&ldquo;we,&rdquo; &ldquo;us&rdquo;) operates playbuilderpro.com, a web application
-          that lets flag and youth football coaches design plays, build playbooks, and share content with a
+          that lets youth and flag football coaches design plays, build playbooks, and share content with a
           community. Questions about this policy or your data: <a className="text-primary hover:underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
         </p>
       </LegalSection>

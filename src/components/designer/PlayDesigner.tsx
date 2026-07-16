@@ -13,8 +13,10 @@ import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { getUserPreferences, type UserPreferences } from '../../lib/userPreferences';
+import { usePageMeta } from '../../lib/seo';
 
 export function PlayDesigner() {
+  usePageMeta({ title: 'Play Designer', description: 'Draw football plays on a real field — routes, formations, and zones — then save, print, or export.', path: '/designer' });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const canvasContainerRef = useRef<HTMLDivElement>(null);

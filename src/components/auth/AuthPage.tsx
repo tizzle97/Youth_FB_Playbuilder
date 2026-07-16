@@ -3,8 +3,10 @@ import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { usePageMeta } from '../../lib/seo';
 
 export function AuthPage() {
+  usePageMeta({ title: 'Sign In', path: '/auth' });
   const [isSignUp, setIsSignUp] = useState(false);
   const [isResetMode, setIsResetMode] = useState(false);
   const [email, setEmail] = useState('');

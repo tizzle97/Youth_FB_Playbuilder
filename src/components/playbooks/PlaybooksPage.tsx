@@ -24,6 +24,7 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
+import { usePageMeta } from '../../lib/seo';
 
 interface Playbook {
   id: string;
@@ -46,6 +47,7 @@ interface PlayInPlaybook {
 }
 
 export function PlaybooksPage() {
+  usePageMeta({ title: 'My Playbooks', description: 'Organize plays into playbooks and export game-day PDFs.', path: '/playbooks' });
   const navigate = useNavigate();
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { BlogManagement } from './BlogManagement';
 import { FeedbackManagement } from './FeedbackManagement';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { usePageMeta } from '../../lib/seo';
 
 interface AdminUserRow {
   id: string;
@@ -14,6 +15,7 @@ interface AdminUserRow {
 }
 
 export function AdminDashboard() {
+  usePageMeta({ title: 'Admin', path: '/admin' });
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

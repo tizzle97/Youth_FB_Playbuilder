@@ -14,8 +14,10 @@ import {
   type UserPreferences,
 } from '../../lib/userPreferences';
 import { BILLING_ENABLED, openBillingPortal, startProCheckout } from '../../lib/billing';
+import { usePageMeta } from '../../lib/seo';
 
 export default function AccountSettings() {
+  usePageMeta({ title: 'Account Settings', path: '/account' });
   const [isFoundingMember, setIsFoundingMember] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
   const [isProPlan, setIsProPlan] = useState(false);

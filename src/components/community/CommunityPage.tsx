@@ -7,8 +7,10 @@ import { CreatePostButton } from './CreatePostButton';
 import type { TimeRange } from '../../types/community';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
+import { usePageMeta } from '../../lib/seo';
 
 export function CommunityPage() {
+  usePageMeta({ title: 'Community Plays & Forum', description: 'Share plays, ask questions, and learn from other youth and flag football coaches in the Playbuilder Pro community.', path: '/community' });
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
   const [searchQuery, setSearchQuery] = useState('');
   const [posts, setPosts] = useState<any[]>([]);

@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 const SITE_NAME = 'Playbuilder Pro';
 const SITE_URL = 'https://playbuilderpro.com';
 const DEFAULT_DESCRIPTION =
-  'Playbuilder Pro is the play designer for flag and youth football coaches — draw routes on a real field, build playbooks, and print game-day sheets.';
+  'Playbuilder Pro is the play designer for youth and flag football coaches — from 5v5 flag to 11v11. Draw routes on a real field, build playbooks, and print game-day sheets.';
 
 type PageMeta = {
   title?: string;
@@ -43,7 +43,7 @@ const JSONLD_ID = 'pbp-jsonld';
  */
 export function usePageMeta({ title, description, path, jsonLd }: PageMeta) {
   useEffect(() => {
-    const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Flag Football Play Designer`;
+    const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Youth & Flag Football Play Designer`;
     const desc = description || DEFAULT_DESCRIPTION;
     const url = `${SITE_URL}${path ?? window.location.pathname}`;
 

@@ -125,9 +125,9 @@ export function BlogPage() {
   const [error, setError] = useState<string | null>(null);
 
   usePageMeta({
-    title: 'Blog — Flag Football Coaching Tips & Strategy',
+    title: 'Blog — Youth & Flag Football Coaching Tips',
     description:
-      'Coaching tips, play concepts, drills, and strategy for flag and youth football coaches, from the team behind Playbuilder Pro.',
+      'Coaching tips, play concepts, drills, and strategy for youth and flag football coaches, from the team behind Playbuilder Pro.',
     path: '/blog',
   });
 
