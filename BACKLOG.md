@@ -43,13 +43,6 @@ support@playbuilderpro.com (live via Zoho as of 2026-07-16). Renew every
 3 years. The ToS §8 takedown channel is already published; registration is
 what secures the §512 safe harbor. **Human task** — agents skip.
 
-### B-19 · Google Analytics consent banner
-GA4 currently loads unconditionally (`index.html` + `public/gtag-init.js`).
-Add a lightweight consent banner: GA loads only after acceptance; decline =
-no analytics cookies; store the choice in localStorage; link to `/privacy`.
-Keep it self-contained (no consent-platform dependency). The last RED item
-from the 2026-07-15 legal audit.
-
 ### B-8 · Manual QA: defensive play save→reload against real Supabase (human)
 The one untested seam from the defensive-playbook feature: with a real signed-in
 session, save a defensive play with zones, reopen via `/designer?play=<id>`,
@@ -71,6 +64,20 @@ Usage counting approach. UX polish, not correctness.
 
 ## Done
 
+- **2026-07-16 · B-19: Google Analytics consent banner** — GA4 no longer loads
+  unconditionally: `index.html`'s static gtag.js/`public/gtag-init.js` tags are
+  gone, replaced by `src/lib/analytics.ts`'s `loadGoogleAnalytics()` /
+  `storeConsent()` / `initAnalyticsFromStoredConsent()`, which inject gtag.js
+  and initialize it only after the visitor accepts. New `<ConsentBanner />`
+  (bottom-of-page, hidden on `/designer` like Footer/FeedbackButton) shows
+  Accept/Decline + a `/privacy` link on first visit; the choice persists in
+  `localStorage` (`pbp-analytics-consent`) so the banner doesn't reappear.
+  Declining never injects the GA script — no analytics cookies are set.
+  Self-contained, no consent-platform dependency. Updated `/privacy`'s
+  "Cookies and analytics" section to describe the new consent flow. 3 new
+  smoke tests cover decline (banner hides, GA never loads, persists across
+  reload), accept (GA script tag appears, persists across reload), and the
+  Designer exclusion. Last RED item from the 2026-07-15 legal audit.
 - **2026-07-16 · Legal pages + footer + 404** (`94a7358`) — real `/privacy`,
   `/terms`, `/contact` routes (were blank SPA catch-all pages), written around
   actual data practices: Supabase/Stripe/GA4/Netlify processor disclosure,

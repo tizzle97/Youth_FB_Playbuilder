@@ -59,6 +59,41 @@ test('home page renders without uncaught errors', async ({ page }) => {
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
 });
 
+const gaScriptPresent = (page: Page) =>
+  page.evaluate(() => Boolean(document.querySelector('script[src*="googletagmanager.com/gtag/js"]')));
+
+test('GA consent banner (B-19): declining hides it and blocks the GA script', async ({ page }) => {
+  await page.goto('/');
+  const banner = page.getByText('We use Google Analytics', { exact: false });
+  await expect(banner).toBeVisible();
+  expect(await gaScriptPresent(page)).toBe(false);
+
+  await page.getByRole('button', { name: 'Decline' }).click();
+  await expect(banner).not.toBeVisible();
+  expect(await gaScriptPresent(page)).toBe(false);
+  expect(await page.evaluate(() => localStorage.getItem('pbp-analytics-consent'))).toBe('denied');
+
+  await page.reload();
+  await expect(banner).not.toBeVisible();
+  expect(await gaScriptPresent(page)).toBe(false);
+});
+
+test('GA consent banner (B-19): accepting loads gtag.js and remembers the choice', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Accept' }).click();
+  await expect(page.getByText('We use Google Analytics', { exact: false })).not.toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('pbp-analytics-consent'))).toBe('granted');
+  expect(await gaScriptPresent(page)).toBe(true);
+
+  await page.reload();
+  expect(await gaScriptPresent(page)).toBe(true);
+});
+
+test('GA consent banner is hidden on the full-screen Play Designer', async ({ page }) => {
+  await openDesigner(page);
+  await expect(page.getByText('We use Google Analytics', { exact: false })).toHaveCount(0);
+});
+
 test('offense: place a player, draw a straight route, undo both', async ({ page }) => {
   await openDesigner(page);
 

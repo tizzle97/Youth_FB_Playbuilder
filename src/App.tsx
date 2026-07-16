@@ -19,10 +19,12 @@ import { PlaybooksPage } from './components/playbooks/PlaybooksPage';
 import { FeedbackButton } from './components/FeedbackButton';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { Footer } from './components/Footer';
+import { ConsentBanner } from './components/ConsentBanner';
 import { NotFound } from './components/NotFound';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { TermsOfService } from './components/legal/TermsOfService';
 import { ContactPage } from './components/legal/ContactPage';
+import { initAnalyticsFromStoredConsent } from './lib/analytics';
 
 function HomePage() {
   return (
@@ -72,6 +74,10 @@ function RecoveryRedirect() {
 }
 
 function App() {
+  useEffect(() => {
+    initAnalyticsFromStoredConsent();
+  }, []);
+
   return (
     <Router>
       <RecoveryRedirect />
@@ -97,6 +103,7 @@ function App() {
           </Routes>
         </div>
         <Footer />
+        <ConsentBanner />
         <FeedbackButton />
       </div>
     </Router>
