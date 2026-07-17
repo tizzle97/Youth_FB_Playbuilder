@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, TrendingUp, Award, Search } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { MessageSquare, TrendingUp, Award, Search, BookOpen } from 'lucide-react';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import { PostList } from './PostList';
 import { TopContributors } from './TopContributors';
@@ -8,9 +9,14 @@ import type { TimeRange } from '../../types/community';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import { usePageMeta } from '../../lib/seo';
+import { PlayLibrary } from './PlayLibrary';
 
 export function CommunityPage() {
   usePageMeta({ title: 'Community Plays & Forum', description: 'Share plays, ask questions, and learn from other youth and flag football coaches in the Playbuilder Pro community.', path: '/community' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?tab=plays deep-links straight to the Play Library (used by the
+  // homepage "Top Ranked Plays" section)
+  const tab: 'forum' | 'plays' = searchParams.get('tab') === 'plays' ? 'plays' : 'forum';
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
   const [searchQuery, setSearchQuery] = useState('');
   const [posts, setPosts] = useState<any[]>([]);
@@ -82,39 +88,76 @@ export function CommunityPage() {
             <div className="bg-board-light rounded-lg p-6 mb-8 border border-chalk/10">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <h1 className="text-3xl font-chalk font-bold text-chalk flex items-center gap-3">
-                  <MessageSquare className="h-8 w-8 text-primary" />
-                  Community Forum
+                  {tab === 'plays' ? (
+                    <>
+                      <BookOpen className="h-8 w-8 text-primary" />
+                      Play Library
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="h-8 w-8 text-primary" />
+                      Community Forum
+                    </>
+                  )}
                 </h1>
-                <CreatePostButton onPostCreated={fetchPosts} />
+                {tab === 'forum' && <CreatePostButton onPostCreated={fetchPosts} />}
               </div>
-              
-              <div className="mt-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-chalk/50" />
-                  <input
-                    type="text"
-                    placeholder="Search discussions..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-board border border-chalk/20 rounded-lg text-chalk placeholder-chalk/50 focus:outline-none focus:border-primary/50"
-                  />
+
+              {/* Tab switcher */}
+              <div className="mt-4 flex items-center gap-1 border border-chalk/15 rounded-lg p-1 w-fit">
+                <button
+                  onClick={() => setSearchParams({}, { replace: true })}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === 'forum' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                  }`}
+                >
+                  Forum
+                </button>
+                <button
+                  onClick={() => setSearchParams({ tab: 'plays' }, { replace: true })}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === 'plays' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                  }`}
+                >
+                  Play Library
+                </button>
+              </div>
+
+              {tab === 'forum' && (
+                <div className="mt-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-chalk/50" />
+                    <input
+                      type="text"
+                      placeholder="Search discussions..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-board border border-chalk/20 rounded-lg text-chalk placeholder-chalk/50 focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
                 </div>
-                <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-              </div>
+              )}
             </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-8">
-                <p className="text-red-500">{error}</p>
-              </div>
-            )}
+            {tab === 'plays' ? (
+              <PlayLibrary />
+            ) : (
+              <>
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-8">
+                    <p className="text-red-500">{error}</p>
+                  </div>
+                )}
 
-            <PostList
-              posts={posts}
-              loading={loading}
-              timeRange={timeRange}
-              searchQuery={searchQuery}
-            />
+                <PostList
+                  posts={posts}
+                  loading={loading}
+                  timeRange={timeRange}
+                  searchQuery={searchQuery}
+                />
+              </>
+            )}
           </div>
 
           {/* Sidebar */}

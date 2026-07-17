@@ -56,10 +56,10 @@ export function TopPlays() {
             </p>
           </div>
           <a
-            href="/plays"
+            href="/community?tab=plays"
             className="hidden sm:flex items-center text-primary hover:text-primary-dark transition-colors"
           >
-            View all plays
+            Browse the Play Library
             <ArrowRight className="ml-2 h-4 w-4" />
           </a>
         </div>
