@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
-import { useEntitlement } from '../../lib/entitlements';
+import { FREE_LIMITS, isNearFreeLimit, useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
+import { UsageWarningBanner } from '../UsageWarningBanner';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
 
@@ -94,7 +95,7 @@ export function PlaybooksPage() {
   const loadPlaybooks = async () => {
     try {
       setLoading(true);
-      
+
       const { data: playbooks, error } = await supabase
         .from('playbooks')
         .select(`
@@ -989,6 +990,11 @@ export function PlaybooksPage() {
               </button>
             </div>
           </div>
+          {!entitlementLoading && !isPro && isNearFreeLimit(playbooks.length, FREE_LIMITS.playbooks) && (
+            <div className="mt-4">
+              <UsageWarningBanner used={playbooks.length} limit={FREE_LIMITS.playbooks} label="playbooks" />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

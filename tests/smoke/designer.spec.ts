@@ -432,6 +432,53 @@ test('free-tier play limit: server rejection surfaces as an upgrade prompt', asy
   ).toBeVisible();
 });
 
+test('SavePlayModal (B-22): free user one play from the cap sees an early usage nudge', async ({ page }) => {
+  // The nudge (14 of 15 plays used) must appear before the PBP01 wall above,
+  // and only for a new play — not when editing an existing one in place.
+  await page.addInitScript((storageKey) => {
+    const session = {
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user: {
+        id: '11111111-1111-1111-1111-111111111111',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'coach@example.com',
+        app_metadata: {},
+        user_metadata: {},
+        created_at: new Date(0).toISOString(),
+      },
+    };
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }, AUTH_STORAGE_KEY);
+
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }),
+  );
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() !== 'HEAD') return route.continue();
+    return route.fulfill({
+      status: 200,
+      headers: { 'content-range': '*/14', 'access-control-expose-headers': 'content-range' },
+      body: '',
+    });
+  });
+
+  await openDesigner(page);
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
+});
+
 test('account settings page renders for a signed-in user (mocked backend)', async ({ page }) => {
   // Regression test: the page previously rendered blank because a type-only
   // `User` import was used as a JSX component (undefined at runtime), which
@@ -672,3 +719,57 @@ test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ 
   await expect(page.getByRole('button', { name: /Print Playbook/ })).toBeVisible();
   await expect(page.getByText('is a Pro feature')).toHaveCount(0);
 });
+
+test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', async ({ page }) => {
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'coach@example.com',
+    app_metadata: {},
+    user_metadata: {},
+    created_at: '2025-09-01T00:00:00Z',
+  };
+
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }),
+  );
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }),
+  );
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() === 'HEAD') {
+      return route.fulfill({
+        status: 200,
+        headers: { 'content-range': '*/14', 'access-control-expose-headers': 'content-range' },
+        body: '',
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/plays');
+  await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
+});
+
+// Note: no automated smoke test for PlaybooksPage's usage banner (B-22). It
+// uses the same isNearFreeLimit()/UsageWarningBanner code path already
+// covered above for SavePlayModal and PlaysPage, but PlaybooksPage's
+// getSession() + onAuthStateChange mount pattern hits a pre-existing
+// React 18 StrictMode dev-mode quirk (loadPlaybooks()'s awaited query never
+// settles when driven by a mocked/unreachable Supabase backend) that's
+// unrelated to this change — see BACKLOG.md for the follow-up item.

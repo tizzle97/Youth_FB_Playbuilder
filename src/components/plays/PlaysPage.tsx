@@ -7,6 +7,8 @@ import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as n
 import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
+import { UsageWarningBanner } from '../UsageWarningBanner';
 
 interface Play {
   id: string;
@@ -34,6 +36,8 @@ export function PlaysPage() {
   const [votedPlayIds, setVotedPlayIds] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
+  const [totalPlayCount, setTotalPlayCount] = useState(0);
+  const [isPro, setIsPro] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,6 +52,21 @@ export function PlaysPage() {
         if (currentUser) {
           // User is authenticated - show their plays
           checkIsAdmin(currentUser.id).then(setIsAdmin);
+
+          // Total play count + Pro status for the free-tier usage nudge (B-22).
+          // Queried directly (not via useEntitlement()) since that hook's own
+          // auth.getUser() call would race this effect's — see the B-4 note.
+          supabase
+            .from('plays')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', currentUser.id)
+            .then(({ count }) => setTotalPlayCount(count ?? 0));
+          supabase
+            .from('subscriptions')
+            .select('plan, current_period_end')
+            .eq('user_id', currentUser.id)
+            .maybeSingle()
+            .then(({ data }) => setIsPro(rowIsPro(data)));
 
           let query = supabase
             .from('plays')
@@ -128,6 +147,7 @@ export function PlaysPage() {
       if (deleteError) throw deleteError;
 
       setPlays(plays.filter(play => play.id !== playId));
+      setTotalPlayCount((c) => Math.max(0, c - 1));
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to delete play'));
     }
@@ -363,6 +383,11 @@ export function PlaysPage() {
           </div>
 
           <div className="p-6 relative">
+            {!isPro && isNearFreeLimit(totalPlayCount, FREE_LIMITS.plays) && (
+              <div className="mb-6">
+                <UsageWarningBanner used={totalPlayCount} limit={FREE_LIMITS.plays} label="plays" />
+              </div>
+            )}
             {error ? (
               <div className="text-red-500 text-sm bg-red-500/10 p-3 rounded-lg">
                 {error}
