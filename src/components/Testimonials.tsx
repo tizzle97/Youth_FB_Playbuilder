@@ -54,6 +54,8 @@ export function Testimonials() {
                     className="h-12 w-12 rounded-full object-cover"
                     src={testimonial.image}
                     alt={testimonial.name}
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="ml-4">
                     <div className="text-base font-semibold text-chalk">{testimonial.name}</div>

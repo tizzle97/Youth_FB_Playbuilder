@@ -1221,6 +1221,8 @@ export function PlaybooksPage() {
                                 src={play.thumbnail}
                                 alt={play.name}
                                 className="w-full h-full object-cover"
+                                loading="lazy"
+                                decoding="async"
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-chalk/30">

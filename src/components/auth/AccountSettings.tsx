@@ -514,6 +514,8 @@ export default function AccountSettings() {
                         src={avatarUrl}
                         alt="Profile"
                         className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}
@@ -550,6 +552,8 @@ export default function AccountSettings() {
                         src={icon.icon_url}
                         alt={icon.name}
                         className="w-full aspect-square"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </button>
                   ))}
@@ -606,6 +610,8 @@ export default function AccountSettings() {
                     src={prefs.team_logo_url}
                     alt="Team logo"
                     className="h-12 w-12 object-contain rounded bg-board border border-chalk/10"
+                    loading="lazy"
+                    decoding="async"
                   />
                 )}
                 <label className="px-4 py-2 bg-board hover:bg-board-light border border-chalk/20 rounded-lg cursor-pointer text-sm text-chalk/70 hover:text-chalk transition-colors">

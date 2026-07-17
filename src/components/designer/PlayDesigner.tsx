@@ -8,7 +8,6 @@ import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas } from './Canvas';
 import type { DrawMode, IconShape } from './Canvas';
-import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -282,6 +281,9 @@ export function PlayDesigner() {
       // regardless of the screen it was designed on
       const imgData = canvasRef.current?.exportImage?.();
       if (!imgData) return;
+      // Loaded on demand — jsPDF only matters at export time, not for every
+      // visit to the designer.
+      const { jsPDF } = await import('jspdf');
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm' });
       const pw = pdf.internal.pageSize.getWidth();
       const ph = (1275 * pw) / 1650;

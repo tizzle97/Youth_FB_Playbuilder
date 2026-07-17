@@ -87,7 +87,7 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery }:
               <div className="flex items-center gap-3 mb-2">
                 <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
                   {post.author?.avatar_url ? (
-                    <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" />
+                    <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <span className="text-primary text-sm">
                       {post.author?.username?.[0]?.toUpperCase() || 'U'}

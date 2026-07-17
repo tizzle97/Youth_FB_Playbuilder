@@ -36,6 +36,8 @@ export function TopContributors() {
               src={contributor.avatar_url}
               alt={contributor.username}
               className="h-10 w-10 rounded-full"
+              loading="lazy"
+              decoding="async"
             />
             {contributor.rank === 1 && (
               <Trophy className="h-4 w-4 text-primary absolute -top-1 -right-1" />

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { Navbar } from './components/Navbar';
@@ -8,24 +8,34 @@ import { TopPlays } from './components/TopPlays';
 // Testimonials stays disabled on the homepage until backed by real,
 // permission-granted user quotes (see BACKLOG B-12).
 import { Pricing } from './components/Pricing';
-import { CommunityPage } from './components/community/CommunityPage';
-import { BlogPage, BlogPostPage } from './components/blog/BlogPage';
 import { AuthPage } from './components/auth/AuthPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
-import { AccountSettings } from './components/auth/AccountSettings';
-import { PlayDesigner } from './components/designer/PlayDesigner';
-import { PlaysPage } from './components/plays/PlaysPage';
-import { PlaybooksPage } from './components/playbooks/PlaybooksPage';
 import { FeedbackButton } from './components/FeedbackButton';
-import { AdminDashboard } from './components/admin/AdminDashboard';
 import { Footer } from './components/Footer';
 import { ConsentBanner } from './components/ConsentBanner';
 import { NotFound } from './components/NotFound';
-import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
-import { TermsOfService } from './components/legal/TermsOfService';
-import { ContactPage } from './components/legal/ContactPage';
 import { initAnalyticsFromStoredConsent } from './lib/analytics';
 import { usePageMeta } from './lib/seo';
+
+// Route-level code splitting: everything below is a separate chunk fetched
+// only when its route is visited, so the homepage/auth entry bundle doesn't
+// carry the designer's canvas engine, crop tooling, admin dashboard, etc.
+// Home, Navbar/Footer, and the auth pages stay eager — they're the entry path.
+const CommunityPage = lazy(() => import('./components/community/CommunityPage').then((m) => ({ default: m.CommunityPage })));
+const BlogPage = lazy(() => import('./components/blog/BlogPage').then((m) => ({ default: m.BlogPage })));
+const BlogPostPage = lazy(() => import('./components/blog/BlogPage').then((m) => ({ default: m.BlogPostPage })));
+const AccountSettings = lazy(() => import('./components/auth/AccountSettings'));
+const PlayDesigner = lazy(() => import('./components/designer/PlayDesigner').then((m) => ({ default: m.PlayDesigner })));
+const PlaysPage = lazy(() => import('./components/plays/PlaysPage').then((m) => ({ default: m.PlaysPage })));
+const PlaybooksPage = lazy(() => import('./components/playbooks/PlaybooksPage').then((m) => ({ default: m.PlaybooksPage })));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const PrivacyPolicy = lazy(() => import('./components/legal/PrivacyPolicy').then((m) => ({ default: m.PrivacyPolicy })));
+const TermsOfService = lazy(() => import('./components/legal/TermsOfService').then((m) => ({ default: m.TermsOfService })));
+const ContactPage = lazy(() => import('./components/legal/ContactPage').then((m) => ({ default: m.ContactPage })));
+
+function RouteFallback() {
+  return <div className="min-h-[60vh] bg-board flex items-center justify-center text-chalk/50">Loading…</div>;
+}
 
 function HomePage() {
   usePageMeta({ path: '/' });
@@ -86,23 +96,25 @@ function App() {
       <div className="min-h-screen bg-board flex flex-col">
         <Navbar />
         <div className="flex-1">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/community" element={<CommunityPage />} />
-            <Route path="/blog" element={<BlogPage />} />
-            <Route path="/blog/:slug" element={<BlogPostPage />} />
-            <Route path="/auth" element={<AuthPage />} />
-            <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/account" element={<AccountSettings />} />
-            <Route path="/plays" element={<PlaysPage />} />
-            <Route path="/playbooks" element={<PlaybooksPage />} />
-            <Route path="/designer" element={<PlayDesigner />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsOfService />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/community" element={<CommunityPage />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/blog/:slug" element={<BlogPostPage />} />
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/account" element={<AccountSettings />} />
+              <Route path="/plays" element={<PlaysPage />} />
+              <Route path="/playbooks" element={<PlaybooksPage />} />
+              <Route path="/designer" element={<PlayDesigner />} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </div>
         <Footer />
         <ConsentBanner />
