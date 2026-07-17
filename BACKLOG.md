@@ -55,15 +55,38 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-22 · Proactive free-tier limit warning
-Free users only learn they've hit the 15-play/2-playbook cap when the server
-rejects the save (PBP01/PBP02 → upgrade prompt). Add an early nudge: show
-"14 of 15 plays used" style warnings near the caps (SavePlayModal /
-PlaysPage / PlaybooksPage) before the wall, reusing the `/account` Plan &
-Usage counting approach. UX polish, not correctness.
+### B-23 · Investigate PlaybooksPage dev-mode loading hang under Playwright
+Spun out of B-22's smoke-test work: `PlaybooksPage.tsx`'s `getSession()` +
+`onAuthStateChange` mount effect, combined with React 18 StrictMode's
+dev-mode double-invoke, can leave `loadPlaybooks()`'s awaited `.from()` query
+never settling when driven by a mocked/unreachable Supabase backend under
+`npm run dev` — reproduced consistently in a Playwright smoke test (page
+stuck on "Loading playbooks..." indefinitely, no network request ever
+observed, no error/rejection surfaced). Not reproduced with `PlaysPage.tsx`'s
+`getUser()`-based mount pattern. Unclear whether this can occur against a
+**real** Supabase backend (production doesn't run in StrictMode-affected dev
+mode) — needs investigation before ruling it out as dev/test-only. Until
+understood, B-22's PlaybooksPage usage-nudge banner has no automated smoke
+coverage (see the comment in `tests/smoke/designer.spec.ts` near the other
+B-22 tests).
 
 ## Done
 
+- **2026-07-17 · B-22: Proactive free-tier limit warning** — free users used
+  to learn they'd hit the 15-play/2-playbook cap only when the server
+  rejected the save (PBP01/PBP02 → upgrade prompt). Added an early nudge:
+  `src/components/UsageWarningBanner.tsx` (new shared component) shows a
+  "14 of 15 plays used" / "1 of 2 playbooks used" style warning once a free
+  user is down to their last free slot or already at the cap
+  (`isNearFreeLimit()`, new in `src/lib/entitlements.ts`), with an "Upgrade
+  to Pro" button. Wired into `SavePlayModal` (only for a new play — editing
+  an existing one in place doesn't consume a slot; fetches the play count +
+  subscription row directly off the already-resolved `user` prop, per the
+  B-4 gotrue-lock note, not via `useEntitlement()`), `PlaysPage` (same
+  direct-query pattern off its own resolved `currentUser`), and
+  `PlaybooksPage` (reuses its existing `useEntitlement()` + `playbooks.length`
+  state). 2 new smoke tests (SavePlayModal, PlaysPage); see B-23 for why
+  PlaybooksPage's banner has no smoke coverage yet.
 - **2026-07-16 · B-19: Google Analytics consent banner** — GA4 no longer loads
   unconditionally: `index.html`'s static gtag.js/`public/gtag-init.js` tags are
   gone, replaced by `src/lib/analytics.ts`'s `loadGoogleAnalytics()` /

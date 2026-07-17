@@ -5,6 +5,8 @@ import { PlayMetadata } from '../../types/play';
 import { PlayMetadataForm } from './PlayMetadataForm';
 import { supabase } from '../../lib/supabase';
 import type { UserPreferences } from '../../lib/userPreferences';
+import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
+import { UsageWarningBanner } from '../UsageWarningBanner';
 
 interface Playbook {
   id: string;
@@ -25,6 +27,9 @@ interface SavePlayModalProps {
   previewThumbnail?: string; // Optional thumbnail preview
   /** Save defaults from account settings (B-14/B-15); null when signed out. */
   preferences?: UserPreferences | null;
+  /** True when saving updates an existing play in place — doesn't consume a
+   *  new free-tier play slot, so the usage nudge (B-22) doesn't apply. */
+  isEditingExistingPlay?: boolean;
 }
 
 export function SavePlayModal({
@@ -33,7 +38,8 @@ export function SavePlayModal({
   onSave,
   user,
   previewThumbnail,
-  preferences = null
+  preferences = null,
+  isEditingExistingPlay = false
 }: SavePlayModalProps) {
   // ALL THE MISSING STATE VARIABLES
   const [step, setStep] = useState<'metadata' | 'playbook'>('metadata');
@@ -42,6 +48,8 @@ export function SavePlayModal({
   const [selectedPlaybook, setSelectedPlaybook] = useState<string>('');
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [loadingPlaybooks, setLoadingPlaybooks] = useState(false);
+  const [playCount, setPlayCount] = useState(0);
+  const [isPro, setIsPro] = useState(false);
   const [metadata, setMetadata] = useState<PlayMetadata>({
     gameType: '5v5',
     playType: 'pass',
@@ -58,6 +66,26 @@ export function SavePlayModal({
       fetchPlaybooks();
     }
   }, [isOpen, user]);
+
+  // Play count + Pro status for the free-tier usage nudge (B-22). Only
+  // relevant for a new play — editing an existing one doesn't add a play.
+  // Queried directly (not via useEntitlement()) since the `user` prop is
+  // already resolved by the caller — see the B-4 gotrue deadlock note.
+  useEffect(() => {
+    if (isOpen && user && !isEditingExistingPlay) {
+      supabase
+        .from('plays')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .then(({ count }) => setPlayCount(count ?? 0));
+      supabase
+        .from('subscriptions')
+        .select('plan, current_period_end')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => setIsPro(rowIsPro(data)));
+    }
+  }, [isOpen, user, isEditingExistingPlay]);
 
   // Prefill from account-settings defaults each time the modal opens
   // (B-14 game format; B-15 play type + visibility). The user can still
@@ -154,6 +182,9 @@ export function SavePlayModal({
           {step === 'metadata' ? (
             // Step 1: Play metadata with thumbnail preview
             <div className="p-6 space-y-6">
+              {!isEditingExistingPlay && !isPro && isNearFreeLimit(playCount, FREE_LIMITS.plays) && (
+                <UsageWarningBanner used={playCount} limit={FREE_LIMITS.plays} label="plays" />
+              )}
               {/* Thumbnail Preview */}
               {previewThumbnail && (
                 <div className="border border-chalk/20 rounded-lg p-4 bg-board">

@@ -28,6 +28,13 @@ export function rowIsPro(row: { plan?: string; current_period_end?: string | nul
   return true;
 }
 
+/** True once a free user is down to their last free slot (or already at the
+ *  cap) for a FREE_LIMITS counter — the threshold for showing an early
+ *  upgrade nudge before the server-side trigger (PBP01/PBP02) rejects the save. */
+export function isNearFreeLimit(used: number, limit: number): boolean {
+  return used >= limit - 1;
+}
+
 /**
  * Reads the current user's entitlement. Signed-out users are 'free'.
  * Phase 1: existing users are grandfathered as 'founding', so they resolve

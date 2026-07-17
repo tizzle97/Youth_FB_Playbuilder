@@ -466,6 +466,7 @@ export function PlayDesigner() {
         user={user}
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
         preferences={preferences}
+        isEditingExistingPlay={isEditingExistingPlay}
       />
 
       {error && (
