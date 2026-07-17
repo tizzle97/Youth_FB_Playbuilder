@@ -4,6 +4,7 @@ const SITE_NAME = 'Playbuilder Pro';
 const SITE_URL = 'https://playbuilderpro.com';
 const DEFAULT_DESCRIPTION =
   'Playbuilder Pro is the play designer for youth and flag football coaches — from 5v5 flag to 11v11. Draw routes on a real field, build playbooks, and print game-day sheets.';
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 type PageMeta = {
   title?: string;
@@ -54,7 +55,10 @@ export function usePageMeta({ title, description, path, jsonLd }: PageMeta) {
     setMetaTag('property', 'og:url', url);
     setMetaTag('property', 'og:type', path?.startsWith('/blog/') ? 'article' : 'website');
     setMetaTag('property', 'og:site_name', SITE_NAME);
-    setMetaTag('name', 'twitter:card', 'summary');
+    setMetaTag('property', 'og:image', DEFAULT_OG_IMAGE);
+    setMetaTag('property', 'og:image:width', '1200');
+    setMetaTag('property', 'og:image:height', '630');
+    setMetaTag('name', 'twitter:card', 'summary_large_image');
     setCanonical(url);
 
     document.getElementById(JSONLD_ID)?.remove();
