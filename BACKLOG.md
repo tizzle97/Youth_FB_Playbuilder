@@ -70,6 +70,61 @@ understood, B-22's PlaybooksPage usage-nudge banner has no automated smoke
 coverage (see the comment in `tests/smoke/designer.spec.ts` near the other
 B-22 tests).
 
+### B-24 · Formation templates (11v11 gap #1 — the retention feature)
+From the 2026-07-17 "11v11 coach" product evaluation: the single biggest gap
+for tackle-football coaches is having to hand-place all 11 icons (including a
+five-man O-line via the custom-icon builder) for **every play**. Ship a
+formation-template picker in the designer toolbar: choose e.g. "I-Formation"
+or "Shotgun Spread" and the icons stamp onto the canvas at the right spots,
+ready to adjust. Scope:
+- Curate starter templates per game format: 11v11 (I-Form, Shotgun, Spread,
+  Wing-T at minimum, squares for linemen), 7v7 and 5v5 flag sets (Trips,
+  Bunch, Twins). Store as normalized 0–1 coordinates matching
+  `canvas_data.playerIcons` — NOT the `formations` table's old Fabric.js
+  `template` JSON.
+- Placing a template = one undo entry (single `pushSnapshot()`).
+- "Save current layout as my formation" for user-defined templates can be a
+  fast follow; system templates first.
+- Note: `FormationSelector.tsx` is **dead code** from the abandoned Fabric.js
+  era (imports `fabric`, nothing imports it) — see B-26; its Shotgun/I-Form
+  layout data is a usable starting reference, but the component itself must
+  be rebuilt against the real `CanvasHandle` API.
+
+### B-25 · Blocking-assignment notation (11v11 gap #2)
+Routes and defensive zones exist, but 11v11 is run-first and there's no way
+to notate blocking: run-game diagrams need block symbols (line ending in a
+perpendicular "T" at contact), pull paths for linemen, and ideally a
+double-team indicator. Scope: a "Block" draw mode alongside Straight/Route —
+same path drawing, different terminal decoration (T-cap instead of
+arrowhead); persists in `canvas_data.paths` via a `mode: 'block'` variant so
+old plays load unchanged; renders in both live canvas and `exportImage()`.
+Extend the smoke suite (draw block → assert path mode → undo).
+
+### B-26 · Delete dead FormationSelector.tsx (Fabric.js remnant)
+`src/components/designer/FormationSelector.tsx` imports `fabric` /
+`fabric/fabric-impl`, is imported by nothing, and predates the pure-HTML-
+canvas rewrite. It misleads readers (and agents) into thinking a formation
+feature exists. Salvage its formation layout coordinates into B-24's
+template data first, then delete the file (and drop the `fabric` dependency
+from package.json if nothing else uses it).
+
+### B-27 · Special-teams designer mode (11v11, lower priority)
+`play_type` enum and the metadata dropdown already offer `special_teams`,
+but the designer only has offense/defense modes — picking "Special" changes
+nothing on the canvas. Minimum viable: a special-teams roster preset (K/P,
+LS, returner, coverage players) and the existing route/zone tools; kick
+coverage lanes are just straight routes. Cosmetic-only today; make the
+dropdown honest.
+
+### B-28 · Team/staff sharing (design first — money-adjacent, human review)
+11v11 staffs are 3–4 coaches; today the only sharing is public community
+plays, and the ToS/monetization plan already promise "future team sharing"
+as a Pro feature. Needs a design pass before any code: likely a `teams`
+table + membership + playbook-level share grants (RLS mirrors the existing
+ownership patterns), invite-by-email flow, read-only vs. editor roles.
+Rough scope is a multi-PR epic — do NOT pick this up as a single nightly
+item; a human should approve the schema design first.
+
 ## Done
 
 - **2026-07-17 · B-22: Proactive free-tier limit warning** — free users used
