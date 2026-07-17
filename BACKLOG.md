@@ -114,7 +114,36 @@ but the designer only has offense/defense modes — picking "Special" changes
 nothing on the canvas. Minimum viable: a special-teams roster preset (K/P,
 LS, returner, coverage players) and the existing route/zone tools; kick
 coverage lanes are just straight routes. Cosmetic-only today; make the
-dropdown honest.
+dropdown honest. Note (from B-29's field audit): the canvas backfield is
+only 10 yards deep (`FIELD_YARDS_BELOW_LOS`), but a real 11v11 punter
+stands 13–15 yards deep — punt diagrams need B-29's deeper/format-aware
+field or a special-teams depth override.
+
+### B-29 · Format-aware field rendering (canvas fidelity audit, 2026-07-17)
+One field currently serves all three game formats, and its geometry is a
+mashup no real field has. Findings from the audit of `Canvas.tsx`:
+- Hash marks use the NFL inset (`HASH_LEFT_X_RATIO = 70.75/160`, i.e.
+  70'9" from each sideline). Youth/HS fields hash at one-third of the
+  width (53'4") — noticeably wider apart. Two-constant fix on its own.
+- The field is full width (160 ft) even for 5v5 flag, whose real fields
+  are ~30 yards wide (and hashless).
+- Depth is 15 yards above the LOS / 10 below (`FIELD_YARDS_ABOVE_LOS` /
+  `_BELOW_LOS`). Fine for flag; for 11v11, deep concepts (post/go/verts)
+  hit the ceiling and punt formations don't fit (see B-27 note). 20 above
+  would let deep routes breathe.
+- Rendered aspect (1650×1275 export) stretches the field ~65% vertically
+  vs. true scale (53.3yd × 25yd = 2.13:1 vs the 1.29:1 canvas). This is a
+  defensible playbook-legibility choice — keep it, but keep it consistent.
+Proposal: the app already knows each play's game format — render the field
+to match it. 11v11: HS-ratio hashes + 20 yards above the LOS. 7v7/5v5
+flag: narrower field (~30yd for 5v5), no hashes. **Compatibility trap:**
+player/route coordinates are stored normalized 0–1 against the whole
+canvas, so changing field width/depth changes where existing saved plays'
+icons land — migrating render geometry must either version `canvas_data`
+(a `fieldVersion`/format key alongside `{version, paths, playerIcons}`) or
+map old coordinates into the new field space on load. Plan this before
+touching the constants; extend the smoke suite's snap/grid assertions,
+which encode the current 25-yard math.
 
 ### B-28 · Team/staff sharing (design first — money-adjacent, human review)
 11v11 staffs are 3–4 coaches; today the only sharing is public community
