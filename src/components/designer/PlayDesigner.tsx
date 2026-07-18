@@ -179,6 +179,10 @@ export function PlayDesigner() {
     canvasRef.current?.stampFormation(icons);
   }, []);
 
+  const handleSetGameType = useCallback((gameType: PlayMetadata['gameType']) => {
+    setCurrentPlayMetadata((prev) => ({ ...prev, gameType }));
+  }, []);
+
   const handleNewPlay = useCallback(() => {
     canvasRef.current?.clear();
     setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));
@@ -374,6 +378,7 @@ export function PlayDesigner() {
           onSetPlayType={setPlayType}
           playTypeLocked={playTypeLocked}
           gameType={currentPlayMetadata.gameType}
+          onSetGameType={handleSetGameType}
           onStampFormation={handleStampFormation}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
@@ -432,6 +437,7 @@ export function PlayDesigner() {
           onSetPlayType={setPlayType}
           playTypeLocked={playTypeLocked}
           gameType={currentPlayMetadata.gameType}
+          onSetGameType={handleSetGameType}
           onStampFormation={handleStampFormation}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}

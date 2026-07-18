@@ -12,6 +12,7 @@ interface DesignerToolbarProps {
   onSetPlayType: (type: PlayType) => void;
   playTypeLocked: boolean;
   gameType: PlayMetadata['gameType'];
+  onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStampFormation: (icons: PlayerIcon[]) => void;
   drawingMode: boolean;
   setDrawingMode: (mode: boolean) => void;
@@ -40,6 +41,7 @@ export function DesignerToolbar({
   onSetPlayType,
   playTypeLocked,
   gameType,
+  onSetGameType,
   onStampFormation,
   drawingMode,
   setDrawingMode,
@@ -176,7 +178,7 @@ export function DesignerToolbar({
         {!isDefense && (
           <>
             <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
-            <FormationMenu gameType={gameType} onStamp={onStampFormation} />
+            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} />
           </>
         )}
 

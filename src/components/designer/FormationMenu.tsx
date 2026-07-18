@@ -5,12 +5,15 @@ import { formationsFor } from './formations';
 import type { PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
+const GAME_TYPES: PlayMetadata['gameType'][] = ['5v5', '7v7', '11v11'];
+
 interface FormationMenuProps {
   gameType: PlayMetadata['gameType'];
+  onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStamp: (icons: PlayerIcon[]) => void;
 }
 
-export function FormationMenu({ gameType, onStamp }: FormationMenuProps) {
+export function FormationMenu({ gameType, onSetGameType, onStamp }: FormationMenuProps) {
   const [open, setOpen] = useState(false);
   // Position is computed from the trigger button's real screen location and
   // the popover is portaled to <body> as position:fixed — the toolbar row it
@@ -66,6 +69,22 @@ export function FormationMenu({ gameType, onStamp }: FormationMenuProps) {
             style={{ left: coords.left, top: coords.top }}
             onPointerDown={(e) => e.stopPropagation()}
           >
+            <p className="text-[10px] uppercase tracking-wide text-chalk/40 px-1.5 pb-1">
+              Game format
+            </p>
+            <div className="flex items-center rounded-md border border-chalk/15 overflow-hidden mb-2">
+              {GAME_TYPES.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => onSetGameType(g)}
+                  className={`flex-1 px-2 py-1 text-[11px] font-medium transition-colors ${
+                    gameType === g ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
             <p className="text-[10px] uppercase tracking-wide text-chalk/40 px-1.5 pb-1">
               {gameType} formations
             </p>

@@ -50,6 +50,20 @@ async function canvasPoint(page: Page, fx: number, fy: number) {
 // the one that exists at the test viewport size.
 const btn = (page: Page, title: string) => page.locator(`button[title="${title}"]:visible`);
 
+/**
+ * Clicks a locator at its actual on-screen coordinates, bypassing
+ * Locator.click()'s auto-scroll-into-view. Playwright's normal .click() will
+ * happily scroll a clipped/off-screen element into the viewport before
+ * clicking it — which would silently pass even if a real user could never
+ * see or reach that element (the exact bug the formation menu shipped with;
+ * see the FormationMenu.tsx portal comment).
+ */
+async function realClick(page: Page, locator: ReturnType<Page['getByRole']>) {
+  const box = await locator.boundingBox();
+  expect(box, 'element should have a real, unclipped position').not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+}
+
 test('home page renders without uncaught errors', async ({ page }) => {
   const errors: Error[] = [];
   page.on('pageerror', (err) => errors.push(err));
@@ -140,15 +154,7 @@ test('formation templates (B-24): stamping I-Formation places 11 icons as one un
   // New play defaults to 11v11 (PlayDesigner.tsx currentPlayMetadata), so the
   // Formation menu should offer the 11v11 templates.
   await btn(page, 'Formation templates').click();
-  const menuItem = page.getByRole('button', { name: 'I-Formation' });
-  // A real click on the coordinates the item actually renders at, not
-  // Locator.click() — that auto-scrolls a clipped/off-screen target into
-  // view first, which would silently pass even if the popover were clipped
-  // out of sight by a scrollable toolbar ancestor (the exact bug this
-  // formation menu shipped with — see the FormationMenu.tsx portal comment).
-  const box = await menuItem.boundingBox();
-  expect(box, 'formation menu item should have a real, unclipped position').not.toBeNull();
-  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
 
   const state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(11);
@@ -164,6 +170,66 @@ test('formation templates (B-24): stamping I-Formation places 11 icons as one un
   // Stamping is a single undo entry, however many icons it added.
   await btn(page, 'Undo').click();
   expect((await canvasState(page)).playerIcons).toHaveLength(0);
+});
+
+test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 sets', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Formation templates').click();
+  // Defaults to 11v11's four templates.
+  await expect(page.getByRole('button', { name: 'I-Formation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Wing-T' })).toBeVisible();
+
+  await realClick(page, page.getByRole('button', { name: '7v7', exact: true }));
+  await expect(page.getByRole('button', { name: 'I-Formation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Trips' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Bunch' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Twins' })).toBeVisible();
+
+  await realClick(page, page.getByRole('button', { name: '5v5', exact: true }));
+  await expect(page.getByRole('button', { name: 'Trips' })).toBeVisible();
+
+  await realClick(page, page.getByRole('button', { name: 'Trips' }));
+  const state = await canvasState(page);
+  // 5v5 Trips: snapper + QB + 3 receivers.
+  expect(state.playerIcons).toHaveLength(5);
+});
+
+test('formation templates: picking a second formation replaces the first instead of layering', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'Shotgun' }));
+  expect((await canvasState(page)).playerIcons).toHaveLength(11);
+
+  // Draw a route off one of the Shotgun icons, so there's a path referencing
+  // an icon index too — it should be gone after the re-stamp, not left
+  // pointing at a different formation's icon.
+  const shotgunState = await canvasState(page);
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, shotgunState.playerIcons[0].x, shotgunState.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+  expect((await canvasState(page)).paths).toHaveLength(1);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'Wing-T' }));
+
+  const state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(11);
+  expect(state.playerIcons.map((i) => i.letter)).toContain('QB');
+  // The old formation's route is gone, not layered under/over the new one.
+  expect(state.paths).toHaveLength(0);
+
+  // Still a single undo entry — one press returns all the way to the first
+  // formation plus its route, not a partial step through the re-stamp.
+  await btn(page, 'Undo').click();
+  const undone = await canvasState(page);
+  expect(undone.playerIcons).toHaveLength(11);
+  expect(undone.paths).toHaveLength(1);
 });
 
 test('defense: place a safety and drag a zone of responsibility', async ({ page }) => {
