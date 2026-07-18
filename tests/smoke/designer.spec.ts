@@ -140,7 +140,15 @@ test('formation templates (B-24): stamping I-Formation places 11 icons as one un
   // New play defaults to 11v11 (PlayDesigner.tsx currentPlayMetadata), so the
   // Formation menu should offer the 11v11 templates.
   await btn(page, 'Formation templates').click();
-  await page.getByRole('button', { name: 'I-Formation' }).click();
+  const menuItem = page.getByRole('button', { name: 'I-Formation' });
+  // A real click on the coordinates the item actually renders at, not
+  // Locator.click() — that auto-scrolls a clipped/off-screen target into
+  // view first, which would silently pass even if the popover were clipped
+  // out of sight by a scrollable toolbar ancestor (the exact bug this
+  // formation menu shipped with — see the FormationMenu.tsx portal comment).
+  const box = await menuItem.boundingBox();
+  expect(box, 'formation menu item should have a real, unclipped position').not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 
   const state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(11);
