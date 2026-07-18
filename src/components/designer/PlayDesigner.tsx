@@ -7,7 +7,7 @@ import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas } from './Canvas';
-import type { DrawMode, IconShape } from './Canvas';
+import type { CanvasHandle, DrawMode, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -19,7 +19,7 @@ export function PlayDesigner() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<any>(null);
+  const canvasRef = useRef<CanvasHandle>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
 
   const [drawingMode, setDrawingMode] = useState(false);
@@ -173,6 +173,10 @@ export function PlayDesigner() {
       }),
     };
     return () => { delete (window as any).__PBP_TEST__; };
+  }, []);
+
+  const handleStampFormation = useCallback((icons: PlayerIcon[]) => {
+    canvasRef.current?.stampFormation(icons);
   }, []);
 
   const handleNewPlay = useCallback(() => {
@@ -369,6 +373,8 @@ export function PlayDesigner() {
           playType={playType}
           onSetPlayType={setPlayType}
           playTypeLocked={playTypeLocked}
+          gameType={currentPlayMetadata.gameType}
+          onStampFormation={handleStampFormation}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
@@ -425,6 +431,8 @@ export function PlayDesigner() {
           playType={playType}
           onSetPlayType={setPlayType}
           playTypeLocked={playTypeLocked}
+          gameType={currentPlayMetadata.gameType}
+          onStampFormation={handleStampFormation}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}

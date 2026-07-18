@@ -55,26 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-24 · Formation templates (11v11 gap #1 — the retention feature)
-From the 2026-07-17 "11v11 coach" product evaluation: the single biggest gap
-for tackle-football coaches is having to hand-place all 11 icons (including a
-five-man O-line via the custom-icon builder) for **every play**. Ship a
-formation-template picker in the designer toolbar: choose e.g. "I-Formation"
-or "Shotgun Spread" and the icons stamp onto the canvas at the right spots,
-ready to adjust. Scope:
-- Curate starter templates per game format: 11v11 (I-Form, Shotgun, Spread,
-  Wing-T at minimum, squares for linemen), 7v7 and 5v5 flag sets (Trips,
-  Bunch, Twins). Store as normalized 0–1 coordinates matching
-  `canvas_data.playerIcons` — NOT the `formations` table's old Fabric.js
-  `template` JSON.
-- Placing a template = one undo entry (single `pushSnapshot()`).
-- "Save current layout as my formation" for user-defined templates can be a
-  fast follow; system templates first.
-- Note: `FormationSelector.tsx` is **dead code** from the abandoned Fabric.js
-  era (imports `fabric`, nothing imports it) — see B-26; its Shotgun/I-Form
-  layout data is a usable starting reference, but the component itself must
-  be rebuilt against the real `CanvasHandle` API.
-
 ### B-25 · Blocking-assignment notation (11v11 gap #2)
 Routes and defensive zones exist, but 11v11 is run-first and there's no way
 to notate blocking: run-game diagrams need block symbols (line ending in a
@@ -175,6 +155,30 @@ copy update goes through human review.
 
 ## Done
 
+- **2026-07-18 · B-24: Formation templates (11v11 gap #1)** — a "Formation"
+  button in the designer toolbar (offense only) opens a menu of curated
+  starting layouts for the play's game format and stamps the picked one's
+  icons onto the canvas as a single undo entry. New
+  `src/components/designer/formations.ts` holds 10 templates — 11v11
+  (I-Formation, Shotgun, Spread, Wing-T; five-man O-line rendered as black
+  squares) and 7v7/5v5 flag sets (Trips, Bunch, Twins; no O-line — flag has
+  no line of scrimmage blockers, so only a snapping "C") — authored in
+  `canvas_data.playerIcons`-compatible normalized 0–1 coordinates using the
+  same LOS math as `Canvas.tsx` (`yFromYards`/`FIELD_YARDS_ABOVE_LOS`, now
+  exported for reuse rather than duplicated). `Canvas.tsx` gained a new
+  `stampFormation()` method on `CanvasHandle` — `loadState()` replaces the
+  whole scene so it wasn't suitable for adding a formation on top of
+  in-progress work; `stampFormation` does one `pushSnapshot()` + appends
+  icons instead. New `FormationMenu.tsx` component (popover, reuses the
+  `PlayerStyleEditor` panel styling convention); `PlayDesigner.tsx` now
+  threads `currentPlayMetadata.gameType` down to the toolbar so the menu
+  offers the right set. `FormationSelector.tsx` (dead Fabric.js code, see
+  B-26) was left untouched — its Shotgun/I-Form data didn't carry over
+  directly (different coordinate scheme, no LOS concept), so the new
+  templates were authored fresh instead of ported. Not done (fast follow
+  per the original scope): "save current layout as my formation" for
+  user-defined templates. New smoke test stamps I-Formation, asserts 11
+  icons land in-bounds, and confirms one Undo press clears all of them.
 - **2026-07-18 · B-23: Investigate + fix PlaybooksPage dev-mode loading hang**
   — root-cause finding: `PlaybooksPage.tsx` resolved its user via its own
   `getSession()` + `onAuthStateChange` mount effect **and** a separate

@@ -67,7 +67,7 @@ export type PathItem = {
 
 export type IconShape = 'circle' | 'square' | 'triangle' | 'star';
 
-type PlayerIcon = {
+export type PlayerIcon = {
   x: number; // normalized 0–1
   y: number; // normalized 0–1
   letter: string;
@@ -77,6 +77,11 @@ type PlayerIcon = {
   isSquare?: boolean;
   shape?: IconShape;
 };
+
+// Formation templates (B-24) are authored relative to the line of scrimmage
+// rather than raw 0–1 coordinates, so exporting these lets formations.ts stay
+// in sync with the canvas's own LOS math instead of duplicating constants.
+export { FIELD_YARDS_ABOVE_LOS, FIELD_YARDS_BELOW_LOS, TOTAL_FIELD_YARDS };
 
 /** Resolve an icon's shape, honoring the pre-`shape` isSquare flag. */
 const iconShape = (icon: { shape?: IconShape; isSquare?: boolean }): IconShape =>
@@ -120,6 +125,9 @@ export type CanvasHandle = {
   clearRoutes: () => void;
   removeRouteForIcon: (iconIndex: number) => void;
   loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[]; zones?: Zone[] }) => void;
+  /** Adds icons to the existing scene (unlike loadState, which replaces it)
+   *  as a single undo entry — used to stamp a formation template. */
+  stampFormation: (icons: PlayerIcon[]) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   getPaths: () => PathItem[];
@@ -1003,6 +1011,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); },
+      stampFormation: (icons) => { pushSnapshot(); setPlayerIcons((prev) => [...prev, ...icons]); },
       canUndo: () => undoStack.length > 0 || waypointPoints.length > 0,
       canRedo: () => redoStack.length > 0 && waypointPoints.length === 0,
       getPaths: () => paths,
