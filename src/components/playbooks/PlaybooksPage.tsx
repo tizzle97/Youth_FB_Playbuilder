@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
-import { FREE_LIMITS, isNearFreeLimit, useEntitlement } from '../../lib/entitlements';
+import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
@@ -60,22 +60,39 @@ export function PlaybooksPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
-  const { isPro, loading: entitlementLoading } = useEntitlement();
+  const [isPro, setIsPro] = useState(false);
+  const [entitlementLoading, setEntitlementLoading] = useState(true);
   const [newPlaybookName, setNewPlaybookName] = useState('');
   const [newPlaybookDescription, setNewPlaybookDescription] = useState('');
   const [createPlaybookError, setCreatePlaybookError] = useState<string | null>(null);
 
+  // Single getUser() call on mount (B-23) — this used to be getSession() +
+  // an onAuthStateChange subscription, plus a separate useEntitlement()
+  // call below (its own getUser() + onAuthStateChange). Those concurrent
+  // gotrue-js auth calls could deadlock gotrue's internal session lock —
+  // the same class of bug as the B-4 note in BACKLOG.md, reproduced
+  // consistently under React 18 StrictMode's dev-mode double-invoke. Now
+  // matches PlaysPage.tsx's single-getUser()-call pattern.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
     });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
+
+  // Pro status for the free-tier usage nudge (B-22) and export gating,
+  // queried directly off `subscriptions` instead of via useEntitlement() —
+  // see the mount effect's comment above.
+  useEffect(() => {
+    if (!user) { setIsPro(false); setEntitlementLoading(false); return; }
+    let cancelled = false;
+    supabase
+      .from('subscriptions')
+      .select('plan, current_period_end')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) { setIsPro(rowIsPro(data)); setEntitlementLoading(false); } });
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Team identity / export defaults (B-14/B-15), stamped onto playbook PDFs
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);

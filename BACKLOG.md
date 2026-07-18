@@ -55,21 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-23 · Investigate PlaybooksPage dev-mode loading hang under Playwright
-Spun out of B-22's smoke-test work: `PlaybooksPage.tsx`'s `getSession()` +
-`onAuthStateChange` mount effect, combined with React 18 StrictMode's
-dev-mode double-invoke, can leave `loadPlaybooks()`'s awaited `.from()` query
-never settling when driven by a mocked/unreachable Supabase backend under
-`npm run dev` — reproduced consistently in a Playwright smoke test (page
-stuck on "Loading playbooks..." indefinitely, no network request ever
-observed, no error/rejection surfaced). Not reproduced with `PlaysPage.tsx`'s
-`getUser()`-based mount pattern. Unclear whether this can occur against a
-**real** Supabase backend (production doesn't run in StrictMode-affected dev
-mode) — needs investigation before ruling it out as dev/test-only. Until
-understood, B-22's PlaybooksPage usage-nudge banner has no automated smoke
-coverage (see the comment in `tests/smoke/designer.spec.ts` near the other
-B-22 tests).
-
 ### B-24 · Formation templates (11v11 gap #1 — the retention feature)
 From the 2026-07-17 "11v11 coach" product evaluation: the single biggest gap
 for tackle-football coaches is having to hand-place all 11 icons (including a
@@ -190,6 +175,31 @@ copy update goes through human review.
 
 ## Done
 
+- **2026-07-18 · B-23: Investigate + fix PlaybooksPage dev-mode loading hang**
+  — root-cause finding: `PlaybooksPage.tsx` resolved its user via its own
+  `getSession()` + `onAuthStateChange` mount effect **and** a separate
+  `useEntitlement()` call (which independently does its own `getUser()` +
+  `onAuthStateChange`) — two concurrent gotrue-js auth calls on mount, which
+  is the exact same class of client-side session-lock deadlock already
+  documented for `AccountSettings`/`PlaysPage`/`SavePlayModal` (the B-4 note
+  in `src/lib/entitlements.ts`), just not previously recognized as present
+  here too. Refactored `PlaybooksPage.tsx` to the same pattern those
+  components use: a single `getUser()` call on mount (no
+  `onAuthStateChange` subscription), with Pro status resolved by querying
+  `subscriptions` directly via `rowIsPro()` once `user` is set, instead of
+  `useEntitlement()`. **Caveat:** despite several repeated attempts —
+  including restoring the original `getSession()`/`useEntitlement()` code
+  verbatim and running the new regression test both in isolation and as
+  part of the full suite — the hang described when this item was filed did
+  not reproduce in this environment (current `@supabase/supabase-js`
+  `^2.56.0`/gotrue-js versions, Chromium via Playwright). It may have been
+  fixed upstream since B-22 was written, or is a rarer timing-dependent race
+  than a handful of local runs can surface. The fix ships anyway since it
+  eliminates a known-hazardous pattern this codebase already treats as a
+  real bug elsewhere, at no cost to behavior. Added the smoke test B-22
+  explicitly called out as blocked (`tests/smoke/designer.spec.ts`,
+  "PlaybooksPage (B-22/B-23)") — passes now, and (per the above) also
+  passed against the pre-fix code in this environment.
 - **2026-07-17 · B-22: Proactive free-tier limit warning** — free users used
   to learn they'd hit the 15-play/2-playbook cap only when the server
   rejected the save (PBP01/PBP02 → upgrade prompt). Added an early nudge:
