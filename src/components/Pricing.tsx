@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import type { User } from '@supabase/supabase-js';
 import { useEntitlement, FREE_LIMITS } from '../lib/entitlements';
 import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
 import { getSafeErrorMessage } from '../lib/errors';
+import { supabase } from '../lib/supabase';
 
 const freeFeatures = [
   'All Play Designer tools',
@@ -23,8 +26,20 @@ const proFeatures = [
 
 export function Pricing() {
   const { isFoundingMember, isPro } = useEntitlement();
+  const [user, setUser] = useState<User | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleUpgrade = async () => {
     try {
@@ -43,8 +58,8 @@ export function Pricing() {
         <div className="text-center">
           <h2 className="text-3xl font-chalk font-bold text-chalk">Simple Pricing</h2>
           <p className="mt-4 text-lg text-chalk/70 max-w-2xl mx-auto">
-            Playbuilder Pro is free for youth coaches. A Pro plan with unlimited plays and
-            full playbook printing is on the way.
+            Playbuilder Pro is free for youth coaches. Create a free account to save your
+            plays and playbooks — no credit card required.
           </p>
         </div>
 
@@ -75,9 +90,23 @@ export function Pricing() {
                 </li>
               ))}
             </ul>
-            <div className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk/70">
-              {isPro ? 'Included in your plan' : 'Your current plan'}
-            </div>
+            {user ? (
+              <div className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk/70">
+                {isPro ? 'Included in your plan' : 'Your current plan'}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => navigate('/auth?mode=signup')}
+                  className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk hover:border-primary/50 hover:text-primary transition-colors"
+                >
+                  Sign up free
+                </button>
+                <p className="mt-3 text-xs text-chalk/50 text-center">
+                  A free account is required to save plays and playbooks.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Pro — live checkout once billing is enabled (B-3), otherwise coming soon */}
