@@ -134,6 +134,30 @@ test('offense: place a player, draw a straight route, undo both', async ({ page 
   expect(state.playerIcons).toHaveLength(0);
 });
 
+test('formation templates (B-24): stamping I-Formation places 11 icons as one undo entry', async ({ page }) => {
+  await openDesigner(page);
+
+  // New play defaults to 11v11 (PlayDesigner.tsx currentPlayMetadata), so the
+  // Formation menu should offer the 11v11 templates.
+  await btn(page, 'Formation templates').click();
+  await page.getByRole('button', { name: 'I-Formation' }).click();
+
+  const state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(11);
+  expect(state.playerIcons.map((i) => i.letter)).toContain('QB');
+  // Stamped icons land within the field, not off-canvas.
+  for (const icon of state.playerIcons) {
+    expect(icon.x).toBeGreaterThan(0);
+    expect(icon.x).toBeLessThan(1);
+    expect(icon.y).toBeGreaterThan(0);
+    expect(icon.y).toBeLessThan(1);
+  }
+
+  // Stamping is a single undo entry, however many icons it added.
+  await btn(page, 'Undo').click();
+  expect((await canvasState(page)).playerIcons).toHaveLength(0);
+});
+
 test('defense: place a safety and drag a zone of responsibility', async ({ page }) => {
   await openDesigner(page);
 

@@ -1,7 +1,9 @@
 import React from 'react';
 import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers } from './PlayerToolbar';
-import type { DrawMode, IconShape } from './Canvas';
+import { FormationMenu } from './FormationMenu';
+import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
+import type { PlayMetadata } from '../../types/play';
 
 export type PlayType = 'offense' | 'defense';
 
@@ -9,6 +11,8 @@ interface DesignerToolbarProps {
   playType: PlayType;
   onSetPlayType: (type: PlayType) => void;
   playTypeLocked: boolean;
+  gameType: PlayMetadata['gameType'];
+  onStampFormation: (icons: PlayerIcon[]) => void;
   drawingMode: boolean;
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
@@ -35,6 +39,8 @@ export function DesignerToolbar({
   playType,
   onSetPlayType,
   playTypeLocked,
+  gameType,
+  onStampFormation,
   drawingMode,
   setDrawingMode,
   drawMode,
@@ -166,6 +172,13 @@ export function DesignerToolbar({
           <RouteOff className="h-4 w-4" />
           <span className="hidden sm:inline whitespace-nowrap">Remove Route</span>
         </button>
+
+        {!isDefense && (
+          <>
+            <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+            <FormationMenu gameType={gameType} onStamp={onStampFormation} />
+          </>
+        )}
 
         {isDefense && (
           <>
