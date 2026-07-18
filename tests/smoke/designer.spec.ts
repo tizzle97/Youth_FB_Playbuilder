@@ -186,6 +186,27 @@ test('formation templates (B-24): stamping I-Formation places 11 icons as one un
   expect((await canvasState(page)).playerIcons).toHaveLength(0);
 });
 
+// On phones the Formation trigger lives in the bottom toolbar, so the popover
+// must flip upward — opening downward puts every option below the screen
+// (real click coordinates via realClick would still "work", hiding the bug).
+test('formation menu opens fully on screen from the mobile bottom toolbar', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+
+  await btn(page, 'Formation templates').click();
+  const popover = page.locator('div.fixed.z-40');
+  await expect(popover).toBeVisible();
+  const box = await popover.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+
+  await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
+  expect((await canvasState(page)).playerIcons).toHaveLength(11);
+});
+
 test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 sets', async ({ page }) => {
   await openDesigner(page);
 

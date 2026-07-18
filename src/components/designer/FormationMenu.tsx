@@ -24,7 +24,7 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
   // popover nested inside that row gets silently clipped out of view instead
   // of showing (still clickable via automation, just invisible to a real
   // user — see B-24 follow-up).
-  const [coords, setCoords] = useState<{ left: number; top: number } | null>(null);
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const templates = formationsFor(gameType);
 
@@ -32,7 +32,18 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
     if (!open) return;
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setCoords({ left: rect.left, top: rect.bottom + 4 });
+      if (!rect) return;
+      // Clamp inside the viewport horizontally (w-56 popover on narrow
+      // phones), and open upward when the trigger sits in the lower half —
+      // on mobile the toolbar is at the bottom, so opening downward puts
+      // the menu below the screen.
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - 224 - 8));
+      const openUp = rect.bottom > window.innerHeight / 2;
+      setCoords(
+        openUp
+          ? { left, bottom: window.innerHeight - rect.top + 4 }
+          : { left, top: rect.bottom + 4 },
+      );
     };
     updatePosition();
     // The toolbar can scroll/resize (horizontal scroll row, mobile rotation);
@@ -72,8 +83,8 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
           {/* Click-outside catcher */}
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <div
-            className="fixed z-40 bg-board-light border border-chalk/20 rounded-xl shadow-2xl p-2 w-56"
-            style={{ left: coords.left, top: coords.top }}
+            className="fixed z-40 bg-board-light border border-chalk/20 rounded-xl shadow-2xl p-2 w-56 max-h-[60vh] overflow-y-auto"
+            style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <p className="text-[10px] uppercase tracking-wide text-chalk/40 px-1.5 pb-1">
