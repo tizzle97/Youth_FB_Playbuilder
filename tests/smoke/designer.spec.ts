@@ -122,6 +122,43 @@ test('canvas is letterboxed to the export aspect ratio at any viewport', async (
   }
 });
 
+// Canvas zoom (mobile): zoom buttons scale the canvas, coordinates stay
+// correct while zoomed, and select-mode drag on empty field pans the view.
+test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+
+  const base = await page.locator('#play-canvas').boundingBox();
+  await page.locator('button[title="Zoom in"]').click();
+  await page.locator('button[title="Zoom in"]').click();
+  await expect(page.locator('button[title="Reset zoom"]')).toHaveText('200%');
+  const zoomed = await page.locator('#play-canvas').boundingBox();
+  expect(zoomed!.width / base!.width).toBeCloseTo(2, 1);
+
+  // Placing an icon while zoomed stores the tapped field fraction, not the
+  // screen fraction — the pointer math must be zoom-agnostic.
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.5);
+  await page.mouse.click(spot.x, spot.y);
+  const state = await canvasState(page);
+  expect(state.playerIcons[0].x).toBeCloseTo(0.5, 1);
+  expect(state.playerIcons[0].y).toBeCloseTo(0.5, 1);
+
+  // Drag on empty field (select mode) pans: content follows the pointer,
+  // so dragging left increases scrollLeft.
+  const scrollLeft = () => page.evaluate(() => document.querySelector('main')!.scrollLeft);
+  const before = await scrollLeft();
+  await page.mouse.move(200, 300);
+  await page.mouse.down();
+  await page.mouse.move(120, 300, { steps: 6 });
+  await page.mouse.up();
+  expect(await scrollLeft()).toBeGreaterThan(before);
+
+  await page.locator('button[title="Reset zoom"]').click();
+  const reset = await page.locator('#play-canvas').boundingBox();
+  expect(reset!.width).toBeCloseTo(base!.width, 0);
+});
+
 test('offense: place a player, draw a straight route, undo both', async ({ page }) => {
   await openDesigner(page);
 

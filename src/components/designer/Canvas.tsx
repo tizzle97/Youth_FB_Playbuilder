@@ -118,6 +118,9 @@ type CanvasProps = {
    *  buttons reflect this canvas's internal history (which the parent can't
    *  otherwise observe — it never re-renders on a canvas-only edit). */
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
+  /** Select-mode drag on empty field reports pointer deltas (screen px) so
+   *  the parent can pan its scroll container when the canvas is zoomed. */
+  onPan?: (dxPx: number, dyPx: number) => void;
   id?: string;
 };
 
@@ -497,7 +500,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -575,6 +578,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // In-flight resize-or-move gesture on the selected zone. Like icon
     // dragging, the undo snapshot is deferred to the first actual move.
     const zoneGestureRef = useRef<{ type: 'move' | 'resize'; zoneIndex: number; axis?: ZoneHandleAxis; offset?: Pt; moved: boolean } | null>(null);
+    // Select-mode pan gesture: last pointer position in client (screen) px.
+    const panLastRef = useRef<{ x: number; y: number } | null>(null);
 
     const pushSnapshot = useCallback(() => {
       setUndoStack((prev) => [...prev, {
@@ -1239,10 +1244,21 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
       if (selectedZoneIndex !== null) setSelectedZoneIndex(null);
+
+      // Nothing hit — start a pan gesture (no-op unless the parent's scroll
+      // container actually overflows, i.e. the canvas is zoomed).
+      if (onPan) panLastRef.current = { x: e.clientX, y: e.clientY };
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
       const p = getPos(e);
+
+      // Select-mode pan: report screen-px deltas to the parent.
+      if (panLastRef.current) {
+        onPan?.(e.clientX - panLastRef.current.x, e.clientY - panLastRef.current.y);
+        panLastRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
 
       // Zone creation: live-resize the draft as the drag continues.
       if (zoneDraft) {
@@ -1307,6 +1323,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     const handlePointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
       if (e) (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+
+      panLastRef.current = null;
 
       // Commit the zone creation gesture: pushSnapshot (pre-zone state) then
       // add the new zone, floored to a minimum visible radius so a tap

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Save, Download, BookOpen, Home } from 'lucide-react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut } from 'lucide-react';
 import { Logo } from '../Logo';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
@@ -14,6 +14,12 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { getUserPreferences, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
 
+// Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
+// are dropped on large screens — the scene fully re-renders on every drag
+// frame, so an oversized bitmap makes dragging visibly laggy.
+const ZOOM_LEVELS = [1, 1.5, 2, 3];
+const MAX_CANVAS_PIXELS = 6_000_000;
+
 export function PlayDesigner() {
   usePageMeta({ title: 'Play Designer', description: 'Draw football plays on a real field — routes, formations, and zones — then save, print, or export.', path: '/designer' });
   const navigate = useNavigate();
@@ -21,6 +27,9 @@ export function PlayDesigner() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<CanvasHandle>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
+  // Canvas zoom: multiplies the letterboxed base size; the container scrolls
+  // (drag-to-pan in Select mode) when the zoomed canvas overflows it.
+  const [zoom, setZoom] = useState(1);
 
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
@@ -163,6 +172,40 @@ export function PlayDesigner() {
     const ro = new ResizeObserver(update);
     if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
+  }, []);
+
+  // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS).
+  const zoomLevels = ZOOM_LEVELS.filter(
+    (z) => z === 1 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS,
+  );
+  const zoomIndex = zoomLevels.indexOf(zoom);
+
+  // Keep the viewport's center point stable when the zoom level changes
+  // (layout effect: runs after the canvas has its new size, before paint).
+  const prevZoomRef = useRef(1);
+  useLayoutEffect(() => {
+    const el = canvasContainerRef.current;
+    const prev = prevZoomRef.current;
+    prevZoomRef.current = zoom;
+    if (!el || prev === zoom) return;
+    const k = zoom / prev;
+    el.scrollLeft = (el.scrollLeft + el.clientWidth / 2) * k - el.clientWidth / 2;
+    el.scrollTop = (el.scrollTop + el.clientHeight / 2) * k - el.clientHeight / 2;
+  }, [zoom]);
+
+  // If a resize/rotation shrinks the allowed range below the current zoom
+  // (e.g. rotating a phone to landscape), snap back into range.
+  useEffect(() => {
+    if (!zoomLevels.includes(zoom)) setZoom(zoomLevels[zoomLevels.length - 1] ?? 1);
+  }, [zoomLevels, zoom]);
+
+  // Select-mode drag on empty field pans the scroll container (content
+  // follows the pointer). No-op at 1x — nothing overflows.
+  const handlePan = useCallback((dxPx: number, dyPx: number) => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    el.scrollLeft -= dxPx;
+    el.scrollTop -= dyPx;
   }, []);
 
   // Bridge for the Playwright smoke suite (tests/smoke): exposes real canvas
@@ -375,7 +418,7 @@ export function PlayDesigner() {
       {/* ── SIDEBAR + CANVAS ───────────────────────────────────── */}
       {/* Desktop: toolbar in a left sidebar so the full viewport height goes
           to the aspect-locked canvas | Mobile: bottom bar (below) */}
-      <div className="flex-1 flex min-h-0">
+      <div className="relative flex-1 flex min-h-0">
         <aside className="hidden sm:block w-52 shrink-0 bg-board-light border-r border-chalk/10 px-2.5 py-3 z-20 overflow-y-auto">
           <DesignerToolbar
             orientation="vertical"
@@ -408,28 +451,60 @@ export function PlayDesigner() {
           />
         </aside>
 
+        {/* Scroll container: m-auto centers the canvas while it fits; once
+            zoomed past the container it overflows and drag-to-pan scrolls. */}
         <main
           ref={canvasContainerRef}
-          className="flex-1 bg-white overflow-hidden flex items-center justify-center"
+          className="flex-1 bg-white overflow-auto flex"
           style={{ minHeight: 0 }}
         >
-          <Canvas
-            ref={canvasRef}
-            id="play-canvas"
-            width={canvasSize.width}
-            height={canvasSize.height}
-            drawingMode={drawingMode}
-            drawMode={drawMode}
-            deleteRouteMode={deleteRouteMode}
-            zoneMode={zoneMode}
-            deleteZoneMode={deleteZoneMode}
-            snapEnabled={snapEnabled}
-            selectedPlayer={selectedPlayer}
-            setSelectedPlayer={setSelectedPlayer}
-            onDrawingComplete={() => {}}
-            onHistoryChange={setHistory}
-          />
+          <div className="m-auto">
+            <Canvas
+              ref={canvasRef}
+              id="play-canvas"
+              width={canvasSize.width * zoom}
+              height={canvasSize.height * zoom}
+              drawingMode={drawingMode}
+              drawMode={drawMode}
+              deleteRouteMode={deleteRouteMode}
+              zoneMode={zoneMode}
+              deleteZoneMode={deleteZoneMode}
+              snapEnabled={snapEnabled}
+              selectedPlayer={selectedPlayer}
+              setSelectedPlayer={setSelectedPlayer}
+              onDrawingComplete={() => {}}
+              onHistoryChange={setHistory}
+              onPan={handlePan}
+            />
+          </div>
         </main>
+
+        {/* ── ZOOM CONTROLS ─────────────────────────────────────── */}
+        <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg px-1 py-1">
+          <button
+            title="Zoom out"
+            disabled={zoomIndex <= 0}
+            onClick={() => setZoom(zoomLevels[zoomIndex - 1])}
+            className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button
+            title="Reset zoom"
+            onClick={() => setZoom(1)}
+            className="min-w-[44px] text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            title="Zoom in"
+            disabled={zoomIndex < 0 || zoomIndex >= zoomLevels.length - 1}
+            onClick={() => setZoom(zoomLevels[zoomIndex + 1])}
+            className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* ── MOBILE BOTTOM TOOLBAR ──────────────────────────────── */}
