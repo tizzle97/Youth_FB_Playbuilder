@@ -766,10 +766,53 @@ test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', asy
   await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
 });
 
-// Note: no automated smoke test for PlaybooksPage's usage banner (B-22). It
-// uses the same isNearFreeLimit()/UsageWarningBanner code path already
-// covered above for SavePlayModal and PlaysPage, but PlaybooksPage's
-// getSession() + onAuthStateChange mount pattern hits a pre-existing
-// React 18 StrictMode dev-mode quirk (loadPlaybooks()'s awaited query never
-// settles when driven by a mocked/unreachable Supabase backend) that's
-// unrelated to this change — see BACKLOG.md for the follow-up item.
+test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usage nudge', async ({ page }) => {
+  // Regression test for B-23: PlaybooksPage used to resolve its user via
+  // getSession() + onAuthStateChange *and* a separate useEntitlement() call
+  // (its own getUser() + onAuthStateChange) — two concurrent gotrue-js auth
+  // calls that could deadlock gotrue's internal session lock, hanging the
+  // page on "Loading playbooks..." forever. Both call sites now resolve the
+  // user once via a single getUser() call.
+  const userJson = {
+    id: '44444444-4444-4444-4444-444444444444',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'coach@example.com',
+    app_metadata: {},
+    user_metadata: {},
+    created_at: '2025-09-01T00:00:00Z',
+  };
+
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }),
+  );
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }),
+  );
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'pb-1', name: 'Home Playbook', description: '', created_at: '2025-09-01T00:00:00Z', user_id: userJson.id, playbook_plays: [] },
+      ]),
+    }),
+  );
+
+  await page.goto('/playbooks');
+  await expect(page.getByText('1 of 2 free playbooks used.')).toBeVisible();
+});
