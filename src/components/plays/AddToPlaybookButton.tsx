@@ -1,8 +1,12 @@
 // Create this file: src/components/plays/AddToPlaybookButton.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Book, Plus, Check, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+
+// Tallest the dropdown gets (header + max-h-60 list, see the JSX below).
+// Used to decide whether it fits below the button or needs to open upward.
+const DROPDOWN_MAX_HEIGHT_PX = 320;
 
 // Playbook interface
 interface Playbook {
@@ -31,6 +35,8 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
+  const [openUpward, setOpenUpward] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch user's playbooks when dropdown opens
   useEffect(() => {
@@ -38,6 +44,19 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
       fetchPlaybooks();
     }
   }, [isOpen]);
+
+  const toggleOpen = () => {
+    if (!isOpen && containerRef.current) {
+      // Flip upward when there isn't room below (e.g. bottom-row cards in a
+      // grid) — otherwise the dropdown renders past the viewport edge and
+      // becomes unreachable.
+      const spaceBelow = window.innerHeight - containerRef.current.getBoundingClientRect().bottom;
+      setOpenUpward(spaceBelow < DROPDOWN_MAX_HEIGHT_PX);
+    }
+    setIsOpen((prev) => !prev);
+  };
+
+  const dropdownPositionClass = openUpward ? 'bottom-full left-0 mb-2' : 'top-full left-0 mt-2';
 
   const fetchPlaybooks = async () => {
     try {
@@ -151,9 +170,9 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
 
   if (playbooks.length === 0 && !loading && isOpen) {
     return (
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggleOpen}
           className="flex items-center gap-2 px-3 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
           title="Add to Playbook"
         >
@@ -168,7 +187,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
               className="fixed inset-0 z-40" 
               onClick={() => setIsOpen(false)}
             />
-            <div className="absolute top-full left-0 mt-2 w-64 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50">
+            <div className={`absolute ${dropdownPositionClass} w-64 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50`}>
               <div className="p-4 text-center">
                 <Book className="w-8 h-8 text-chalk/50 mx-auto mb-2" />
                 <p className="text-chalk/70 text-sm mb-3">No playbooks found</p>
@@ -191,9 +210,9 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
         className="flex items-center gap-2 px-3 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
         title="Add to Playbook"
       >
@@ -211,7 +230,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
           />
           
           {/* Dropdown */}
-          <div className="absolute top-full left-0 mt-2 w-72 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50 max-h-80 overflow-hidden">
+          <div className={`absolute ${dropdownPositionClass} w-72 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50 max-h-80 overflow-hidden`}>
             <div className="p-4 border-b border-chalk/10">
               <h3 className="font-medium text-chalk">Select Playbook</h3>
               <p className="text-sm text-chalk/60 mt-1">Add "{playName}" to a playbook</p>
