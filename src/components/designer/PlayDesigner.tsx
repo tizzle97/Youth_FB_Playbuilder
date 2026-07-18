@@ -372,65 +372,65 @@ export function PlayDesigner() {
         </div>
       </header>
 
-      {/* ── TOOLBAR ────────────────────────────────────────────── */}
-      {/* Desktop: top bar below header | Mobile: bottom bar */}
-      <div className="
-        shrink-0 bg-board-light border-chalk/10 px-3 py-2 z-20
-        hidden sm:block border-b
-      ">
-        <DesignerToolbar
-          playType={playType}
-          onSetPlayType={setPlayType}
-          playTypeLocked={playTypeLocked}
-          gameType={currentPlayMetadata.gameType}
-          onSetGameType={handleSetGameType}
-          onStampFormation={handleStampFormation}
-          drawingMode={drawingMode}
-          setDrawingMode={setDrawingMode}
-          drawMode={drawMode}
-          setDrawMode={setDrawMode}
-          deleteRouteMode={deleteRouteMode}
-          setDeleteRouteMode={setDeleteRouteMode}
-          zoneMode={zoneMode}
-          setZoneMode={setZoneMode}
-          deleteZoneMode={deleteZoneMode}
-          setDeleteZoneMode={setDeleteZoneMode}
-          snapEnabled={snapEnabled}
-          setSnapEnabled={setSnapEnabled}
-          selectedPlayer={selectedPlayer?.letter || null}
-          onSelectPlayer={setSelectedPlayer}
-          onUndo={() => canvasRef.current?.undo()}
-          onRedo={() => canvasRef.current?.redo()}
-          onClear={() => canvasRef.current?.clear()}
-          onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-        />
-      </div>
+      {/* ── SIDEBAR + CANVAS ───────────────────────────────────── */}
+      {/* Desktop: toolbar in a left sidebar so the full viewport height goes
+          to the aspect-locked canvas | Mobile: bottom bar (below) */}
+      <div className="flex-1 flex min-h-0">
+        <aside className="hidden sm:block w-52 shrink-0 bg-board-light border-r border-chalk/10 px-2.5 py-3 z-20 overflow-y-auto">
+          <DesignerToolbar
+            orientation="vertical"
+            playType={playType}
+            onSetPlayType={setPlayType}
+            playTypeLocked={playTypeLocked}
+            gameType={currentPlayMetadata.gameType}
+            onSetGameType={handleSetGameType}
+            onStampFormation={handleStampFormation}
+            drawingMode={drawingMode}
+            setDrawingMode={setDrawingMode}
+            drawMode={drawMode}
+            setDrawMode={setDrawMode}
+            deleteRouteMode={deleteRouteMode}
+            setDeleteRouteMode={setDeleteRouteMode}
+            zoneMode={zoneMode}
+            setZoneMode={setZoneMode}
+            deleteZoneMode={deleteZoneMode}
+            setDeleteZoneMode={setDeleteZoneMode}
+            snapEnabled={snapEnabled}
+            setSnapEnabled={setSnapEnabled}
+            selectedPlayer={selectedPlayer?.letter || null}
+            onSelectPlayer={setSelectedPlayer}
+            onUndo={() => canvasRef.current?.undo()}
+            onRedo={() => canvasRef.current?.redo()}
+            onClear={() => canvasRef.current?.clear()}
+            onClearRoutes={() => canvasRef.current?.clearRoutes()}
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+          />
+        </aside>
 
-      {/* ── CANVAS ─────────────────────────────────────────────── */}
-      <main
-        ref={canvasContainerRef}
-        className="flex-1 bg-white overflow-hidden flex items-center justify-center"
-        style={{ minHeight: 0 }}
-      >
-        <Canvas
-          ref={canvasRef}
-          id="play-canvas"
-          width={canvasSize.width}
-          height={canvasSize.height}
-          drawingMode={drawingMode}
-          drawMode={drawMode}
-          deleteRouteMode={deleteRouteMode}
-          zoneMode={zoneMode}
-          deleteZoneMode={deleteZoneMode}
-          snapEnabled={snapEnabled}
-          selectedPlayer={selectedPlayer}
-          setSelectedPlayer={setSelectedPlayer}
-          onDrawingComplete={() => {}}
-          onHistoryChange={setHistory}
-        />
-      </main>
+        <main
+          ref={canvasContainerRef}
+          className="flex-1 bg-white overflow-hidden flex items-center justify-center"
+          style={{ minHeight: 0 }}
+        >
+          <Canvas
+            ref={canvasRef}
+            id="play-canvas"
+            width={canvasSize.width}
+            height={canvasSize.height}
+            drawingMode={drawingMode}
+            drawMode={drawMode}
+            deleteRouteMode={deleteRouteMode}
+            zoneMode={zoneMode}
+            deleteZoneMode={deleteZoneMode}
+            snapEnabled={snapEnabled}
+            selectedPlayer={selectedPlayer}
+            setSelectedPlayer={setSelectedPlayer}
+            onDrawingComplete={() => {}}
+            onHistoryChange={setHistory}
+          />
+        </main>
+      </div>
 
       {/* ── MOBILE BOTTOM TOOLBAR ──────────────────────────────── */}
       <div className="

@@ -88,17 +88,19 @@ interface PlayerToolbarProps {
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
   roster?: typeof players;
+  /** Wrap icons into a grid (sidebar layout) instead of a single row. */
+  wrap?: boolean;
 }
 
-export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players }: PlayerToolbarProps) {
+export function PlayerToolbar({ selectedPlayer, onSelectPlayer, roster = players, wrap = false }: PlayerToolbarProps) {
   const [showCustomEditor, setShowCustomEditor] = useState(false);
   // Remembered across placements within the session, so a coach placing
   // several similar custom players doesn't have to re-enter everything.
   const [customDraft, setCustomDraft] = useState<{ letter: string; color: string; shape: IconShape }>({ letter: '1', color: '#3B82F6', shape: 'circle' });
 
   return (
-    <div className="flex items-center gap-1">
-      <div className="h-6 w-px bg-chalk/10 mx-1"></div>
+    <div className={`flex items-center gap-1 ${wrap ? 'flex-wrap' : ''}`}>
+      {!wrap && <div className="h-6 w-px bg-chalk/10 mx-1"></div>}
       {roster.map((player) => (
         <PlayerIcon
           key={player.letter}

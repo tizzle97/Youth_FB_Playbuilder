@@ -11,9 +11,11 @@ interface FormationMenuProps {
   gameType: PlayMetadata['gameType'];
   onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStamp: (icons: PlayerIcon[]) => void;
+  /** Full-width left-aligned trigger for the sidebar layout. */
+  fullWidth?: boolean;
 }
 
-export function FormationMenu({ gameType, onSetGameType, onStamp }: FormationMenuProps) {
+export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = false }: FormationMenuProps) {
   const [open, setOpen] = useState(false);
   // Position is computed from the trigger button's real screen location and
   // the popover is portaled to <body> as position:fixed — the toolbar row it
@@ -36,28 +38,33 @@ export function FormationMenu({ gameType, onSetGameType, onStamp }: FormationMen
     // The toolbar can scroll/resize (horizontal scroll row, mobile rotation);
     // close instead of leaving the popover pinned to a stale position.
     const close = () => setOpen(false);
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('resize', close);
     window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('resize', close);
       window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
 
-  const btnBase = 'flex items-center justify-center rounded-lg transition-colors shrink-0';
+  const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
   const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
   const active = 'bg-primary/20 text-primary';
 
   return (
-    <div className="relative shrink-0">
+    <div className={`relative shrink-0 ${fullWidth ? 'w-full' : ''}`}>
       <button
         ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
         title="Formation templates"
-        className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${open ? active : inactive}`}
+        className={`${btnBase} text-xs font-medium ${
+          fullWidth ? 'w-full justify-start gap-2 px-2.5 py-2' : 'justify-center px-2.5 py-2 gap-1.5'
+        } ${open ? active : inactive}`}
       >
         <Layout className="h-4 w-4" />
-        <span className="hidden sm:inline whitespace-nowrap">Formation</span>
+        <span className={fullWidth ? 'whitespace-nowrap' : 'hidden sm:inline whitespace-nowrap'}>Formation</span>
       </button>
 
       {open && coords && createPortal(

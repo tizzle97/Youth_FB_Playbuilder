@@ -34,6 +34,9 @@ interface DesignerToolbarProps {
   onClearRoutes: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** 'vertical' renders a sidebar layout (desktop); default is the
+   *  horizontal bar used by the mobile bottom toolbar. */
+  orientation?: 'horizontal' | 'vertical';
 }
 
 export function DesignerToolbar({
@@ -63,9 +66,11 @@ export function DesignerToolbar({
   onClearRoutes,
   canUndo,
   canRedo,
+  orientation = 'horizontal',
 }: DesignerToolbarProps) {
   const activeDraw = drawingMode ? drawMode : null;
   const isDefense = playType === 'defense';
+  const vertical = orientation === 'vertical';
 
   const selectMode = () => {
     setDrawingMode(false);
@@ -114,130 +119,139 @@ export function DesignerToolbar({
     }
   };
 
-  const btnBase = 'flex items-center justify-center rounded-lg transition-colors shrink-0';
+  const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
   const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
   const active = 'bg-primary/20 text-primary';
+  // Tool buttons: full-width labeled rows in the sidebar, compact chips in the bar
+  const tool = vertical
+    ? `${btnBase} w-full justify-start gap-2 px-2.5 py-2 text-xs font-medium`
+    : `${btnBase} justify-center px-2.5 py-2 gap-1.5 text-xs font-medium`;
+  const iconOnly = `${btnBase} justify-center p-2 min-w-[36px]`;
+  const divider = vertical ? 'h-px w-full bg-chalk/15 my-1 shrink-0' : 'w-px h-5 bg-chalk/15 shrink-0 mx-0.5';
+  const label = vertical ? 'whitespace-nowrap' : 'hidden sm:inline whitespace-nowrap';
 
   return (
-    <div className="flex flex-col gap-1 w-full">
-      {/* Row 1: tools */}
-      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide pb-0.5">
+    <div className={`flex flex-col w-full ${vertical ? 'gap-2' : 'gap-1'}`}>
+      {/* Tools: a column of labeled rows (sidebar) or one scrollable row (bar) */}
+      <div className={vertical ? 'flex flex-col items-stretch gap-0.5' : 'flex items-center gap-1 overflow-x-auto scrollbar-hide pb-0.5'}>
 
         {/* Select */}
         <button
           onClick={selectMode}
           title="Select / Move"
-          className={`${btnBase} p-2 min-w-[36px] ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode ? active : inactive}`}
+          className={`${vertical ? tool : iconOnly} ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode ? active : inactive}`}
         >
           <MousePointer className="h-4 w-4" />
+          {vertical && <span className="whitespace-nowrap">Select / Move</span>}
         </button>
 
         {/* Snap to alignment (Visio-style guides + yard grid) */}
         <button
           onClick={() => setSnapEnabled(!snapEnabled)}
           title="Snap to alignment"
-          className={`${btnBase} p-2 min-w-[36px] ${snapEnabled ? active : inactive}`}
+          className={`${vertical ? tool : iconOnly} ${snapEnabled ? active : inactive}`}
         >
           <Magnet className="h-4 w-4" />
+          {vertical && <span className="whitespace-nowrap">Snap</span>}
         </button>
 
-        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+        <div className={divider} />
 
         {/* Straight */}
         <button
           onClick={() => pickDraw('straight')}
           title="Straight Line Route"
-          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'straight' ? active : inactive}`}
+          className={`${tool} ${activeDraw === 'straight' ? active : inactive}`}
         >
           <Minus className="h-4 w-4" />
-          <span className="hidden sm:inline whitespace-nowrap">Straight</span>
+          <span className={label}>Straight</span>
         </button>
 
         {/* Waypoint / multi-segment */}
         <button
           onClick={() => pickDraw('waypoint')}
           title="Multi-Segment Route (tap points, double-tap to finish)"
-          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${activeDraw === 'waypoint' ? active : inactive}`}
+          className={`${tool} ${activeDraw === 'waypoint' ? active : inactive}`}
         >
           <GitBranch className="h-4 w-4" />
-          <span className="hidden sm:inline whitespace-nowrap">Route</span>
+          <span className={label}>Route</span>
         </button>
 
         {/* Remove Route for a player */}
         <button
           onClick={toggleDeleteRouteMode}
           title="Remove a player's route (tap the player)"
-          className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${
-            deleteRouteMode ? 'bg-amber-500/20 text-amber-400' : inactive
-          }`}
+          className={`${tool} ${deleteRouteMode ? 'bg-amber-500/20 text-amber-400' : inactive}`}
         >
           <RouteOff className="h-4 w-4" />
-          <span className="hidden sm:inline whitespace-nowrap">Remove Route</span>
+          <span className={label}>Remove Route</span>
         </button>
 
         {!isDefense && (
           <>
-            <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
-            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} />
+            <div className={divider} />
+            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} fullWidth={vertical} />
           </>
         )}
 
         {isDefense && (
           <>
-            <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+            <div className={divider} />
 
             {/* Zone of responsibility */}
             <button
               onClick={toggleZoneMode}
               title="Draw a zone of responsibility (drag from a player)"
-              className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${zoneMode ? active : inactive}`}
+              className={`${tool} ${zoneMode ? active : inactive}`}
             >
               <Circle className="h-4 w-4" />
-              <span className="hidden sm:inline whitespace-nowrap">Zone</span>
+              <span className={label}>Zone</span>
             </button>
 
             {/* Remove Zone */}
             <button
               onClick={toggleDeleteZoneMode}
               title="Remove a player's zone (tap the zone or the player)"
-              className={`${btnBase} px-2.5 py-2 gap-1.5 text-xs font-medium ${
-                deleteZoneMode ? 'bg-amber-500/20 text-amber-400' : inactive
-              }`}
+              className={`${tool} ${deleteZoneMode ? 'bg-amber-500/20 text-amber-400' : inactive}`}
             >
               <CircleOff className="h-4 w-4" />
-              <span className="hidden sm:inline whitespace-nowrap">Remove Zone</span>
+              <span className={label}>Remove Zone</span>
             </button>
           </>
         )}
 
-        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+        <div className={divider} />
 
-        {/* Undo */}
-        <button onClick={onUndo} disabled={!canUndo} title="Undo" className={`${btnBase} p-2 min-w-[36px] ${canUndo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
-          <Undo className="h-4 w-4" />
-        </button>
+        {/* Undo / redo / clears: always compact icons — one row in the sidebar
+            (display:contents keeps the horizontal bar's flat flex layout) */}
+        <div className={vertical ? 'flex items-center gap-1' : 'contents'}>
+          <button onClick={onUndo} disabled={!canUndo} title="Undo" className={`${iconOnly} ${canUndo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
+            <Undo className="h-4 w-4" />
+          </button>
 
-        {/* Redo */}
-        <button onClick={onRedo} disabled={!canRedo} title="Redo" className={`${btnBase} p-2 min-w-[36px] ${canRedo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
-          <Redo className="h-4 w-4" />
-        </button>
+          <button onClick={onRedo} disabled={!canRedo} title="Redo" className={`${iconOnly} ${canRedo ? inactive : 'opacity-30 cursor-not-allowed text-chalk/30'}`}>
+            <Redo className="h-4 w-4" />
+          </button>
 
-        <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
+          <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
 
-        {/* Clear routes */}
-        <button onClick={onClearRoutes} title="Clear Routes" className={`${btnBase} p-2 min-w-[36px] text-yellow-400 hover:bg-yellow-400/10`}>
-          <Eraser className="h-4 w-4" />
-        </button>
+          {/* Clear routes */}
+          <button onClick={onClearRoutes} title="Clear Routes" className={`${iconOnly} text-yellow-400 hover:bg-yellow-400/10`}>
+            <Eraser className="h-4 w-4" />
+          </button>
 
-        {/* Clear all */}
-        <button onClick={onClear} title="Clear All" className={`${btnBase} px-2.5 py-2 gap-1 text-xs text-red-400 hover:bg-red-400/10`}>
-          <Eraser className="h-4 w-4" />
-          <span className="hidden sm:inline whitespace-nowrap">All</span>
-        </button>
+          {/* Clear all */}
+          <button onClick={onClear} title="Clear All" className={`${btnBase} justify-center px-2.5 py-2 gap-1 text-xs text-red-400 hover:bg-red-400/10`}>
+            <Eraser className="h-4 w-4" />
+            <span className="hidden sm:inline whitespace-nowrap">All</span>
+          </button>
+        </div>
       </div>
 
-      {/* Row 2: play type + player icons (horizontally scrollable) */}
-      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+      {vertical && <div className={divider} />}
+
+      {/* Play type + player icons: wrapped grid (sidebar) or scrollable row (bar) */}
+      <div className={vertical ? 'flex flex-col gap-2' : 'flex items-center gap-1 overflow-x-auto scrollbar-hide'}>
         {/* Offense / Defense — decided once per play, locked once it has content */}
         <div
           className={`flex items-center rounded-md border border-chalk/15 overflow-hidden shrink-0 ${playTypeLocked ? 'opacity-50' : ''}`}
@@ -248,7 +262,7 @@ export function DesignerToolbar({
               key={t}
               disabled={playTypeLocked}
               onClick={() => onSetPlayType(t)}
-              className={`px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+              className={`px-2 py-1 text-[11px] font-medium capitalize transition-colors ${vertical ? 'flex-1' : ''} ${
                 playType === t ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
               } ${playTypeLocked ? 'cursor-not-allowed' : ''}`}
             >
@@ -260,6 +274,7 @@ export function DesignerToolbar({
           selectedPlayer={selectedPlayer}
           onSelectPlayer={handlePlayerSelect}
           roster={isDefense ? defensivePlayers : players}
+          wrap={vertical}
         />
       </div>
 
