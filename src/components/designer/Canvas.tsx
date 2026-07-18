@@ -125,8 +125,9 @@ export type CanvasHandle = {
   clearRoutes: () => void;
   removeRouteForIcon: (iconIndex: number) => void;
   loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[]; zones?: Zone[] }) => void;
-  /** Adds icons to the existing scene (unlike loadState, which replaces it)
-   *  as a single undo entry — used to stamp a formation template. */
+  /** Replaces the whole scene with a formation template's icons (paths and
+   *  zones are cleared too, since they'd otherwise reference stale icon
+   *  indices) as a single undo entry — used to stamp a formation template. */
   stampFormation: (icons: PlayerIcon[]) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
@@ -1011,7 +1012,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); },
-      stampFormation: (icons) => { pushSnapshot(); setPlayerIcons((prev) => [...prev, ...icons]); },
+      // Replaces the whole scene with the template (routes/zones would
+      // otherwise reference icon indices that no longer line up once a
+      // different formation is stamped over the old one) — same shape as
+      // clear(), just landing on the new icons instead of an empty canvas.
+      stampFormation: (icons) => {
+        pushSnapshot();
+        setPaths([]);
+        setPlayerIcons(icons);
+        setZones([]);
+        setSelectedZoneIndex(null);
+        setZoneDraft(null);
+        setEditingIconIndex(null);
+        setWaypointPoints([]);
+        setWaypointIconIndex(null);
+        setHoveredIconIndex(null);
+      },
       canUndo: () => undoStack.length > 0 || waypointPoints.length > 0,
       canRedo: () => redoStack.length > 0 && waypointPoints.length === 0,
       getPaths: () => paths,
