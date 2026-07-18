@@ -216,6 +216,35 @@ export function PlaybooksPage() {
     }
   };
 
+  // Remove one play from the currently selected playbook. Only deletes the
+  // playbook_plays link row — the play itself stays in the user's library.
+  const removePlayFromPlaybook = async (play: PlayInPlaybook) => {
+    if (!selectedPlaybook) return;
+    if (!confirm(`Remove "${play.name}" from "${selectedPlaybook.name}"? The play itself won't be deleted.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('playbook_plays')
+        .delete()
+        .eq('playbook_id', selectedPlaybook.id)
+        .eq('play_id', play.id);
+
+      if (error) throw error;
+
+      setPlaysInPlaybook((prev) => prev.filter((p) => p.id !== play.id));
+      setPlaybooks((prev) =>
+        prev.map((pb) =>
+          pb.id === selectedPlaybook.id ? { ...pb, play_count: Math.max(0, pb.play_count - 1) } : pb
+        )
+      );
+    } catch (error) {
+      console.error('Error removing play from playbook:', error);
+      alert('Failed to remove play from playbook. Please try again.');
+    }
+  };
+
   const handleEditPlay = (playId: string) => {
     navigate(`/designer?play=${playId}`);
   };
@@ -1229,12 +1258,19 @@ export function PlaybooksPage() {
                                 <Play className="h-8 w-8" />
                               </div>
                             )}
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                               <button
                                 onClick={() => handleEditPlay(play.id)}
                                 className="px-3 py-2 bg-white text-black rounded-lg text-sm font-medium"
                               >
                                 Edit Play
+                              </button>
+                              <button
+                                onClick={() => removePlayFromPlaybook(play)}
+                                title="Remove from this playbook"
+                                className="p-2 bg-white text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </div>
