@@ -108,6 +108,20 @@ test('GA consent banner is hidden on the full-screen Play Designer', async ({ pa
   await expect(page.getByText('We use Google Analytics', { exact: false })).toHaveCount(0);
 });
 
+// The on-screen canvas must keep the export render's 1650:1275 aspect ratio
+// at every viewport shape — radii are stored normalized per-axis, so if the
+// ratios differ, a circular zone drawn on screen prints as a squished ellipse.
+test('canvas is letterboxed to the export aspect ratio at any viewport', async ({ page }) => {
+  const EXPORT_RATIO = 1650 / 1275;
+  for (const viewport of [{ width: 1900, height: 900 }, { width: 800, height: 1100 }]) {
+    await page.setViewportSize(viewport);
+    await openDesigner(page);
+    const box = await page.locator('#play-canvas').boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width / box!.height).toBeCloseTo(EXPORT_RATIO, 2);
+  }
+});
+
 test('offense: place a player, draw a straight route, undo both', async ({ page }) => {
   await openDesigner(page);
 

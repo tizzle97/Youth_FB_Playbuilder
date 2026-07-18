@@ -47,9 +47,12 @@ const HASH_LEFT_X_RATIO = 70.75 / 160;
 const HASH_RIGHT_X_RATIO = 1 - HASH_LEFT_X_RATIO;
 
 // Fixed export resolution (letter-page proportions) — every play prints
-// the same regardless of the screen it was designed on.
-const EXPORT_WIDTH = 1650;
-const EXPORT_HEIGHT = 1275;
+// the same regardless of the screen it was designed on. The on-screen
+// canvas is locked to this aspect ratio too (PlayDesigner's resize
+// handler), so shapes — zone ellipses especially — look the same on
+// screen as in the printed PDF.
+export const EXPORT_WIDTH = 1650;
+export const EXPORT_HEIGHT = 1275;
 
 // ---------------------------------------------
 // Types
@@ -1418,7 +1421,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     }
 
     return (
-      <div className="relative w-full h-full">
+      // Sized to the width/height props (not the parent) so the parent can
+      // letterbox the canvas to the export aspect ratio.
+      <div className="relative" style={{ width, height }}>
         <canvas
           id={id || 'play-canvas'}
           ref={canvasRef}

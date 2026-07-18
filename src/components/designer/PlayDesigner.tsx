@@ -6,7 +6,7 @@ import { DesignerToolbar } from './DesignerToolbar';
 import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
-import { Canvas } from './Canvas';
+import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
 import type { CanvasHandle, DrawMode, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
@@ -145,14 +145,19 @@ export function PlayDesigner() {
     setPendingLoad(null);
   }, [pendingLoad, canvasSize]);
 
-  // Resize canvas to fill container
+  // Resize canvas to the largest EXPORT_WIDTH:EXPORT_HEIGHT rectangle that
+  // fits the container. Locking the on-screen aspect ratio to the export's
+  // keeps shapes WYSIWYG — a circular zone used to print as a squished
+  // ellipse because radii are stored normalized per-axis.
   useEffect(() => {
     const update = () => {
       const el = canvasContainerRef.current;
       if (!el) return;
-      const w = Math.max(320, el.clientWidth);
-      const h = Math.max(320, el.clientHeight);
-      setCanvasSize({ width: w, height: h });
+      const maxW = Math.max(320, el.clientWidth);
+      const maxH = Math.max(320, el.clientHeight);
+      const ratio = EXPORT_WIDTH / EXPORT_HEIGHT;
+      const w = Math.min(maxW, maxH * ratio);
+      setCanvasSize({ width: w, height: w / ratio });
     };
     const frame = requestAnimationFrame(update);
     const ro = new ResizeObserver(update);
@@ -406,7 +411,7 @@ export function PlayDesigner() {
       {/* ── CANVAS ─────────────────────────────────────────────── */}
       <main
         ref={canvasContainerRef}
-        className="flex-1 bg-white overflow-hidden"
+        className="flex-1 bg-white overflow-hidden flex items-center justify-center"
         style={{ minHeight: 0 }}
       >
         <Canvas
