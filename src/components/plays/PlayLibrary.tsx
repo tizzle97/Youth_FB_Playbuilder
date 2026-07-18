@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Copy, Check, Play as PlayIcon, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
-import { PlayVoteButton } from '../plays/PlayVoteButton';
+import { PlayVoteButton } from './PlayVoteButton';
 import { UpgradePrompt } from '../UpgradePrompt';
 
 type PublicPlay = {
@@ -174,7 +174,7 @@ export function PlayLibrary() {
           <p className="text-chalk/70">
             {search
               ? 'Try a different name.'
-              : 'Publish a play from your Plays page to get the library started.'}
+              : 'Publish one of your own plays to get the library started.'}
           </p>
         </div>
       ) : (

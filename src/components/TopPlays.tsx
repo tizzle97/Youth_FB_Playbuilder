@@ -56,7 +56,7 @@ export function TopPlays() {
             </p>
           </div>
           <a
-            href="/community?tab=plays"
+            href="/plays?tab=community"
             className="hidden sm:flex items-center text-primary hover:text-primary-dark transition-colors"
           >
             Browse the Play Library

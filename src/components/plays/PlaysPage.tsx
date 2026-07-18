@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { checkIsAdmin } from '../../lib/admin';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
 import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import { PlayLibrary } from './PlayLibrary';
 import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 
@@ -28,7 +29,14 @@ interface Play {
 }
 
 export function PlaysPage() {
-  usePageMeta({ title: 'My Plays', description: 'Your saved football plays in Playbuilder Pro.', path: '/plays' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?tab=community shows the public Play Library; default is your own plays.
+  const tab: 'mine' | 'community' = searchParams.get('tab') === 'community' ? 'community' : 'mine';
+  usePageMeta(
+    tab === 'community'
+      ? { title: 'Community Play Library', description: 'Browse public plays shared by youth and flag football coaches — vote for favorites and copy any play into your own account.', path: '/plays' }
+      : { title: 'My Plays', description: 'Your saved football plays in Playbuilder Pro.', path: '/plays' }
+  );
   const [plays, setPlays] = useState<Play[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,30 +106,9 @@ export function PlaysPage() {
           } else {
             setVotedPlayIds(new Set());
           }
-        } else {
-          // User is not authenticated - show public plays (limited to 10)
-          let query = supabase
-            .from('plays')
-            .select(`
-              *,
-              profiles(
-                username,
-                avatar_url
-              )
-            `)
-            .eq('is_public', true)
-            .order('created_at', { ascending: false })
-            .limit(20); // Get 20 to show 10 + fade effect
-
-          if (filter !== 'all') {
-            query = query.eq('type', filter);
-          }
-
-          const { data, error: fetchError } = await query;
-
-          if (fetchError) throw fetchError;
-          setPlays(data || []);
         }
+        // Signed-out visitors browse public plays on the Community tab
+        // (PlayLibrary); the old profiles(...) embed here 400'd anyway.
       } catch (err) {
         console.error('Error fetching plays:', err);
         setError(getSafeErrorMessage(err, 'Failed to load plays'));
@@ -319,23 +306,30 @@ export function PlaysPage() {
     );
   };
 
-  const visiblePlays = user ? plays : plays.slice(0, 10);
-  const fadedPlays = user ? [] : plays.slice(10);
+  const visiblePlays = plays;
 
-  // Require sign-in to view Community Plays
-  if (!loading && !user) {
+  // My Plays requires sign-in; the Community tab is public.
+  if (!loading && !user && tab === 'mine') {
     return (
       <div className="min-h-screen bg-board flex items-center justify-center px-4">
         <div className="text-center">
           <LogIn className="h-12 w-12 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-chalk mb-4">Sign In Required</h2>
           <p className="text-chalk/70 mb-6">Please sign in to view Community Plays.</p>
-          <button
-            onClick={() => navigate('/auth')}
-            className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
-          >
-            Sign In
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => navigate('/auth')}
+              className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setSearchParams({ tab: 'community' }, { replace: true })}
+              className="px-6 py-3 border border-chalk/20 text-chalk hover:bg-board rounded-lg transition-colors"
+            >
+              Browse Community Plays
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -347,11 +341,31 @@ export function PlaysPage() {
         <div className="bg-board-light rounded-xl border border-chalk/10 overflow-hidden">
           <div className="px-6 py-4 border-b border-chalk/10">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-chalk flex items-center gap-2">
-                <Book className="h-6 w-6 text-primary" />
-                {user ? 'My Plays' : 'Community Plays'}
-              </h1>
-              {user && (
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold text-chalk flex items-center gap-2">
+                  <Book className="h-6 w-6 text-primary" />
+                  Plays
+                </h1>
+                <div className="flex items-center gap-1 border border-chalk/15 rounded-lg p-1">
+                  <button
+                    onClick={() => setSearchParams({}, { replace: true })}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      tab === 'mine' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                    }`}
+                  >
+                    My Plays
+                  </button>
+                  <button
+                    onClick={() => setSearchParams({ tab: 'community' }, { replace: true })}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      tab === 'community' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                    }`}
+                  >
+                    Community
+                  </button>
+                </div>
+              </div>
+              {user && tab === 'mine' && (
                 <Link
                   to="/designer"
                   className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
@@ -362,6 +376,7 @@ export function PlaysPage() {
               )}
             </div>
 
+            {tab === 'mine' && (
             <div className="mt-4 flex items-center gap-2">
               <Filter className="h-4 w-4 text-chalk/50" />
               <div className="flex gap-2">
@@ -380,9 +395,14 @@ export function PlaysPage() {
                 ))}
               </div>
             </div>
+            )}
           </div>
 
           <div className="p-6 relative">
+            {tab === 'community' ? (
+              <PlayLibrary />
+            ) : (
+            <>
             {!isPro && isNearFreeLimit(totalPlayCount, FREE_LIMITS.plays) && (
               <div className="mb-6">
                 <UsageWarningBanner used={totalPlayCount} limit={FREE_LIMITS.plays} label="plays" />
@@ -509,65 +529,9 @@ export function PlaysPage() {
   ))}
 </div>
 
-                {/* Faded plays for non-authenticated users */}
-                {!user && fadedPlays.length > 0 && (
-                  <div className="relative mt-6">
-                    {/* Fade overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-board/50 to-board z-10 pointer-events-none"></div>
-                    
-                    {/* Faded plays */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 opacity-30">
-                      {fadedPlays.map((play) => (
-                        <div key={play.id} className="group relative">
-                          <div className="bg-board rounded-lg overflow-hidden aspect-[4/3] mb-2 border border-chalk/10">
-                            <ThumbnailImage play={play} />
-                          </div>
-                          <h3 className="text-chalk">
-                            {play.name}
-                          </h3>
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm text-chalk/50 capitalize">
-                              {play.type.replace('_', ' ')}
-                            </p>
-                            {play.profiles && (
-                              <p className="text-xs text-chalk/40">
-                                by {play.profiles.username || 'Anonymous'}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Sign up message */}
-                    <div className="absolute inset-0 flex items-center justify-center z-20">
-                      <div className="bg-board-light border border-chalk/20 rounded-xl p-8 text-center max-w-md mx-4 shadow-xl">
-                        <LogIn className="h-12 w-12 text-primary mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-chalk mb-2">
-                          Want to see more plays?
-                        </h3>
-                        <p className="text-chalk/70 mb-6">
-                          Create an account to access hundreds of plays, create your own, and join our community of coaches.
-                        </p>
-                        <div className="flex gap-3 justify-center">
-                          <button
-                            onClick={() => navigate('/auth')}
-                            className="px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors font-medium"
-                          >
-                            Sign Up Free
-                          </button>
-                          <button
-                            onClick={() => navigate('/auth')}
-                            className="px-6 py-3 border border-chalk/20 text-chalk hover:bg-board rounded-lg transition-colors"
-                          >
-                            Sign In
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </>
+            )}
+            </>
             )}
           </div>
         </div>
