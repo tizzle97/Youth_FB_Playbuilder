@@ -210,7 +210,7 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
   expect(state.playerIcons).toHaveLength(1);
 
   // Block mode uses the same click-to-place-points flow as Straight
-  await btn(page, 'Block Assignment').click();
+  await btn(page, 'Block Assignment (tap points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
