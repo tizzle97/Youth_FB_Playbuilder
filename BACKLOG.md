@@ -55,16 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-25 · Blocking-assignment notation (11v11 gap #2)
-Routes and defensive zones exist, but 11v11 is run-first and there's no way
-to notate blocking: run-game diagrams need block symbols (line ending in a
-perpendicular "T" at contact), pull paths for linemen, and ideally a
-double-team indicator. Scope: a "Block" draw mode alongside Straight/Route —
-same path drawing, different terminal decoration (T-cap instead of
-arrowhead); persists in `canvas_data.paths` via a `mode: 'block'` variant so
-old plays load unchanged; renders in both live canvas and `exportImage()`.
-Extend the smoke suite (draw block → assert path mode → undo).
-
 ### B-26 · Delete dead FormationSelector.tsx (Fabric.js remnant)
 `src/components/designer/FormationSelector.tsx` imports `fabric` /
 `fabric/fabric-impl`, is imported by nothing, and predates the pure-HTML-
@@ -171,6 +161,29 @@ two-pointer test for the suppression behavior at minimum, and flag the PR
 for a real-device check before merge.
 
 ## Done
+
+- **2026-07-19 · B-25: Blocking-assignment notation (11v11 gap #2)** — a
+  "Block" draw mode alongside Straight/Route in `DesignerToolbar.tsx` (Shield
+  icon), reusing the same click-to-place-points flow as Straight (multi-segment
+  straight lines, so pull paths that bend around the formation work the same
+  way). `Canvas.tsx`'s `DrawMode` gained a third `'block'` value; a new
+  `drawBlockCap()` renders the run-blocking symbol — a short perpendicular bar
+  centered on the path's endpoint (the standard "T-cap") — in place of
+  `drawArrowhead()`, in both the live canvas (`renderScene`, in-progress
+  preview) and `exportImage()`, since both paths through the same
+  `renderScene()` function. Persists as `paths[].mode === 'block'` in
+  `canvas_data`, additive to the existing `'straight' | 'waypoint'` values, so
+  old saved plays load unchanged. Not done (fast follow per the original
+  scope): a double-team indicator — no obvious existing visual language to
+  extend for two blockers on one path, needs its own design pass. New smoke
+  test draws a block assignment, asserts `paths[0].mode === 'block'`, and
+  confirms undo clears it the same way a route does.
+  **Verification:** `npx tsc --noEmit` and `npm run lint` both pass clean (0
+  errors; lint warnings are all pre-existing). `npm run build` succeeds. The
+  Playwright smoke suite (including the new test) **could not run** in this
+  environment — no `.env` file and no `VITE_SUPABASE_URL`/
+  `VITE_SUPABASE_ANON_KEY` in the shell, which `tests/smoke/designer.spec.ts`
+  requires at import time to derive the mocked-session auth storage key.
 
 - **2026-07-18 · B-24: Formation templates (11v11 gap #1)** — a "Formation"
   button in the designer toolbar (offense only) opens a menu of curated

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers } from './PlayerToolbar';
 import { FormationMenu } from './FormationMenu';
 import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
@@ -177,6 +177,17 @@ export function DesignerToolbar({
           <span className={label}>Route</span>
         </button>
 
+        {/* Block (B-25): same click-to-place-points flow as Straight, but
+            ends in a perpendicular T-cap instead of an arrowhead. */}
+        <button
+          onClick={() => pickDraw('block')}
+          title="Block Assignment (tap points, double-tap to finish)"
+          className={`${tool} ${activeDraw === 'block' ? active : inactive}`}
+        >
+          <Shield className="h-4 w-4" />
+          <span className={label}>Block</span>
+        </button>
+
         {/* Remove Route for a player */}
         <button
           onClick={toggleDeleteRouteMode}
@@ -287,6 +298,7 @@ export function DesignerToolbar({
             {zoneMode && 'Zone mode'}
             {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'straight' && 'Straight line mode'}
             {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'waypoint' && 'Curved route mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'block' && 'Block assignment mode'}
           </span>
           <span>· See field for instructions</span>
         </p>

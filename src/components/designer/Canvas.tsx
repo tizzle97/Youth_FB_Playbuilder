@@ -57,7 +57,7 @@ export const EXPORT_HEIGHT = 1275;
 // ---------------------------------------------
 // Types
 // ---------------------------------------------
-export type DrawMode = 'straight' | 'waypoint';
+export type DrawMode = 'straight' | 'waypoint' | 'block';
 
 type Pt = { x: number; y: number }; // normalized 0–1
 
@@ -241,6 +241,46 @@ function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, 
   ctx.lineTo(tip.x - ux * size + uy * (size * 0.45), tip.y - uy * size - ux * (size * 0.45));
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Block-notation terminal decoration (B-25): a short perpendicular bar
+ * centered on the path's tip — the standard run-blocking "T-cap" symbol,
+ * in place of an arrowhead. The line is drawn full-length right up to the
+ * tip (see the `useBlockCap` trim skip in renderScene) since the bar sits
+ * on the endpoint rather than tapering to it like an arrowhead does.
+ */
+function drawBlockCap(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number) {
+  if (pts.length < 2) return;
+  const tip = pts[pts.length - 1];
+  let from = pts[pts.length - 2];
+  for (let i = pts.length - 2; i >= Math.max(0, pts.length - 8); i--) {
+    const dx = tip.x - pts[i].x;
+    const dy = tip.y - pts[i].y;
+    if (Math.sqrt(dx * dx + dy * dy) > size * 0.4) {
+      from = pts[i];
+      break;
+    }
+  }
+  const dx = tip.x - from.x;
+  const dy = tip.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.5) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  // Perpendicular unit vector
+  const px = -uy;
+  const py = ux;
+  const halfWidth = size * 0.6;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = size * 0.28;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tip.x + px * halfWidth, tip.y + py * halfWidth);
+  ctx.lineTo(tip.x - px * halfWidth, tip.y - py * halfWidth);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -461,14 +501,20 @@ function renderScene(
   paths.forEach((p, i) => {
     const pts = p.points.map(toPx);
     const isLast = p.startIconIndex !== undefined ? lastByIcon.get(p.startIconIndex) === i : true;
-    // Stop the stroked line short of the tip so it tucks behind the arrowhead
-    const stroked = isLast ? trimEnd(pts, arrowSize * 0.8) : pts;
-    if (p.mode === 'straight') {
-      strokeStraight(ctx, stroked, p.color, lineWidth);
-    } else {
+    const useBlockCap = p.mode === 'block';
+    // Stop the stroked line short of the tip so it tucks behind the
+    // arrowhead. Skipped for the block cap, which sits on the endpoint
+    // rather than tapering to it.
+    const stroked = isLast && !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
+    if (p.mode === 'waypoint') {
       strokeRoute(ctx, stroked, p.color, lineWidth);
+    } else {
+      strokeStraight(ctx, stroked, p.color, lineWidth);
     }
-    if (isLast) drawArrowhead(ctx, pts, p.color, arrowSize);
+    if (isLast) {
+      if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
+      else drawArrowhead(ctx, pts, p.color, arrowSize);
+    }
   });
 
   // Player icons
@@ -818,8 +864,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // In-progress route preview
       if (waypointPoints.length >= 1) {
         const pts = waypointPoints.map(toPx);
-        const stroked = pts.length >= 2 ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
-        if (drawMode === 'straight') {
+        const isBlock = drawMode === 'block';
+        const stroked = pts.length >= 2 && !isBlock ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
+        if (drawMode === 'straight' || isBlock) {
           strokeStraight(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
           pts.slice(1).forEach((pt) => {
             ctx.save();
@@ -832,7 +879,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         } else {
           strokeRoute(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
         }
-        if (pts.length >= 2) drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
+        if (pts.length >= 2) {
+          if (isBlock) drawBlockCap(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
+          else drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
+        }
       }
 
       const ringRadius = (PLAYER_SIZE * scale) / 2;
@@ -1158,7 +1208,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
 
       // Straight + Waypoint modes — click-to-add-segments flow
-      if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
+      if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight' || drawMode === 'block')) {
         const now = Date.now();
         const isDoubleTap = now - lastTapRef.current < 350;
         lastTapRef.current = now;
@@ -1497,7 +1547,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         )}
 
         {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
-        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 1 && (
+        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight' || drawMode === 'block') && waypointPoints.length >= 1 && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
             {waypointPoints.length >= 2 && (
               <button
