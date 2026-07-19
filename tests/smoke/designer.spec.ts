@@ -199,6 +199,42 @@ test('offense: place a player, draw a straight route, undo both', async ({ page 
   expect(state.playerIcons).toHaveLength(0);
 });
 
+test('offense: draw a block assignment (B-25), path mode is "block", undo clears it', async ({ page }) => {
+  await openDesigner(page);
+
+  // Place a lineman
+  await btn(page, 'Player C').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(1);
+
+  // Block mode uses the same click-to-place-points flow as Straight
+  await btn(page, 'Block Assignment').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('block');
+  expect(state.paths[0].startIconIndex).toBe(0);
+
+  // Undo removes the block path first, then the icon — same history
+  // behavior as a regular route.
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(0);
+  expect(state.playerIcons).toHaveLength(1);
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(0);
+});
+
 test('formation templates (B-24): stamping I-Formation places 11 icons as one undo entry', async ({ page }) => {
   await openDesigner(page);
 
