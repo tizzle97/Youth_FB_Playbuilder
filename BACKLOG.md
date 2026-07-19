@@ -153,6 +153,23 @@ owned by the official account + a "Clone this playbook" action (bulk play
 copy + playbook + ordering, respecting the free-tier triggers). Pricing
 copy update goes through human review.
 
+### B-34 · Pinch-to-zoom on the designer canvas (follow-up to zoom v1)
+Zoom v1 (2026-07-18) added a button pill (100/150/200/300%, tap-%-to-reset)
+plus select-mode drag-to-pan; phone users will instinctively pinch instead.
+Scope: track two active pointers on the canvas (pointer events, not gesture
+events — Canvas already uses pointer handlers with `touch-none`), scale
+around the pinch midpoint, and map the result onto the existing `zoom`
+state in `PlayDesigner.tsx` (continuous zoom between the current min/max
+rather than fixed steps; keep the `MAX_CANVAS_PIXELS` bitmap cap). While a
+second pointer is down, suppress single-finger draw/drag gestures in
+`Canvas.tsx` so a pinch never leaves a stray route point or icon move —
+that interaction seam is the hard part and where the bugs will live. Keep
+the button pill (accessibility + desktop). Two-finger drag while pinched =
+pan (adjust scroll in the same gesture). Playwright can only approximate
+pinch (two `page.touchscreen` sequences); extend the smoke suite with a
+two-pointer test for the suppression behavior at minimum, and flag the PR
+for a real-device check before merge.
+
 ## Done
 
 - **2026-07-18 · B-24: Formation templates (11v11 gap #1)** — a "Formation"
