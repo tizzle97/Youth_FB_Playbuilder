@@ -84,6 +84,15 @@ export const defensivePlayers = [
   { letter: 'S', color: '#E11D48' },  // Rose
 ];
 
+// Special-teams roster (B-27): Kicker/Punter, Long Snapper, Returner,
+// Coverage (place one per gunner/coverage player needed).
+export const specialTeamsPlayers = [
+  { letter: 'K/P', color: '#06B6D4' }, // Cyan
+  { letter: 'LS', color: '#64748B' },  // Slate
+  { letter: 'RET', color: '#D946EF' }, // Fuchsia
+  { letter: 'COV', color: '#EAB308' }, // Yellow
+];
+
 interface PlayerToolbarProps {
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;

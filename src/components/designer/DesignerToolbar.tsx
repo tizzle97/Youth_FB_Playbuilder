@@ -1,11 +1,11 @@
 import React from 'react';
 import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield } from 'lucide-react';
-import { PlayerToolbar, players, defensivePlayers } from './PlayerToolbar';
+import { PlayerToolbar, players, defensivePlayers, specialTeamsPlayers } from './PlayerToolbar';
 import { FormationMenu } from './FormationMenu';
 import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
-export type PlayType = 'offense' | 'defense';
+export type PlayType = 'offense' | 'defense' | 'special_teams';
 
 interface DesignerToolbarProps {
   playType: PlayType;
@@ -70,6 +70,11 @@ export function DesignerToolbar({
 }: DesignerToolbarProps) {
   const activeDraw = drawingMode ? drawMode : null;
   const isDefense = playType === 'defense';
+  const isSpecialTeams = playType === 'special_teams';
+  // Zone of responsibility applies to defense and special teams (coverage
+  // lanes, containment) — only offense gets the Formation menu.
+  const showZoneTools = isDefense || isSpecialTeams;
+  const roster = isDefense ? defensivePlayers : isSpecialTeams ? specialTeamsPlayers : players;
   const vertical = orientation === 'vertical';
 
   const selectMode = () => {
@@ -198,14 +203,14 @@ export function DesignerToolbar({
           <span className={label}>Remove Route</span>
         </button>
 
-        {!isDefense && (
+        {playType === 'offense' && (
           <>
             <div className={divider} />
             <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} fullWidth={vertical} />
           </>
         )}
 
-        {isDefense && (
+        {showZoneTools && (
           <>
             <div className={divider} />
 
@@ -263,28 +268,28 @@ export function DesignerToolbar({
 
       {/* Play type + player icons: wrapped grid (sidebar) or scrollable row (bar) */}
       <div className={vertical ? 'flex flex-col gap-2' : 'flex items-center gap-1 overflow-x-auto scrollbar-hide'}>
-        {/* Offense / Defense — decided once per play, locked once it has content */}
+        {/* Offense / Defense / Special Teams — decided once per play, locked once it has content */}
         <div
-          className={`flex items-center rounded-md border border-chalk/15 overflow-hidden shrink-0 ${playTypeLocked ? 'opacity-50' : ''}`}
+          className={`flex items-center rounded-md border border-chalk/15 overflow-hidden shrink-0 ${vertical ? 'w-full' : ''} ${playTypeLocked ? 'opacity-50' : ''}`}
           title={playTypeLocked ? 'Play type is locked once a play has content' : 'Choose the play type'}
         >
-          {(['offense', 'defense'] as const).map((t) => (
+          {(['offense', 'defense', 'special_teams'] as const).map((t) => (
             <button
               key={t}
               disabled={playTypeLocked}
               onClick={() => onSetPlayType(t)}
-              className={`px-2 py-1 text-[11px] font-medium capitalize transition-colors ${vertical ? 'flex-1' : ''} ${
+              className={`px-1.5 py-1 text-[11px] font-medium capitalize transition-colors ${vertical ? 'flex-1' : ''} ${
                 playType === t ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
               } ${playTypeLocked ? 'cursor-not-allowed' : ''}`}
             >
-              {t}
+              {t.replace('_', ' ')}
             </button>
           ))}
         </div>
         <PlayerToolbar
           selectedPlayer={selectedPlayer}
           onSelectPlayer={handlePlayerSelect}
-          roster={isDefense ? defensivePlayers : players}
+          roster={roster}
           wrap={vertical}
         />
       </div>

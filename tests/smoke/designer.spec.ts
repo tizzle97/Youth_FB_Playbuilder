@@ -387,6 +387,39 @@ test('defense: place a safety and drag a zone of responsibility', async ({ page 
   expect(state.zones[0].color).toBe('#8B5CF6');
 });
 
+// B-27: special teams gets its own roster (K/P, LS, RET, COV) and the
+// zone tool (coverage lanes), but not the offense-only Formation menu.
+test('special teams: roster swaps, zone tool available, formation menu is not', async ({ page }) => {
+  await openDesigner(page);
+
+  await page.getByRole('button', { name: 'special teams', exact: true }).click();
+  await expect(btn(page, 'Player K/P')).toBeVisible();
+  await expect(btn(page, 'Player LS')).toBeVisible();
+  await expect(btn(page, 'Player RET')).toBeVisible();
+  await expect(btn(page, 'Player COV')).toBeVisible();
+  await expect(page.locator('button[title="Formation templates"]:visible')).toHaveCount(0);
+
+  await btn(page, 'Player COV').click();
+  const spot = await canvasPoint(page, 0.3, 0.4);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  expect(state.playerIcons[0].letter).toBe('COV');
+
+  await btn(page, 'Draw a zone of responsibility (drag from a player)').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.move(icon.x, icon.y);
+  await page.mouse.down();
+  await page.mouse.move(icon.x + 80, icon.y + 50, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.zones).toHaveLength(1);
+  expect(state.zones[0].color).toBe(state.playerIcons[0].color);
+
+  // Play type locks once the canvas has content, same as offense/defense.
+  await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
+});
+
 test('snap: centerline + yard grid on placement, row alignment, magnet toggles off', async ({ page }) => {
   await openDesigner(page);
 
@@ -861,6 +894,48 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   await expect(page.getByText('(editing)')).toBeVisible();
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
+});
+
+// B-27 regression: the load path used to collapse any non-'defense' saved
+// type to 'offense', so a reopened special-teams play silently lost its
+// roster/zone tools and showed the wrong play-type pill selected.
+test('loads a saved special-teams play via /designer?play= (mocked backend)', async ({ page }) => {
+  const canvasData = JSON.stringify({
+    version: 3,
+    paths: [],
+    playerIcons: [{ x: 0.3, y: 0.4, letter: 'COV', color: '#EAB308' }],
+    zones: [{ iconIndex: 0, cx: 0.3, cy: 0.4, rx: 0.1, ry: 0.08, color: '#EAB308' }],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000002',
+        name: 'Punt Coverage',
+        type: 'special_teams',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Punt Coverage' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000002');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.playerIcons[0].letter).toBe('COV');
+  expect(state.zones).toHaveLength(1);
+
+  // Special-teams roster active + pill shows special teams as selected/locked
+  await expect(btn(page, 'Player K/P')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'special teams', exact: true })).toBeDisabled();
 });
 
 test('export gates (B-2): playbook PDF formats are Pro-locked, single-play stays free', async ({ page }) => {

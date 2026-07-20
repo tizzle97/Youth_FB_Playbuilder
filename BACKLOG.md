@@ -55,17 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-27 · Special-teams designer mode (11v11, lower priority)
-`play_type` enum and the metadata dropdown already offer `special_teams`,
-but the designer only has offense/defense modes — picking "Special" changes
-nothing on the canvas. Minimum viable: a special-teams roster preset (K/P,
-LS, returner, coverage players) and the existing route/zone tools; kick
-coverage lanes are just straight routes. Cosmetic-only today; make the
-dropdown honest. Note (from B-29's field audit): the canvas backfield is
-only 10 yards deep (`FIELD_YARDS_BELOW_LOS`), but a real 11v11 punter
-stands 13–15 yards deep — punt diagrams need B-29's deeper/format-aware
-field or a special-teams depth override.
-
 ### B-29 · Format-aware field rendering (canvas fidelity audit, 2026-07-17)
 One field currently serves all three game formats, and its geometry is a
 mashup no real field has. Findings from the audit of `Canvas.tsx`:
@@ -154,6 +143,23 @@ for a real-device check before merge.
 
 ## Done
 
+- **2026-07-20 · B-27: Special-teams designer mode** — a third "Special
+  Teams" option alongside Offense/Defense in the play-type pill
+  (`DesignerToolbar.tsx`), with its own roster (K/P, LS, RET, COV in
+  `PlayerToolbar.tsx`) and the existing route/zone tools (Zone/Remove Zone
+  now show for defense *or* special teams; the Formation menu stays
+  offense-only). `Canvas.tsx` needed zero changes — it was already fully
+  play-type-agnostic. Fixed a real bug hit while wiring this up: the
+  `/designer?play=` load path collapsed any saved `type` other than
+  `'defense'` to `'offense'`, so a reopened special-teams play silently lost
+  its roster and zone tools and showed the wrong pill selected — the DB
+  enum, `PlaysPage`/`PlaybooksPage`/`PlayLibrary` filters and badges were
+  already special-teams-aware and unaffected. Deferred (per the original
+  scope): the punt-formation depth mismatch noted in B-29 (canvas backfield
+  is 10 yards, real punters stand 13–15) — needs B-29's field work first.
+  New smoke tests: roster swap + zone tool + no Formation menu, and a
+  special-teams save/load round trip (mocked backend) covering the fixed bug.
+
 - **2026-07-20 · B-26: Delete dead FormationSelector.tsx (Fabric.js remnant)**
   — removed `src/components/designer/FormationSelector.tsx` (imported
   `fabric`/`fabric/fabric-impl`, imported by nothing, predated the pure-HTML-
@@ -165,6 +171,7 @@ for a real-device check before merge.
   `package.json`/`package-lock.json` (confirmed no other file imports
   `fabric`). No behavior change — dead code only, no runtime surface to
   extend smoke coverage for.
+
 - **2026-07-19 · B-25: Blocking-assignment notation (11v11 gap #2)** — a
   "Block" draw mode alongside Straight/Route in `DesignerToolbar.tsx` (Shield
   icon), reusing the same click-to-place-points flow as Straight (multi-segment

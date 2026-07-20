@@ -44,10 +44,10 @@ export function PlayDesigner() {
   // callback the toolbar buttons go stale after canvas-only edits.
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
 
-  // Offense/Defense is decided once per play (toolbar swaps icon roster +
-  // tools accordingly), defaulting to offense. Not reset by "New" — a coach
-  // making several defensive plays in a row shouldn't have to re-pick it
-  // every time.
+  // Offense/Defense/Special Teams is decided once per play (toolbar swaps
+  // icon roster + tools accordingly), defaulting to offense. Not reset by
+  // "New" — a coach making several plays of the same side in a row
+  // shouldn't have to re-pick it every time.
   const [playType, setPlayType] = useState<PlayType>('offense');
 
   const [loading] = useState(false);
@@ -131,7 +131,7 @@ export function PlayDesigner() {
 
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
         setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
-        setPlayType(data.type === 'defense' ? 'defense' : 'offense');
+        setPlayType(data.type === 'defense' || data.type === 'special_teams' ? data.type : 'offense');
         setEditingPlayId(data.id);
         setIsEditingExistingPlay(true);
         setPendingLoad({ paths, playerIcons, zones });
