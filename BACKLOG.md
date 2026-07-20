@@ -121,18 +121,22 @@ a real session for the official account → drive the real designer
 headlessly to save each one, generating its thumbnail through the actual
 `exportImage()` path, so seeded plays render identically to user-made
 ones). B-32 can reuse this pipeline directly once it exists.
-**A real bug surfaced and got fixed along the way, worth knowing about
-separately from this item:** `SavePlayModal`'s account-preferences fetch is
-async and has a `useEffect` that overwrites the Game Type/Play Type fields
-with the (fresh-account) defaults whenever it resolves — and because React
-`StrictMode` (`src/main.tsx`) double-invokes effects in dev, that fetch
-actually fires *twice* per page load. A user who opens Save and picks a
-game format quickly, before both fetches resolve, could have their choice
-silently reverted before the play saves. `run.mjs` works around it by
-waiting for the network to go fully idle before touching those fields;
-the app itself still has the underlying race. Low priority (requires
-fast, deliberate timing to hit), but a real correctness bug — worth its
-own small item if it's ever reported or someone wants to fix it proactively.
+**A real app bug surfaced and got fixed (2026-07-20, separate from this
+item's own scope):** `SavePlayModal` only ever prefilled Play Name/Game
+Type/Play Type/visibility from account preferences (or hardcoded
+fallbacks) — never from the play actually being edited. Every "Update" on
+an existing play silently reset those fields to blanks/generic defaults,
+which is exactly what made reviewing the pilot batch below painful (no way
+to just flip a play public without a blind retype corrupting everything
+else). Root cause was an async-overwrite race: `SavePlayModal`'s
+preferences fetch resolving after the modal opened would stomp on
+whatever had just been set (worse in dev, where `StrictMode` fires that
+fetch twice). Fixed by having `PlayDesigner` pass the loaded play's real
+values down and prefilling from those, keyed on the stable `editingPlayId`
+rather than the play-data object itself (which is a fresh reference every
+render and would have reintroduced the same race from a different
+trigger). `run.mjs`'s own network-idle workaround is now belt-and-suspenders
+rather than load-bearing.
 Original scope, still accurate for whatever's generated next: only
 original renditions of classic public-domain concepts — never trace
 diagrams from commercial playbook products. Tag every play with game
