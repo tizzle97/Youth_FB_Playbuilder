@@ -30,6 +30,12 @@ interface SavePlayModalProps {
   /** True when saving updates an existing play in place — doesn't consume a
    *  new free-tier play slot, so the usage nudge (B-22) doesn't apply. */
   isEditingExistingPlay?: boolean;
+  /** Stable id of the play being edited (null for a new play). Used only as
+   *  an effect dependency — see the prefill effect below — never rendered. */
+  editingPlayId?: string | null;
+  /** The play's current saved values, when editing one in place. Prefills
+   *  the form with reality instead of blank fields + account defaults. */
+  existingPlay?: { name: string; metadata: PlayMetadata; isPublic: boolean };
 }
 
 export function SavePlayModal({
@@ -39,7 +45,9 @@ export function SavePlayModal({
   user,
   previewThumbnail,
   preferences = null,
-  isEditingExistingPlay = false
+  isEditingExistingPlay = false,
+  editingPlayId = null,
+  existingPlay,
 }: SavePlayModalProps) {
   // ALL THE MISSING STATE VARIABLES
   const [step, setStep] = useState<'metadata' | 'playbook'>('metadata');
@@ -87,11 +95,30 @@ export function SavePlayModal({
     }
   }, [isOpen, user, isEditingExistingPlay]);
 
-  // Prefill from account-settings defaults each time the modal opens
-  // (B-14 game format; B-15 play type + visibility). The user can still
-  // change everything per save.
+  // Prefill from the play being edited, once, when the modal opens for it.
+  // Keyed on editingPlayId (a stable id, only changes when a *different*
+  // play loads) rather than the `existingPlay` object itself, which is a
+  // fresh reference on every PlayDesigner render — depending on that would
+  // re-run this effect on every keystroke elsewhere in the app and silently
+  // blow away whatever the user has already typed into this modal. This
+  // was a real bug: opening an existing play and hitting Update reset Play
+  // Name to blank and Game Type/Play Type/etc. to generic defaults, because
+  // nothing here ever read the play's actual saved values.
   useEffect(() => {
-    if (isOpen && preferences) {
+    if (isOpen && existingPlay) {
+      setPlayName(existingPlay.name);
+      setMetadata(existingPlay.metadata);
+      setIsPublic(existingPlay.isPublic);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editingPlayId]);
+
+  // Prefill from account-settings defaults (B-14 game format; B-15 play
+  // type + visibility) — new plays only. An existing play's own saved
+  // values (above) always win; this must never overwrite them, including
+  // if `preferences` itself resolves or changes while the modal is open.
+  useEffect(() => {
+    if (isOpen && preferences && !existingPlay) {
       setMetadata((prev) => ({
         ...prev,
         gameType: preferences.default_game_format,
@@ -99,7 +126,7 @@ export function SavePlayModal({
       }));
       setIsPublic(preferences.default_visibility === 'public');
     }
-  }, [isOpen, preferences]);
+  }, [isOpen, preferences, existingPlay]);
 
   // MISSING FUNCTION: fetchPlaybooks
   const fetchPlaybooks = async () => {

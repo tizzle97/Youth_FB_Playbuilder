@@ -58,6 +58,9 @@ export function PlayDesigner() {
   const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
   const [editingPlayId, setEditingPlayId] = useState<string | null>(null);
+  // The loaded play's current is_public, so the Save modal can prefill the
+  // checkbox with reality instead of the account's generic default.
+  const [loadedIsPublic, setLoadedIsPublic] = useState(false);
   const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[] } | null>(null);
 
   // Locks once the play has content — reusing history.canUndo, which is
@@ -132,6 +135,7 @@ export function PlayDesigner() {
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
         setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
         setPlayType(data.type === 'defense' || data.type === 'special_teams' ? data.type : 'offense');
+        setLoadedIsPublic(Boolean(data.is_public));
         setEditingPlayId(data.id);
         setIsEditingExistingPlay(true);
         setPendingLoad({ paths, playerIcons, zones });
@@ -236,6 +240,7 @@ export function PlayDesigner() {
     setCurrentPlayMetadata((p) => ({ ...p, playName: 'New Play', formation: '', tags: [], description: '', situation: '', yardage: '' }));
     setIsEditingExistingPlay(false);
     setEditingPlayId(null);
+    setLoadedIsPublic(false);
   }, []);
 
   const handleSavePlay = useCallback(async (playData: {
@@ -564,6 +569,12 @@ export function PlayDesigner() {
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
         preferences={preferences}
         isEditingExistingPlay={isEditingExistingPlay}
+        editingPlayId={editingPlayId}
+        existingPlay={isEditingExistingPlay ? {
+          name: currentPlayMetadata.playName,
+          metadata: currentPlayMetadata,
+          isPublic: loadedIsPublic,
+        } : undefined}
       />
 
       {error && (

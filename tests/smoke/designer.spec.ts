@@ -965,6 +965,84 @@ test('loads a saved special-teams play via /designer?play= (mocked backend)', as
   await expect(page.getByRole('button', { name: 'special teams', exact: true })).toBeDisabled();
 });
 
+// Regression: opening an existing play and hitting Update used to reset
+// Play Name to blank and Game Type/Play Type/Difficulty/visibility to
+// generic defaults, because SavePlayModal never read the play's own saved
+// values — only account preferences (or hardcoded fallbacks) for new
+// plays. Found while seeding the B-31 starter library: a blind Update
+// silently corrupted metadata on every save. This asserts the modal shows
+// the play's real values without the user typing anything.
+test('editing an existing play prefills Save with its real values, not blanks or defaults', async ({ page }) => {
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'coach@example.com',
+    app_metadata: {},
+    user_metadata: {},
+    created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }),
+  );
+  // Account has no saved preferences row — getUserPreferences() falls back
+  // to its hardcoded defaults (5v5/pass/private). If the modal ever prefers
+  // these over the play's own values, this test catches it.
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }),
+  );
+
+  const canvasData = JSON.stringify({
+    version: 3,
+    paths: [],
+    playerIcons: [{ x: 0.5, y: 0.6, letter: 'QB', color: '#3B82F6' }],
+    zones: [],
+  });
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000003',
+        name: 'Four Verts',
+        type: 'offense',
+        canvas_data: canvasData,
+        description: 'Four receivers push vertically to stretch the defense deep.',
+        is_public: true,
+        metadata: {
+          playName: 'Four Verts', gameType: '11v11', playType: 'pass',
+          formation: 'Spread', difficulty: 'intermediate', tags: ['four verts'],
+          description: 'Four receivers push vertically to stretch the defense deep.',
+        },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000003');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Four Verts');
+  await expect(page.locator('select').nth(0)).toHaveValue('11v11');
+  await expect(page.locator('select').nth(1)).toHaveValue('pass');
+  await expect(page.locator('select').nth(2)).toHaveValue('intermediate');
+  await expect(page.getByPlaceholder('e.g., I-Formation, Spread, etc.')).toHaveValue('Spread');
+  await expect(page.locator('#isPublic')).toBeChecked();
+});
+
 test('export gates (B-2): playbook PDF formats are Pro-locked, single-play stays free', async ({ page }) => {
   // Anonymous users resolve to the free plan without a subscriptions row.
   await openDesigner(page);
