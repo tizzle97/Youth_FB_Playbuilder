@@ -55,14 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-26 · Delete dead FormationSelector.tsx (Fabric.js remnant)
-`src/components/designer/FormationSelector.tsx` imports `fabric` /
-`fabric/fabric-impl`, is imported by nothing, and predates the pure-HTML-
-canvas rewrite. It misleads readers (and agents) into thinking a formation
-feature exists. Salvage its formation layout coordinates into B-24's
-template data first, then delete the file (and drop the `fabric` dependency
-from package.json if nothing else uses it).
-
 ### B-27 · Special-teams designer mode (11v11, lower priority)
 `play_type` enum and the metadata dropdown already offer `special_teams`,
 but the designer only has offense/defense modes — picking "Special" changes
@@ -162,6 +154,17 @@ for a real-device check before merge.
 
 ## Done
 
+- **2026-07-20 · B-26: Delete dead FormationSelector.tsx (Fabric.js remnant)**
+  — removed `src/components/designer/FormationSelector.tsx` (imported
+  `fabric`/`fabric/fabric-impl`, imported by nothing, predated the pure-HTML-
+  canvas rewrite). B-24 (2026-07-18) already resolved the "salvage its
+  coordinates" step and explicitly decided against porting them — different
+  coordinate scheme, no LOS concept — so there was nothing left to carry
+  over; B-24's `formations.ts` templates were authored fresh instead. Also
+  dropped the now-unused `fabric` and `@types/fabric` dependencies from
+  `package.json`/`package-lock.json` (confirmed no other file imports
+  `fabric`). No behavior change — dead code only, no runtime surface to
+  extend smoke coverage for.
 - **2026-07-19 · B-25: Blocking-assignment notation (11v11 gap #2)** — a
   "Block" draw mode alongside Straight/Route in `DesignerToolbar.tsx` (Shield
   icon), reusing the same click-to-place-points flow as Straight (multi-segment
