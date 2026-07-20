@@ -55,34 +55,6 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-29b · Format-aware field depth (11v11 backfield + width, remaining half of B-29)
-The hash-mark half of the original B-29 audit shipped 2026-07-20 (see Done).
-What's left, and why it's split out: these two remaining findings both
-change what a normalized Y (or X) coordinate *means*, which existing saved
-plays' `canvas_data` already encodes against the current geometry —
-changing the geometry silently moves every existing icon.
-- Depth is 15 yards above the LOS / 10 below (`FIELD_YARDS_ABOVE_LOS` /
-  `_BELOW_LOS`). Fine for flag; for 11v11, deep concepts (post/go/verts)
-  hit the ceiling and punt formations don't fit (see B-27 note). 20 above
-  would let deep routes breathe, but a saved play's icon at y=0.5 would
-  land at a different real yard line than when it was placed.
-- The field is full width (160 ft) even for 5v5 flag, whose real fields
-  are ~30 yards wide. Tried narrowing it in the B-29 pass — broke the 5v5
-  Trips/Twins formation templates (`formations.ts`), whose receivers sit
-  at x=0.88–0.90 and now land outside the narrower drawn sidelines
-  (screenshotted, reverted). Any width change must ship together with
-  rewriting the 5v5 (and check 7v7) template coordinates to fit inside it.
-**Compatibility trap** (depth only — width has no coordinate impact, just
-needs the template rewrite above): player/route coordinates are stored
-normalized 0–1 against the whole canvas, so changing depth changes where
-existing saved 11v11 plays' icons land. Migrating render geometry must
-either version `canvas_data` (a `fieldVersion`/format key alongside
-`{version, paths, playerIcons}`) or map old coordinates into the new field
-space on load — a human should weigh in on which before this is picked up;
-asked and got "ship the zero-risk part first" for the original B-29, so
-apply the same question here. Extend the smoke suite's snap/grid
-assertions (they encode the current 25-yard math) once a direction is picked.
-
 ### B-28 · Team/staff sharing (design first — money-adjacent, human review)
 11v11 staffs are 3–4 coaches; today the only sharing is public community
 plays, and the ToS/monetization plan already promise "future team sharing"
@@ -91,6 +63,43 @@ table + membership + playbook-level share grants (RLS mirrors the existing
 ownership patterns), invite-by-email flow, read-only vs. editor roles.
 Rough scope is a multi-PR epic — do NOT pick this up as a single nightly
 item; a human should approve the schema design first.
+
+### B-29b · Format-aware field depth (11v11 backfield + width) — on hold
+**Not for the nightly routine — do not pick this up until a human takes it
+off hold.** Jeremy: not worrying about the canvas for now (2026-07-20).
+The hash-mark half of the original B-29 audit shipped 2026-07-20 (see Done).
+What's left, and why it's on hold: these two remaining findings both
+change what a normalized Y (or X) coordinate *means*, which existing saved
+plays' `canvas_data` already encodes against the current geometry —
+changing the geometry silently moves every existing icon.
+- Depth is 15 yards above the LOS / 10 below (`FIELD_YARDS_ABOVE_LOS` /
+  `_BELOW_LOS`). Fine for flag; for 11v11, deep concepts (post/go/verts)
+  hit the ceiling and punt formations don't fit (see B-27 note). 20 above
+  would let deep routes breathe, but a saved play's icon at y=0.5 would
+  land at a different real yard line than when it was placed. No real user
+  has hit this — it's an audit finding, not a report — so the concrete
+  trigger to watch for is punt-formation depth feeling cramped once B-27's
+  special-teams K/P placement gets real use, not the (speculative) deep-
+  route ceiling.
+- The field is full width (160 ft) even for 5v5 flag, whose real fields
+  are ~30 yards wide. Tried narrowing it in the B-29 pass — broke the 5v5
+  Trips/Twins formation templates (`formations.ts`), whose receivers sit
+  at x=0.88–0.90 and now land outside the narrower drawn sidelines
+  (screenshotted, reverted). Unlike depth, this half has no coordinate
+  compatibility trap — the only blocker is rewriting those two templates'
+  receiver X-values to fit inside the narrower field. Low-risk, contained,
+  and fine to pick up on its own whenever the canvas is back in scope; it
+  doesn't need to wait on the depth decision below.
+**Compatibility trap** (depth only): player/route coordinates are stored
+normalized 0–1 against the whole canvas, so changing depth changes where
+existing saved 11v11 plays' icons land. If this comes off hold, prefer
+tagging only *newly created* plays with the deeper geometry (a
+`fieldDepth`/version key in `canvas_data`, existing plays keep rendering
+exactly as they do today) over migrating/remapping old plays' coordinates
+— same grandfather-old-behavior pattern already used for Founding Member
+entitlements and the legacy `isSquare` icon flag, and it carries zero risk
+of shifting anyone's saved play. Extend the smoke suite's snap/grid
+assertions (they encode the current 25-yard math) once this is unblocked.
 
 ### B-31 · Official starter play library (content seeding)
 The Play Library (B-30, shipped 2026-07-17) needs shelves that aren't
