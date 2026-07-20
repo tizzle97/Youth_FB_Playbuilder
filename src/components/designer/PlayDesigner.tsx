@@ -464,6 +464,7 @@ export function PlayDesigner() {
               id="play-canvas"
               width={canvasSize.width * zoom}
               height={canvasSize.height * zoom}
+              gameType={currentPlayMetadata.gameType}
               drawingMode={drawingMode}
               drawMode={drawMode}
               deleteRouteMode={deleteRouteMode}

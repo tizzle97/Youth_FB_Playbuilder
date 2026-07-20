@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
+import type { PlayMetadata } from '../../types/play';
 
 // ---------------------------------------------
 // Config
@@ -43,8 +44,14 @@ const GUIDE_COLOR = '#f59e0b';
 // icon counts as a drag rather than tap jitter. Below this, pointer-up opens
 // the tap-to-customize popover instead.
 const DRAG_THRESHOLD_PX = 4;
-const HASH_LEFT_X_RATIO = 70.75 / 160;
+// Hash marks sit 53'4" from each sideline — one-third of a 160ft-wide field
+// — the NFHS/college standard. This app targets youth/HS football, not the
+// NFL (whose 70'9" inset is noticeably narrower). Only drawn for 11v11;
+// flag formats (5v5/7v7) are hashless real fields (see drawField).
+const HASH_LEFT_X_RATIO = 1 / 3;
 const HASH_RIGHT_X_RATIO = 1 - HASH_LEFT_X_RATIO;
+
+type GameType = PlayMetadata['gameType'];
 
 // Fixed export resolution (letter-page proportions) — every play prints
 // the same regardless of the screen it was designed on. The on-screen
@@ -105,6 +112,8 @@ type ZoneHandle = { x: number; y: number; axis: ZoneHandleAxis };
 type CanvasProps = {
   width: number;
   height: number;
+  /** Drives field geometry (hash marks, sideline width) — see B-29. */
+  gameType: GameType;
   drawingMode: boolean;
   drawMode: DrawMode;
   deleteRouteMode: boolean;
@@ -327,7 +336,7 @@ const TEXT_FIT: Record<IconShape, number> = {
   star: 0.55,
 };
 
-function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) {
+function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number, gameType: GameType) {
   const pad = SIDELINE_PADDING * scale;
   ctx.save();
   ctx.fillStyle = FIELD_BG;
@@ -356,16 +365,18 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   ctx.lineTo(W - pad, losY);
   ctx.stroke();
 
-  // Hash marks
-  ctx.strokeStyle = HASH_COLOR;
-  ctx.lineWidth = Math.max(1, scale);
-  const tick = HASH_TICK_LEN * scale;
-  const lhx = pad + (W - pad * 2) * HASH_LEFT_X_RATIO;
-  const rhx = pad + (W - pad * 2) * HASH_RIGHT_X_RATIO;
-  for (let y = -FIELD_YARDS_ABOVE_LOS; y <= FIELD_YARDS_BELOW_LOS; y += 1) {
-    const py = yFromYards(y, H);
-    ctx.beginPath(); ctx.moveTo(lhx - tick / 2, py); ctx.lineTo(lhx + tick / 2, py); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(rhx - tick / 2, py); ctx.lineTo(rhx + tick / 2, py); ctx.stroke();
+  // Hash marks — 11v11 only; flag formats (5v5/7v7) play hashless.
+  if (gameType === '11v11') {
+    ctx.strokeStyle = HASH_COLOR;
+    ctx.lineWidth = Math.max(1, scale);
+    const tick = HASH_TICK_LEN * scale;
+    const lhx = pad + (W - pad * 2) * HASH_LEFT_X_RATIO;
+    const rhx = pad + (W - pad * 2) * HASH_RIGHT_X_RATIO;
+    for (let y = -FIELD_YARDS_ABOVE_LOS; y <= FIELD_YARDS_BELOW_LOS; y += 1) {
+      const py = yFromYards(y, H);
+      ctx.beginPath(); ctx.moveTo(lhx - tick / 2, py); ctx.lineTo(lhx + tick / 2, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rhx - tick / 2, py); ctx.lineTo(rhx + tick / 2, py); ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -481,6 +492,7 @@ function renderScene(
   playerIcons: PlayerIcon[],
   zones: Zone[] = [],
   selectedZoneIndex: number | null = null,
+  gameType: GameType = '11v11',
 ) {
   const scale = Math.min(W, H) / REF_SIZE;
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
@@ -489,7 +501,7 @@ function renderScene(
   const iconSize = PLAYER_SIZE * scale;
 
   ctx.clearRect(0, 0, W, H);
-  drawField(ctx, W, H, scale);
+  drawField(ctx, W, H, scale, gameType);
   // Zones sit on top of the grid (translucent, so it shows through) but
   // underneath routes/icons, which should stay crisp.
   drawZones(ctx, W, H, zones, playerIcons, scale, selectedZoneIndex);
@@ -546,7 +558,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, id }, ref) => {
+  ({ width, height, gameType, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -779,7 +791,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex);
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, gameType);
 
       // Alignment guides while a drag is snapped to a row/column/centerline
       if (activeGuides.x !== null || activeGuides.y !== null) {
@@ -941,7 +953,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone, gameType]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -1009,7 +1021,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         off.width = w;
         off.height = h;
         const ctx = off.getContext('2d')!;
-        renderScene(ctx, w, h, paths, playerIcons, zones);
+        renderScene(ctx, w, h, paths, playerIcons, zones, null, gameType);
         return off.toDataURL('image/png');
       },
       undo: () => {
@@ -1091,7 +1103,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       getPaths: () => paths,
       getIcons: () => playerIcons,
       getZones: () => zones,
-    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints]);
+    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints, gameType]);
 
     // ------------------------------------------
     // Pointer helpers

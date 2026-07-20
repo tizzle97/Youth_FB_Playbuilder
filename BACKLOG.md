@@ -55,31 +55,33 @@ agents skip.
 publish (never fabricate — house rule). Human collects quotes; agent then wires
 them in.
 
-### B-29 · Format-aware field rendering (canvas fidelity audit, 2026-07-17)
-One field currently serves all three game formats, and its geometry is a
-mashup no real field has. Findings from the audit of `Canvas.tsx`:
-- Hash marks use the NFL inset (`HASH_LEFT_X_RATIO = 70.75/160`, i.e.
-  70'9" from each sideline). Youth/HS fields hash at one-third of the
-  width (53'4") — noticeably wider apart. Two-constant fix on its own.
-- The field is full width (160 ft) even for 5v5 flag, whose real fields
-  are ~30 yards wide (and hashless).
+### B-29b · Format-aware field depth (11v11 backfield + width, remaining half of B-29)
+The hash-mark half of the original B-29 audit shipped 2026-07-20 (see Done).
+What's left, and why it's split out: these two remaining findings both
+change what a normalized Y (or X) coordinate *means*, which existing saved
+plays' `canvas_data` already encodes against the current geometry —
+changing the geometry silently moves every existing icon.
 - Depth is 15 yards above the LOS / 10 below (`FIELD_YARDS_ABOVE_LOS` /
   `_BELOW_LOS`). Fine for flag; for 11v11, deep concepts (post/go/verts)
   hit the ceiling and punt formations don't fit (see B-27 note). 20 above
-  would let deep routes breathe.
-- Rendered aspect (1650×1275 export) stretches the field ~65% vertically
-  vs. true scale (53.3yd × 25yd = 2.13:1 vs the 1.29:1 canvas). This is a
-  defensible playbook-legibility choice — keep it, but keep it consistent.
-Proposal: the app already knows each play's game format — render the field
-to match it. 11v11: HS-ratio hashes + 20 yards above the LOS. 7v7/5v5
-flag: narrower field (~30yd for 5v5), no hashes. **Compatibility trap:**
-player/route coordinates are stored normalized 0–1 against the whole
-canvas, so changing field width/depth changes where existing saved plays'
-icons land — migrating render geometry must either version `canvas_data`
-(a `fieldVersion`/format key alongside `{version, paths, playerIcons}`) or
-map old coordinates into the new field space on load. Plan this before
-touching the constants; extend the smoke suite's snap/grid assertions,
-which encode the current 25-yard math.
+  would let deep routes breathe, but a saved play's icon at y=0.5 would
+  land at a different real yard line than when it was placed.
+- The field is full width (160 ft) even for 5v5 flag, whose real fields
+  are ~30 yards wide. Tried narrowing it in the B-29 pass — broke the 5v5
+  Trips/Twins formation templates (`formations.ts`), whose receivers sit
+  at x=0.88–0.90 and now land outside the narrower drawn sidelines
+  (screenshotted, reverted). Any width change must ship together with
+  rewriting the 5v5 (and check 7v7) template coordinates to fit inside it.
+**Compatibility trap** (depth only — width has no coordinate impact, just
+needs the template rewrite above): player/route coordinates are stored
+normalized 0–1 against the whole canvas, so changing depth changes where
+existing saved 11v11 plays' icons land. Migrating render geometry must
+either version `canvas_data` (a `fieldVersion`/format key alongside
+`{version, paths, playerIcons}`) or map old coordinates into the new field
+space on load — a human should weigh in on which before this is picked up;
+asked and got "ship the zero-risk part first" for the original B-29, so
+apply the same question here. Extend the smoke suite's snap/grid
+assertions (they encode the current 25-yard math) once a direction is picked.
 
 ### B-28 · Team/staff sharing (design first — money-adjacent, human review)
 11v11 staffs are 3–4 coaches; today the only sharing is public community
@@ -142,6 +144,24 @@ two-pointer test for the suppression behavior at minimum, and flag the PR
 for a real-device check before merge.
 
 ## Done
+
+- **2026-07-20 · B-29: Format-aware hash marks (safe half of the field
+  audit)** — 11v11 now draws hash marks at the youth/HS 53'4" (one-third
+  width) spacing instead of the NFL's 70'9" inset (`HASH_LEFT_X_RATIO` in
+  `Canvas.tsx`); 5v5/7v7 draw hashless, matching real flag fields. Scoped
+  deliberately to just this: asked the user how to handle the item's own
+  noted "compatibility trap" (changing field geometry moves existing saved
+  plays' icons) and they chose shipping the zero-risk part first. Threaded
+  a new `gameType` prop through `Canvas`/`renderScene`/`drawField` and both
+  render call sites (live draw + `exportImage`'s offscreen render) — pure
+  rendering, no coordinate math changed, so no existing play is affected.
+  Also attempted the field-width narrowing (~30yd for 5v5) in this pass and
+  reverted it after screenshots showed it breaking the 5v5 Trips/Twins
+  formation templates (receivers land outside the narrower drawn
+  sidelines) — split out as B-29b along with the depth change, both of
+  which do have real compatibility stakes. New smoke test switches game
+  format with content on canvas and asserts no render errors, for all
+  three formats.
 
 - **2026-07-20 · B-27: Special-teams designer mode** — a third "Special
   Teams" option alongside Offense/Defense in the play-type pill

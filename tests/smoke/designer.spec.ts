@@ -303,6 +303,33 @@ test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 s
   expect(state.playerIcons).toHaveLength(5);
 });
 
+// B-29: field rendering (hash marks) is now format-aware — 11v11 draws
+// wider-spaced youth/HS hashes, 5v5/7v7 are hashless. None of this is
+// observable through the canvas-state bridge (it's pixels, not data), so
+// this guards the wiring instead: gameType must reach the live draw path
+// and re-render cleanly for every format, with content already on canvas
+// (the case that actually exercises drawField's hash-mark branch, unlike
+// an empty field).
+test('field rendering: switching game format re-renders cleanly for every format', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+  await openDesigner(page);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
+  expect((await canvasState(page)).playerIcons).toHaveLength(11);
+
+  for (const format of ['7v7', '5v5', '11v11'] as const) {
+    await btn(page, 'Formation templates').click();
+    await realClick(page, page.getByRole('button', { name: format, exact: true }));
+    await page.keyboard.press('Escape'); // picking a game type doesn't auto-close the popover
+    // Content and canvas size are unaffected by a format switch alone.
+    expect((await canvasState(page)).playerIcons).toHaveLength(11);
+  }
+
+  expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
+});
+
 test('formation templates: picking a second formation replaces the first instead of layering', async ({ page }) => {
   await openDesigner(page);
 
