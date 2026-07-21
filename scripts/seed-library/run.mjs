@@ -52,12 +52,12 @@ function waitForServer(url, timeoutMs = 30_000) {
 async function insertDrafts(admin, sysUserId) {
   const inserted = [];
   for (const play of PLAYS) {
-    const canvasData = JSON.stringify({ version: 3, paths: play.paths, playerIcons: play.icons, zones: [] });
+    const canvasData = JSON.stringify({ version: 3, paths: play.paths, playerIcons: play.icons, zones: play.zones || [] });
     const { data, error } = await admin
       .from('plays')
       .insert({
         name: play.name,
-        type: 'offense',
+        type: play.type || 'offense',
         canvas_data: canvasData,
         description: play.metadata.description,
         user_id: sysUserId,
@@ -106,46 +106,37 @@ async function generateThumbnails(inserted, session, supabaseUrl) {
       play.icons.length,
       { timeout: 15_000 },
     );
-    // SavePlayModal reloads account preferences async (user ->
-    // getUserPreferences(user.id)) and has a useEffect that overwrites the
-    // Game Type/Play Type fields with the (fresh-account) defaults whenever
-    // that fetch resolves — which can race a fill no matter how it's
-    // ordered. React StrictMode (src/main.tsx) double-invokes that effect
-    // in dev, so there are actually *two* of these fetches per page load,
-    // not one — waiting for a single matching response left the second one
-    // free to land mid-fill and silently revert the selection (confirmed:
-    // it did, twice, across two earlier attempts at this same fix).
-    // Waiting for the network to go fully idle is the only version of this
-    // that isn't a numbers game against however many requests StrictMode
-    // happens to fire.
-    await page.waitForLoadState('networkidle');
-
+    // SavePlayModal now prefills Play Name/Game Type/Play Type/Formation/
+    // Difficulty/Tags/Description/visibility straight from the play being
+    // edited (fixed 2026-07-21 — it used to only ever prefill from account
+    // preferences/hardcoded defaults, racing an async preferences fetch
+    // that could stomp a manual fill). Since this play was just inserted
+    // with the correct metadata, the modal should already show it with no
+    // typing needed — verify that instead of re-entering everything, so a
+    // regression in the prefill fails loudly instead of silently reverting
+    // to defaults again.
     await page.locator('button[title="Save play"]:visible').click();
-    await page.getByPlaceholder('Enter play name...').fill(play.name);
-    await page.getByPlaceholder('e.g., I-Formation, Spread, etc.').fill(play.metadata.formation);
-    await page.locator('select').nth(2).selectOption(play.metadata.difficulty);
-    for (const tag of play.metadata.tags) {
-      await page.getByPlaceholder('Add tags (press Enter)').fill(tag);
-      await page.getByPlaceholder('Add tags (press Enter)').press('Enter');
-    }
-    await page.getByPlaceholder('Describe the play strategy, timing, and execution...').fill(play.metadata.description);
-    // is_public checkbox is left unchecked — stays a private draft.
+    await page.getByRole('heading', { name: 'Save Play' }).waitFor();
 
-    // Game Type / Play Type set LAST, right before advancing: SavePlayModal
-    // reloads account preferences async and has a useEffect that overwrites
-    // these two fields with the (fresh-account) defaults ('5v5'/'pass')
-    // whenever that fetch resolves — which can race ahead of an early fill
-    // and silently revert it. Filling last, after several other round trips
-    // have already happened, reliably outruns that race.
-    await page.locator('select').nth(0).selectOption(play.metadata.gameType);
-    await page.locator('select').nth(1).selectOption(play.metadata.playType);
-    const gameTypeSet = await page.locator('select').nth(0).inputValue();
-    const playTypeSet = await page.locator('select').nth(1).inputValue();
-    if (gameTypeSet !== play.metadata.gameType || playTypeSet !== play.metadata.playType) {
-      throw new Error(
-        `"${play.name}": Game Type/Play Type didn't stick (got ${gameTypeSet}/${playTypeSet}, ` +
-        `wanted ${play.metadata.gameType}/${play.metadata.playType}) — the preferences-load race won anyway.`,
-      );
+    const shown = {
+      name: await page.getByPlaceholder('Enter play name...').inputValue(),
+      gameType: await page.locator('select').nth(0).inputValue(),
+      playType: await page.locator('select').nth(1).inputValue(),
+      formation: await page.getByPlaceholder('e.g., I-Formation, Spread, etc.').inputValue(),
+      difficulty: await page.locator('select').nth(2).inputValue(),
+      isPublic: await page.locator('#isPublic').isChecked(),
+    };
+    const wantIsPublic = false; // every seeded play stays a private draft
+    const mismatches = Object.entries({
+      name: [shown.name, play.name],
+      gameType: [shown.gameType, play.metadata.gameType],
+      playType: [shown.playType, play.metadata.playType],
+      formation: [shown.formation, play.metadata.formation],
+      difficulty: [shown.difficulty, play.metadata.difficulty],
+      isPublic: [shown.isPublic, wantIsPublic],
+    }).filter(([, [got, want]]) => got !== want);
+    if (mismatches.length > 0) {
+      throw new Error(`"${play.name}": Save modal didn't prefill correctly — ${JSON.stringify(mismatches)}`);
     }
 
     await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();

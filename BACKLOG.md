@@ -101,47 +101,53 @@ entitlements and the legacy `isSquare` icon flag, and it carries zero risk
 of shifting anyone's saved play. Extend the smoke suite's snap/grid
 assertions (they encode the current 25-yard math) once this is unblocked.
 
-### B-31 · Official starter play library (content seeding) — pilot done, awaiting review
-**Not for the nightly routine until Jeremy reviews the pilot batch below —
-generating the remaining ~29 plays before knowing the pilot's style/quality
-landed right would be wasted work.**
-**Status (2026-07-20): a 6-play pilot batch is live in production as private
-drafts under `system@playbook.pro` (which already existed with `founding`/
-Pro status and zero plays — reused as-is, no fresh account needed).**
-Jeremy: review these 6 in the designer (`/plays` → My Plays, or `/designer?
-play=<id>`) before either flipping them public or requesting changes:
-Double Slants (5v5), Mesh (7v7), Trips Z-Curl (7v7), Four Verts (11v11),
-Slant-Flat (11v11), Power (11v11, showcases B-25's block-mode T-caps for
-the pulling guard/kick-out block). Not done yet: the remaining ~29 plays to
-reach the original ~35 scope, and the actual publish step (still your call).
+### B-31 · Official starter play library (content seeding) — full batch done, awaiting final review
+**Not for the nightly routine — content generation is complete; what's left
+is entirely Jeremy's review/publish call, not agent work.**
+**Status (2026-07-21): all ~35 plays are live in production as private
+drafts under `system@playbook.pro`.** Pilot 6 (2026-07-20) + batch 2 (29
+more, 2026-07-21) = 35 total, split 10 five-a-side / 10 seven-a-side / 15
+eleven-a-side, 26 offense + 9 defense. Batch 2 added the library's first
+defensive content (man + zone coverages with real zone-of-responsibility
+ellipses, blitzes) and 11v11 run games (Iso, Inside/Outside Zone, Counter —
+Counter in particular showcases B-25's block-mode T-caps well: pulling
+guard + kicking fullback both visibly converge on the point of attack).
+Every play verified against source data (metadata, icon/path/zone counts)
+before being reported done; a representative sample across categories was
+also visually inspected. One is worth a look before publishing — **Cover 3
+Zone (11v11)**'s four linebacker zones and the robber safety's zone overlap
+enough to look a little busy; still correct and readable (each position
+group has a distinct color) but the least clean of the batch.
+Jeremy: review at `/plays` → My Plays, or `/designer?play=<id>` per play,
+then flip `is_public` per play (or however many you're comfortable with at
+once) — the Save modal correctly shows each play's real values now, so
+Update-to-publish doesn't touch anything else. Also still sitting from the
+pilot batch, both your call, not touched by batch 2: **Power** (11v11 run)
+is still a private draft — never got flipped when the other 5 pilot plays
+did; and **Y Drag**, a play you drew yourself while logged into the system
+account (real content, blank optional metadata) — rename/fill
+in/publish/delete at your leisure, it's yours, not seeded content.
 Reusable tooling is checked in at `scripts/seed-library/` — `plays.mjs`
-holds the content (add more play definitions here for the next batch),
-`run.mjs` is the pipeline (insert as drafts via the service-role key → mint
-a real session for the official account → drive the real designer
-headlessly to save each one, generating its thumbnail through the actual
-`exportImage()` path, so seeded plays render identically to user-made
-ones). B-32 can reuse this pipeline directly once it exists.
-**A real app bug surfaced and got fixed (2026-07-20, separate from this
-item's own scope):** `SavePlayModal` only ever prefilled Play Name/Game
-Type/Play Type/visibility from account preferences (or hardcoded
-fallbacks) — never from the play actually being edited. Every "Update" on
-an existing play silently reset those fields to blanks/generic defaults,
-which is exactly what made reviewing the pilot batch below painful (no way
-to just flip a play public without a blind retype corrupting everything
-else). Root cause was an async-overwrite race: `SavePlayModal`'s
-preferences fetch resolving after the modal opened would stomp on
-whatever had just been set (worse in dev, where `StrictMode` fires that
-fetch twice). Fixed by having `PlayDesigner` pass the loaded play's real
-values down and prefilling from those, keyed on the stable `editingPlayId`
-rather than the play-data object itself (which is a fresh reference every
-render and would have reintroduced the same race from a different
-trigger). `run.mjs`'s own network-idle workaround is now belt-and-suspenders
-rather than load-bearing.
-Original scope, still accurate for whatever's generated next: only
-original renditions of classic public-domain concepts — never trace
-diagrams from commercial playbook products. Tag every play with game
-format + situation + difficulty in `metadata` so library browsing feels
-curated.
+holds the content (`PILOT_BATCH_2026_07_20`, unexported, kept only as a
+reference record since it already shipped; `export const PLAYS` is
+whatever the *next* batch is — replace it before rerunning), `run.mjs` is
+the pipeline (insert as drafts via the service-role key → mint a real
+session for the official account → drive the real designer headlessly to
+save each one, generating its thumbnail through the actual `exportImage()`
+path). `run.mjs` now also respects a per-play `type` field (defaults to
+`'offense'`) so defensive content inserts with the correct DB `type`.
+B-32 can reuse this pipeline directly once it exists.
+A real app bug surfaced and got fixed during the pilot (2026-07-20,
+separate from this item's own scope, full writeup was here — since fixed,
+trimmed): `SavePlayModal` didn't prefill from the play actually being
+edited, so "Update" silently reset metadata to blanks/defaults. Confirmed
+fixed by batch 2's run: `run.mjs`'s save step now just verifies the
+modal's prefill matches instead of re-typing every field, and all 29 saves
+passed with zero manual intervention.
+Original scope, still accurate for any future batch: only original
+renditions of classic public-domain concepts — never trace diagrams from
+commercial playbook products. Tag every play with game format + situation
++ difficulty in `metadata` so library browsing feels curated.
 
 ### B-32 · Play of the Week rider on the weekly blog agent
 The Monday blog agent writes posts that *describe* plays (e.g. the
