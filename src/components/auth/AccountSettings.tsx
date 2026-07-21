@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Image, Save, Trophy, Shield } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Save, Trophy, Shield } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
@@ -38,7 +38,6 @@ export default function AccountSettings() {
   const [avatarType, setAvatarType] = useState<'custom' | 'icon'>('icon');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [selectedIconId, setSelectedIconId] = useState<string | null>(null);
-  const [availableIcons, setAvailableIcons] = useState<any[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
@@ -113,16 +112,6 @@ export default function AccountSettings() {
           avatarUrl: userRep.avatar_url || '',
           selectedIconId: userRep.avatar_icon_id
         });
-      }
-
-      // Fetch available icons
-      const { data: icons } = await supabase
-        .from('avatar_icons')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (icons) {
-        setAvailableIcons(icons);
       }
 
       setLoading(false);
@@ -277,12 +266,6 @@ export default function AccountSettings() {
       setUploadingAvatar(false);
       URL.revokeObjectURL(tempImageUrl);
     }
-  };
-
-  const handleSelectIcon = async (iconId: string) => {
-    setAvatarType('icon');
-    setSelectedIconId(iconId);
-    setAvatarUrl('');
   };
 
   // Team logo upload (B-14). Reuses the avatars bucket — same per-user
@@ -476,89 +459,41 @@ export default function AccountSettings() {
               )}
             </div>
 
-            {/* Avatar Section */}
+            {/* Avatar Section — custom photo only; the icon picker was
+                removed, but existing icon-avatar accounts keep rendering
+                fine elsewhere (see UserMenu.tsx) until they upload a photo. */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-chalk">Profile Picture</h3>
-              
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setAvatarType('custom')}
-                  className={`px-4 py-2 rounded-lg ${
-                    avatarType === 'custom'
-                      ? 'bg-primary text-white'
-                      : 'bg-board text-chalk/70 hover:text-chalk'
-                  }`}
-                >
-                  <Upload className="h-5 w-5 inline-block mr-2" />
-                  Custom Photo
-                </button>
-                
-                <button
-                  onClick={() => setAvatarType('icon')}
-                  className={`px-4 py-2 rounded-lg ${
-                    avatarType === 'icon'
-                      ? 'bg-primary text-white'
-                      : 'bg-board text-chalk/70 hover:text-chalk'
-                  }`}
-                >
-                  <Image className="h-5 w-5 inline-block mr-2" />
-                  Choose Icon
-                </button>
-              </div>
 
-              {avatarType === 'custom' ? (
-                <div className="space-y-4">
-                  {avatarUrl && (
-                    <div className="w-24 h-24 rounded-full overflow-hidden">
-                      <img
-                        src={avatarUrl}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="block w-full max-w-xs px-4 py-2 bg-board hover:bg-board-light border border-chalk/20 rounded-lg cursor-pointer text-center text-chalk/70 hover:text-chalk transition-colors">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleAvatarFileSelect}
-                        disabled={uploadingAvatar}
-                      />
-                      {uploadingAvatar ? 'Uploading...' : 'Upload Photo'}
-                    </label>
-                    <p className="mt-2 text-sm text-chalk/50">
-                      JPEG or PNG — large photos are resized automatically.
-                      Please ensure your image is appropriate and follows our guidelines.
-                    </p>
+              <div className="space-y-4">
+                {avatarUrl && (
+                  <div className="w-24 h-24 rounded-full overflow-hidden">
+                    <img
+                      src={avatarUrl}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </div>
+                )}
+                <div>
+                  <label className="block w-full max-w-xs px-4 py-2 bg-board hover:bg-board-light border border-chalk/20 rounded-lg cursor-pointer text-center text-chalk/70 hover:text-chalk transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarFileSelect}
+                      disabled={uploadingAvatar}
+                    />
+                    {uploadingAvatar ? 'Uploading...' : 'Upload Photo'}
+                  </label>
+                  <p className="mt-2 text-sm text-chalk/50">
+                    JPEG or PNG — large photos are resized automatically.
+                    Please ensure your image is appropriate and follows our guidelines.
+                  </p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-4 gap-4">
-                  {availableIcons.map((icon) => (
-                    <button
-                      key={icon.id}
-                      onClick={() => handleSelectIcon(icon.id)}
-                      className={`p-2 rounded-lg border-2 ${
-                        selectedIconId === icon.id
-                          ? 'border-primary bg-primary/10'
-                          : 'border-chalk/10 hover:border-chalk/30'
-                      }`}
-                    >
-                      <img
-                        src={icon.icon_url}
-                        alt={icon.name}
-                        className="w-full aspect-square"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
+              </div>
             </div>
 
             {/* Team & Defaults (B-14): stamped on printed plays/playbooks and

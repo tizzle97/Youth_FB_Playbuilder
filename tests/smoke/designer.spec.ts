@@ -872,9 +872,6 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
       body: JSON.stringify({ avatar_type: 'icon', avatar_url: null, avatar_icon_id: null }),
     }),
   );
-  await page.route('**/rest/v1/avatar_icons**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
-  );
   await page.route('**/rest/v1/subscriptions**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'founding' }) }),
   );
@@ -901,6 +898,9 @@ test('account settings page renders for a signed-in user (mocked backend)', asyn
   await expect(page.getByText('Plan & Usage')).toBeVisible();
   await expect(page.getByText('unlimited on your plan')).toBeVisible();
   await expect(page.getByRole('button', { name: /Upgrade to Pro/ })).toHaveCount(0);
+  // Icon-picker avatar option was removed — custom photo upload only.
+  await expect(page.getByRole('button', { name: 'Choose Icon' })).toHaveCount(0);
+  await expect(page.getByText('Upload Photo')).toBeVisible();
   expect(errors, errors.map((e) => e.message).join('\n')).toHaveLength(0);
 });
 
