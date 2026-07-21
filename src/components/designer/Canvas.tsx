@@ -130,6 +130,11 @@ type CanvasProps = {
   /** Select-mode drag on empty field reports pointer deltas (screen px) so
    *  the parent can pan its scroll container when the canvas is zoomed. */
   onPan?: (dxPx: number, dyPx: number) => void;
+  /** Two-finger pinch reports the incremental distance ratio since the last
+   *  move event (>1 = fingers spreading, <1 = pinching in) plus the current
+   *  midpoint in client (screen) px, so the parent can zoom continuously
+   *  anchored under the fingers (rather than the fixed-step button pill). */
+  onPinch?: (scaleRatio: number, midClientX: number, midClientY: number) => void;
   id?: string;
 };
 
@@ -558,7 +563,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, gameType, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, id }, ref) => {
+  ({ width, height, gameType, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -638,6 +643,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const zoneGestureRef = useRef<{ type: 'move' | 'resize'; zoneIndex: number; axis?: ZoneHandleAxis; offset?: Pt; moved: boolean } | null>(null);
     // Select-mode pan gesture: last pointer position in client (screen) px.
     const panLastRef = useRef<{ x: number; y: number } | null>(null);
+
+    // Pinch-to-zoom (B-34): every currently-down pointer, keyed by pointerId,
+    // in client (screen) px. Once a second finger touches down this becomes a
+    // pinch gesture instead of whatever the first finger was doing.
+    const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+    // True from the moment a second pointer touches down until every pointer
+    // has lifted — while true, all single-finger draw/drag/pan handling is
+    // suppressed so a pinch can never leave behind a stray route point or
+    // icon move from the finger that happened to touch down first.
+    const pinchActiveRef = useRef(false);
+    // Distance (client px) between the two pinch pointers as of the last
+    // move event, so onPinch can report an incremental ratio; null right
+    // after the second finger lands, before the first pinch move arrives.
+    const pinchLastDistRef = useRef<number | null>(null);
 
     const pushSnapshot = useCallback(() => {
       setUndoStack((prev) => [...prev, {
@@ -1159,6 +1178,26 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ------------------------------------------
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
       (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      // Second (or later) finger touching down turns this into a pinch —
+      // abort whatever single-finger gesture the first finger may have
+      // already started so the pinch doesn't leave it stranded mid-gesture.
+      if (activePointersRef.current.size >= 2) {
+        pinchActiveRef.current = true;
+        pinchLastDistRef.current = null;
+        panLastRef.current = null;
+        zoneGestureRef.current = null;
+        setZoneDraft(null);
+        if (draggingIndexRef.current !== null) {
+          draggingIndexRef.current = null;
+          setIsDragging(false);
+          setActiveGuides({ x: null, y: null, distX: null, distY: null });
+        }
+        return;
+      }
+      if (pinchActiveRef.current) return; // a third finger while already pinching
+
       const p = getPos(e);
       const clicked = findIcon(p);
 
@@ -1313,6 +1352,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (activePointersRef.current.has(e.pointerId)) {
+        activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+
+      // Mid-pinch: compute the live distance/midpoint from the two tracked
+      // pointers (not just this event's pointer) and report an incremental
+      // scale ratio. Suppresses every single-finger gesture below.
+      if (pinchActiveRef.current) {
+        if (activePointersRef.current.size >= 2 && onPinch) {
+          const [a, b] = Array.from(activePointersRef.current.values());
+          const dist = Math.hypot(a.x - b.x, a.y - b.y);
+          const midX = (a.x + b.x) / 2;
+          const midY = (a.y + b.y) / 2;
+          if (pinchLastDistRef.current) onPinch(dist / pinchLastDistRef.current, midX, midY);
+          pinchLastDistRef.current = dist;
+        }
+        return;
+      }
+
       const p = getPos(e);
 
       // Select-mode pan: report screen-px deltas to the parent.
@@ -1384,7 +1442,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     };
 
     const handlePointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
-      if (e) (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+      if (e) {
+        (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+        activePointersRef.current.delete(e.pointerId);
+      }
+      if (activePointersRef.current.size === 0) {
+        pinchActiveRef.current = false;
+        pinchLastDistRef.current = null;
+      }
+      if (pinchActiveRef.current) return; // one finger lifted, one still down — stay suppressed
 
       panLastRef.current = null;
 

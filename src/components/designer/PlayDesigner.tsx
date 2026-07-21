@@ -178,30 +178,68 @@ export function PlayDesigner() {
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, []);
 
-  // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS).
+  // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS) —
+  // these back the button pill's fixed steps. Pinch (below) zooms
+  // continuously between 1 and the top of this range instead.
   const zoomLevels = ZOOM_LEVELS.filter(
     (z) => z === 1 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS,
   );
-  const zoomIndex = zoomLevels.indexOf(zoom);
+  const zoomMax = zoomLevels[zoomLevels.length - 1] ?? 1;
+  // A pinch usually leaves `zoom` between two button steps, so the pill's
+  // buttons pick the nearest step past the current (continuous) value in
+  // either direction rather than indexing into zoomLevels by exact match.
+  const ZOOM_EPS = 0.001;
+  const zoomOutTarget = [...zoomLevels].reverse().find((z) => z < zoom - ZOOM_EPS) ?? null;
+  const zoomInTarget = zoomLevels.find((z) => z > zoom + ZOOM_EPS) ?? null;
 
-  // Keep the viewport's center point stable when the zoom level changes
-  // (layout effect: runs after the canvas has its new size, before paint).
+  // Where to anchor the next zoom-level change: the pinch midpoint (client
+  // px) if the change came from a pinch, otherwise null so the layout effect
+  // below falls back to keeping the viewport's center stable (button pill).
+  const pinchAnchorRef = useRef<{ clientX: number; clientY: number } | null>(null);
+
+  // Keep either the pinch anchor or the viewport's center point stable when
+  // the zoom level changes (layout effect: runs after the canvas has its new
+  // size, before paint).
   const prevZoomRef = useRef(1);
   useLayoutEffect(() => {
     const el = canvasContainerRef.current;
     const prev = prevZoomRef.current;
     prevZoomRef.current = zoom;
+    const anchor = pinchAnchorRef.current;
+    pinchAnchorRef.current = null;
     if (!el || prev === zoom) return;
     const k = zoom / prev;
-    el.scrollLeft = (el.scrollLeft + el.clientWidth / 2) * k - el.clientWidth / 2;
-    el.scrollTop = (el.scrollTop + el.clientHeight / 2) * k - el.clientHeight / 2;
+    if (anchor) {
+      const rect = el.getBoundingClientRect();
+      const viewportX = anchor.clientX - rect.left;
+      const viewportY = anchor.clientY - rect.top;
+      el.scrollLeft = (el.scrollLeft + viewportX) * k - viewportX;
+      el.scrollTop = (el.scrollTop + viewportY) * k - viewportY;
+    } else {
+      el.scrollLeft = (el.scrollLeft + el.clientWidth / 2) * k - el.clientWidth / 2;
+      el.scrollTop = (el.scrollTop + el.clientHeight / 2) * k - el.clientHeight / 2;
+    }
   }, [zoom]);
 
   // If a resize/rotation shrinks the allowed range below the current zoom
-  // (e.g. rotating a phone to landscape), snap back into range.
+  // (e.g. rotating a phone to landscape), clamp back into range. Only clamps
+  // down past the new max — doesn't force a continuous pinch value onto one
+  // of the fixed button steps.
   useEffect(() => {
-    if (!zoomLevels.includes(zoom)) setZoom(zoomLevels[zoomLevels.length - 1] ?? 1);
-  }, [zoomLevels, zoom]);
+    if (zoom > zoomMax) setZoom(zoomMax);
+  }, [zoomMax, zoom]);
+
+  // Two-finger pinch (B-34): Canvas reports an incremental distance ratio
+  // (>1 spreading, <1 pinching in) plus the current midpoint in client px.
+  // Zooming continuously (not stepped) and anchoring on the midpoint is what
+  // makes the content appear to stay pinned under the fingers.
+  const handlePinch = useCallback((scaleRatio: number, midClientX: number, midClientY: number) => {
+    setZoom((z) => {
+      const next = Math.min(zoomMax, Math.max(1, z * scaleRatio));
+      if (next !== z) pinchAnchorRef.current = { clientX: midClientX, clientY: midClientY };
+      return next;
+    });
+  }, [zoomMax]);
 
   // Select-mode drag on empty field pans the scroll container (content
   // follows the pointer). No-op at 1x — nothing overflows.
@@ -481,6 +519,7 @@ export function PlayDesigner() {
               onDrawingComplete={() => {}}
               onHistoryChange={setHistory}
               onPan={handlePan}
+              onPinch={handlePinch}
             />
           </div>
         </main>
@@ -489,8 +528,8 @@ export function PlayDesigner() {
         <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg px-1 py-1">
           <button
             title="Zoom out"
-            disabled={zoomIndex <= 0}
-            onClick={() => setZoom(zoomLevels[zoomIndex - 1])}
+            disabled={zoomOutTarget === null}
+            onClick={() => zoomOutTarget !== null && setZoom(zoomOutTarget)}
             className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ZoomOut className="h-4 w-4" />
@@ -504,8 +543,8 @@ export function PlayDesigner() {
           </button>
           <button
             title="Zoom in"
-            disabled={zoomIndex < 0 || zoomIndex >= zoomLevels.length - 1}
-            onClick={() => setZoom(zoomLevels[zoomIndex + 1])}
+            disabled={zoomInTarget === null}
+            onClick={() => zoomInTarget !== null && setZoom(zoomInTarget)}
             className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ZoomIn className="h-4 w-4" />

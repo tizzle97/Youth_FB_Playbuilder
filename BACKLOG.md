@@ -161,22 +161,44 @@ owned by the official account + a "Clone this playbook" action (bulk play
 copy + playbook + ordering, respecting the free-tier triggers). Pricing
 copy update goes through human review.
 
-### B-34 · Pinch-to-zoom on the designer canvas (follow-up to zoom v1)
-Zoom v1 (2026-07-18) added a button pill (100/150/200/300%, tap-%-to-reset)
-plus select-mode drag-to-pan; phone users will instinctively pinch instead.
-Scope: track two active pointers on the canvas (pointer events, not gesture
-events — Canvas already uses pointer handlers with `touch-none`), scale
-around the pinch midpoint, and map the result onto the existing `zoom`
-state in `PlayDesigner.tsx` (continuous zoom between the current min/max
-rather than fixed steps; keep the `MAX_CANVAS_PIXELS` bitmap cap). While a
-second pointer is down, suppress single-finger draw/drag gestures in
-`Canvas.tsx` so a pinch never leaves a stray route point or icon move —
-that interaction seam is the hard part and where the bugs will live. Keep
-the button pill (accessibility + desktop). Two-finger drag while pinched =
-pan (adjust scroll in the same gesture). Playwright can only approximate
-pinch (two `page.touchscreen` sequences); extend the smoke suite with a
-two-pointer test for the suppression behavior at minimum, and flag the PR
-for a real-device check before merge.
+## Done
+
+- **2026-07-21 · B-34: Pinch-to-zoom on the designer canvas** — `Canvas.tsx`
+  now tracks every active pointer by ID in a map; a second finger touching
+  down aborts whatever single-finger gesture the first one started (icon
+  drag, select-mode pan, zone resize) and begins a pinch instead, reported to
+  the parent as a new `onPinch(scaleRatio, midClientX, midClientY)` callback
+  (incremental distance ratio since the last move + the fingers' current
+  midpoint in client px) — mirrors the existing `onPan` pattern. `zoom` in
+  `PlayDesigner.tsx` is now continuous between 1 and the same
+  `MAX_CANVAS_PIXELS`-capped ceiling the button pill already used, instead of
+  snapping to the fixed 1/1.5/2/3 steps; the pill's Zoom In/Out buttons now
+  pick the nearest step past the current (possibly non-standard, post-pinch)
+  value instead of indexing into the steps array by exact match, so they
+  keep working after a pinch lands between two steps. The zoom-change layout
+  effect anchors on the pinch midpoint (keeping the pinched point stationary
+  under the fingers, which also handles two-finger-drag-to-pan for free,
+  since the anchor is recomputed from the fingers' live position every
+  frame) instead of the viewport center when the change came from a pinch,
+  falling back to center-anchored for button clicks as before. New smoke
+  tests dispatch real two-finger touch sequences via the CDP `Input` domain
+  (Playwright's own touchscreen/mouse APIs only model one pointer) covering
+  both the zoom-in behavior and the suppression case (a second finger joining
+  mid-drag freezes the icon exactly where it was, rather than continuing to
+  track the first finger's movement during the pinch). **Verification:**
+  `npx tsc --noEmit`, `npm run lint`, and `npm run build` all pass clean (no
+  new errors — lint's pre-existing 19 errors are all in
+  `scripts/seed-library/run.mjs`, untouched here). The full Playwright smoke
+  suite (all 33 tests, including the 2 new ones) was run and passed against
+  a locally-supplied placeholder `.env` and the container's pre-installed
+  Chromium binary (the repo's pinned Playwright version expects a newer
+  browser revision than what's preinstalled, and there's no `.env` in this
+  environment by default) — both the throwaway `.env` and the
+  browser-executable-path config used for that run are untracked and were
+  removed afterward, not part of this commit. Per the item's own note, a
+  real-device pinch check is still recommended before merge — the CDP touch
+  simulation exercises the same code path a real pinch would, but isn't a
+  substitute for physical multi-touch hardware.
 
 ## Done
 
