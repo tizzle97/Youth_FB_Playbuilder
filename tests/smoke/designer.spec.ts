@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, CDPSession } from '@playwright/test';
 import { readFileSync } from 'fs';
 
 // Mocked-session tests must seed localStorage under the same key the real
@@ -157,6 +157,95 @@ test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
   await page.locator('button[title="Reset zoom"]').click();
   const reset = await page.locator('#play-canvas').boundingBox();
   expect(reset!.width).toBeCloseTo(base!.width, 0);
+});
+
+/**
+ * Dispatches a real two-finger touch sequence via the CDP Input domain
+ * (Playwright's own mouse/touchscreen APIs only model a single pointer, so
+ * they can't simulate a pinch). Each call's `touchPoints` is the *complete*
+ * current set of active touches — Chromium diffs against the previous call
+ * to decide which touch(es) started/moved/ended, matched by `id`. This goes
+ * through the real input pipeline (unlike hand-dispatched PointerEvents), so
+ * pointer capture behaves exactly as it would for a real finger.
+ *
+ * Approximates a pinch (B-34) well enough for CI, but is still a simulation
+ * — see the smoke suite note in BACKLOG.md B-34 recommending a real-device
+ * check before merge.
+ */
+async function touchPoints(
+  client: CDPSession,
+  type: 'touchStart' | 'touchMove' | 'touchEnd',
+  points: { x: number; y: number; id: number }[],
+) {
+  await client.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+}
+
+// Pinch-to-zoom (B-34): spreading two fingers zooms in continuously (not in
+// fixed button-pill steps) anchored under the fingers' midpoint.
+test('pinch-to-zoom: spreading two fingers zooms in continuously', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+  const client = await page.context().newCDPSession(page);
+
+  const base = await page.locator('#play-canvas').boundingBox();
+  const cx = base!.x + base!.width / 2;
+  const cy = base!.y + base!.height / 2;
+
+  await touchPoints(client, 'touchStart', [{ x: cx - 30, y: cy, id: 1 }, { x: cx + 30, y: cy, id: 2 }]);
+  for (const sep of [50, 80, 110]) {
+    await touchPoints(client, 'touchMove', [{ x: cx - sep, y: cy, id: 1 }, { x: cx + sep, y: cy, id: 2 }]);
+  }
+  await touchPoints(client, 'touchEnd', []);
+
+  const pillText = await page.locator('button[title="Reset zoom"]').textContent();
+  const pct = parseInt(pillText || '100', 10);
+  expect(pct).toBeGreaterThan(100);
+
+  const zoomed = await page.locator('#play-canvas').boundingBox();
+  expect(zoomed!.width).toBeGreaterThan(base!.width);
+});
+
+// Pinch suppression (B-34): a second finger touching down mid-drag must
+// abort the in-progress single-finger icon drag rather than let it keep
+// tracking that finger's continued movement during the pinch.
+test('pinch suppresses an in-progress single-finger icon drag', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+  const client = await page.context().newCDPSession(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.5);
+  await page.mouse.click(spot.x, spot.y);
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+
+  // Finger 1 lands on the icon and drags it — a real single-finger move.
+  await touchPoints(client, 'touchStart', [{ x: spot.x, y: spot.y, id: 1 }]);
+  await touchPoints(client, 'touchMove', [{ x: spot.x + 40, y: spot.y, id: 1 }]);
+  const midDrag = await canvasState(page);
+  expect(midDrag.playerIcons[0].x).toBeGreaterThan(0.5); // actually dragged
+
+  // Finger 2 joins mid-drag — from here on this is a pinch, not a drag.
+  await touchPoints(client, 'touchStart', [
+    { x: spot.x + 40, y: spot.y, id: 1 },
+    { x: spot.x + 120, y: spot.y, id: 2 },
+  ]);
+  for (const spread of [10, 30]) {
+    await touchPoints(client, 'touchMove', [
+      { x: spot.x + 40 - spread, y: spot.y, id: 1 },
+      { x: spot.x + 120 + spread, y: spot.y, id: 2 },
+    ]);
+  }
+  await touchPoints(client, 'touchEnd', []);
+
+  const after = await canvasState(page);
+  // The icon stayed exactly where finger 1 left it when finger 2 landed —
+  // finger 1's further movement during the pinch never reached the drag.
+  expect(after.playerIcons[0].x).toBeCloseTo(midDrag.playerIcons[0].x, 5);
+  expect(after.playerIcons[0].y).toBeCloseTo(midDrag.playerIcons[0].y, 5);
+
+  // And the pinch itself was live: zoom actually changed.
+  const pillText = await page.locator('button[title="Reset zoom"]').textContent();
+  expect(parseInt(pillText || '100', 10)).toBeGreaterThan(100);
 });
 
 test('offense: place a player, draw a straight route, undo both', async ({ page }) => {
