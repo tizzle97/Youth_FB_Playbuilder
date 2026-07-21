@@ -5,9 +5,10 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
 
 ## Stack & infrastructure
 - **Frontend:** React 18 + TypeScript + Vite, React Router v6
-- **Styling:** Tailwind CSS, dark theme. Custom colors: `primary` (orange
-  #FF5722), `chalk` (light text), `board` / `board-light` (dark backgrounds).
-  Use these tokens, not raw hex.
+- **Styling:** Tailwind CSS, dark theme. Custom colors (see
+  `tailwind.config.js`): `primary` (turf green #1FA75D, dark #178B4D),
+  `chalk` (warm cream #F8F6F1, light text), `board` / `board-light` (navy
+  #101D2E / #16283D, dark backgrounds). Use these tokens, not raw hex.
 - **Backend:** Supabase (Postgres, Auth, Storage). Client in `src/lib/supabase.ts` —
   always import the shared client; never call `createClient` in components.
 - **Deploy:** Netlify, auto-deploys on push to `main`. SPA routing relies on
