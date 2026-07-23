@@ -175,18 +175,18 @@ export function DesignerToolbar({
         {/* Waypoint / multi-segment */}
         <button
           onClick={() => pickDraw('waypoint')}
-          title="Multi-Segment Route (tap points, double-tap to finish)"
+          title="Multi-Segment Route (drag or tap to place points, double-tap to finish)"
           className={`${tool} ${activeDraw === 'waypoint' ? active : inactive}`}
         >
           <GitBranch className="h-4 w-4" />
           <span className={label}>Route</span>
         </button>
 
-        {/* Block (B-25): same click-to-place-points flow as Straight, but
-            ends in a perpendicular T-cap instead of an arrowhead. */}
+        {/* Block (B-25): same drag-or-tap-to-place-points flow as Straight,
+            but ends in a perpendicular T-cap instead of an arrowhead. */}
         <button
           onClick={() => pickDraw('block')}
-          title="Block Assignment (tap points, double-tap to finish)"
+          title="Block Assignment (drag or tap to place points, double-tap to finish)"
           className={`${tool} ${activeDraw === 'block' ? active : inactive}`}
         >
           <Shield className="h-4 w-4" />

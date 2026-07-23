@@ -1661,12 +1661,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         if (hoveredHasRoute) {
           instructionText = 'This player already has a route · Use Remove Route to clear it first';
         } else {
-          instructionText = 'Hover a player icon, then tap to select them';
+          instructionText = 'Press and drag from a player to draw, or tap them to start a route';
         }
       } else if (waypointPoints.length === 1 && originIcon) {
-        instructionText = `"${originIcon.letter}" selected · Tap the field to place route points · Tap "${originIcon.letter}" again to cancel`;
+        instructionText = `"${originIcon.letter}" selected · Drag to draw a segment (snaps to vertical/horizontal) or tap to place a point · Tap "${originIcon.letter}" again to cancel`;
       } else if (waypointPoints.length >= 2) {
-        instructionText = 'Tap to keep adding corners · Double-tap or press Finish to complete';
+        instructionText = 'Drag or tap to add the next point · Double-tap or press Finish to complete';
       }
     }
 
