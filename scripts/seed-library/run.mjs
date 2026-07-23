@@ -52,7 +52,7 @@ function waitForServer(url, timeoutMs = 30_000) {
 async function insertDrafts(admin, sysUserId) {
   const inserted = [];
   for (const play of PLAYS) {
-    const canvasData = JSON.stringify({ version: 3, paths: play.paths, playerIcons: play.icons, zones: play.zones || [] });
+    const canvasData = JSON.stringify({ version: 4, paths: play.paths, playerIcons: play.icons, zones: play.zones || [] });
     const { data, error } = await admin
       .from('plays')
       .insert({

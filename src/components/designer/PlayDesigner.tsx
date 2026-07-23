@@ -294,9 +294,13 @@ export function PlayDesigner() {
         return;
       }
 
-      // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx)
+      // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx).
+      // Version 4 = coordinates in the 17-up/13-down (30-yard) field window
+      // (2026-07-23); version ≤3 rows were remapped from the older 25-yard
+      // window by scripts/migrate-field-depth-2026-07.mjs, which keys on
+      // this number — bump it again if the window ever changes again.
       const canvasData = JSON.stringify({
-        version: 3,
+        version: 4,
         paths: canvasRef.current?.getPaths?.() || [],
         playerIcons: canvasRef.current?.getIcons?.() || [],
         zones: canvasRef.current?.getZones?.() || [],
@@ -507,7 +511,6 @@ export function PlayDesigner() {
               id="play-canvas"
               width={canvasSize.width * zoom}
               height={canvasSize.height * zoom}
-              gameType={currentPlayMetadata.gameType}
               drawingMode={drawingMode}
               drawMode={drawMode}
               deleteRouteMode={deleteRouteMode}

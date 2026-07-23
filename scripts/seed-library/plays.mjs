@@ -9,8 +9,12 @@
 // concepts (slants, mesh, four verts, power-O, etc.) — never traced from any
 // commercial playbook product.
 
-const FIELD_YARDS_ABOVE_LOS = 15;
-const FIELD_YARDS_BELOW_LOS = 10;
+// 17-up/13-down (30-yard) universal field window as of 2026-07-23 — must
+// match Canvas.tsx. Batches authored before that date were written against
+// the old 25-yard window and were remapped in the DB by
+// scripts/migrate-field-depth-2026-07.mjs; their source below is historical.
+const FIELD_YARDS_ABOVE_LOS = 17;
+const FIELD_YARDS_BELOW_LOS = 13;
 const TOTAL_FIELD_YARDS = FIELD_YARDS_ABOVE_LOS + FIELD_YARDS_BELOW_LOS;
 
 // Yards behind the LOS (positive = backfield) -> normalized y. Mirrors

@@ -459,13 +459,10 @@ test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 s
   expect(state.playerIcons).toHaveLength(5);
 });
 
-// B-29: field rendering (hash marks) is now format-aware — 11v11 draws
-// wider-spaced youth/HS hashes, 5v5/7v7 are hashless. None of this is
-// observable through the canvas-state bridge (it's pixels, not data), so
-// this guards the wiring instead: gameType must reach the live draw path
-// and re-render cleanly for every format, with content already on canvas
-// (the case that actually exercises drawField's hash-mark branch, unlike
-// an empty field).
+// The field is one universal canvas for every game format (2026-07-23,
+// superseding B-29's format-aware hashes), but the format picker still
+// drives formation templates — this guards that switching formats with
+// content already on canvas re-renders cleanly and never disturbs it.
 test('field rendering: switching game format re-renders cleanly for every format', async ({ page }) => {
   const errors: Error[] = [];
   page.on('pageerror', (err) => errors.push(err));
@@ -607,14 +604,14 @@ test('snap: centerline + yard grid on placement, row alignment, magnet toggles o
   await openDesigner(page);
 
   // Q placed slightly off-center snaps to the field centerline (x = 0.5)
-  // and its y quantizes to the 1-yard grid (field is 25 yards tall).
+  // and its y quantizes to the 1-yard grid (field is 30 yards tall).
   await btn(page, 'Player Q').click();
   const spot = await canvasPoint(page, 0.505, 0.652);
   await page.mouse.click(spot.x, spot.y);
 
   let state = await canvasState(page);
   expect(state.playerIcons[0].x).toBe(0.5);
-  const yards = state.playerIcons[0].y * 25;
+  const yards = state.playerIcons[0].y * 30;
   expect(Math.abs(yards - Math.round(yards))).toBeLessThan(1e-9);
 
   // A placed a few px off Q's row snaps to exactly Q's y — icon row

@@ -7,7 +7,6 @@ import React, {
   useState,
 } from 'react';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
-import type { PlayMetadata } from '../../types/play';
 
 // ---------------------------------------------
 // Config
@@ -25,13 +24,20 @@ const PLAYER_FONT = 16;
 
 const FIELD_BG = '#FFFFFF';
 const SIDELINE_PADDING = 8;
-const SIDELINE_BORDER_COLOR = '#E0E0E0';
+const FIELD_BORDER_COLOR = '#1a1a1a';
 const YARD_LINE_COLOR = '#D8D8D8';
 const HASH_COLOR = '#B0B0B0';
 const HASH_TICK_LEN = 10;
+const YARD_NUMBER_COLOR = '#C4C4C4';
 const LOS_COLOR = '#1a1a1a';
-const FIELD_YARDS_ABOVE_LOS = 15;
-const FIELD_YARDS_BELOW_LOS = 10;
+// One universal field for every game format (styled after a printed flag
+// playbook page): 17 yards upfield of the LOS, 13 behind it. The sideline
+// yard numbers label the LOS as the "20", so 10/20/30 read exactly like the
+// reference page. Changing these is a DATA MIGRATION, not a tweak — every
+// saved play's normalized coordinates encode this window (see
+// scripts/migrate-field-depth-2026-07.mjs for the 25→30-yard remap).
+const FIELD_YARDS_ABOVE_LOS = 17;
+const FIELD_YARDS_BELOW_LOS = 13;
 const TOTAL_FIELD_YARDS = FIELD_YARDS_ABOVE_LOS + FIELD_YARDS_BELOW_LOS;
 
 // Visio-style snapping: icons magnetize to other icons' rows/columns and the
@@ -44,14 +50,10 @@ const GUIDE_COLOR = '#f59e0b';
 // icon counts as a drag rather than tap jitter. Below this, pointer-up opens
 // the tap-to-customize popover instead.
 const DRAG_THRESHOLD_PX = 4;
-// Hash marks sit 53'4" from each sideline — one-third of a 160ft-wide field
-// — the NFHS/college standard. This app targets youth/HS football, not the
-// NFL (whose 70'9" inset is noticeably narrower). Only drawn for 11v11;
-// flag formats (5v5/7v7) are hashless real fields (see drawField).
+// Interior hash columns sit at one-third of the field width (the NFHS/youth
+// standard inset), drawn for every game format — the universal field.
 const HASH_LEFT_X_RATIO = 1 / 3;
 const HASH_RIGHT_X_RATIO = 1 - HASH_LEFT_X_RATIO;
-
-type GameType = PlayMetadata['gameType'];
 
 // Fixed export resolution (letter-page proportions) — every play prints
 // the same regardless of the screen it was designed on. The on-screen
@@ -112,8 +114,6 @@ type ZoneHandle = { x: number; y: number; axis: ZoneHandleAxis };
 type CanvasProps = {
   width: number;
   height: number;
-  /** Drives field geometry (hash marks, sideline width) — see B-29. */
-  gameType: GameType;
   drawingMode: boolean;
   drawMode: DrawMode;
   deleteRouteMode: boolean;
@@ -341,19 +341,18 @@ const TEXT_FIT: Record<IconShape, number> = {
   star: 0.55,
 };
 
-function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number, gameType: GameType) {
+function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) {
   const pad = SIDELINE_PADDING * scale;
   ctx.save();
   ctx.fillStyle = FIELD_BG;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = SIDELINE_BORDER_COLOR;
-  ctx.lineWidth = Math.max(1, scale);
-  ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
 
-  // Yard lines
+  // Yard lines every 5, anchored to the LOS (not the field edges — with a
+  // 17/13 window the edges aren't on the 5-yard grid).
   ctx.strokeStyle = YARD_LINE_COLOR;
   ctx.lineWidth = Math.max(1, scale);
-  for (let y = -FIELD_YARDS_ABOVE_LOS; y <= FIELD_YARDS_BELOW_LOS; y += 5) {
+  const firstLine = -Math.floor(FIELD_YARDS_ABOVE_LOS / 5) * 5;
+  for (let y = firstLine; y <= FIELD_YARDS_BELOW_LOS; y += 5) {
     const py = yFromYards(y, H);
     ctx.beginPath();
     ctx.moveTo(pad, py);
@@ -361,7 +360,45 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
     ctx.stroke();
   }
 
-  // Line of scrimmage
+  // Per-yard ticks: two interior hash columns at one-third width (the
+  // NFHS/youth inset) plus sideline ticks hugging both borders, like a
+  // printed playbook page. Same field for every game format.
+  ctx.strokeStyle = HASH_COLOR;
+  ctx.lineWidth = Math.max(1, scale);
+  const tick = HASH_TICK_LEN * scale;
+  const lhx = pad + (W - pad * 2) * HASH_LEFT_X_RATIO;
+  const rhx = pad + (W - pad * 2) * HASH_RIGHT_X_RATIO;
+  for (let y = -FIELD_YARDS_ABOVE_LOS; y <= FIELD_YARDS_BELOW_LOS; y += 1) {
+    const py = yFromYards(y, H);
+    ctx.beginPath(); ctx.moveTo(lhx - tick / 2, py); ctx.lineTo(lhx + tick / 2, py); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(rhx - tick / 2, py); ctx.lineTo(rhx + tick / 2, py); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad + 2 * scale, py); ctx.lineTo(pad + 2 * scale + tick, py); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W - pad - 2 * scale - tick, py); ctx.lineTo(W - pad - 2 * scale, py); ctx.stroke();
+  }
+
+  // Sideline yard numbers, LOS labeled as the "20" (so 10/20/30 read like a
+  // real field with the offense on its own 20). Rotated to lie along the
+  // sidelines, mirrored left/right like painted field numbers.
+  ctx.fillStyle = YARD_NUMBER_COLOR;
+  ctx.font = `700 ${28 * scale}px 'Inter var', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const numberInset = pad + 40 * scale;
+  for (const { label, yds } of [{ label: '30', yds: -10 }, { label: '20', yds: 0 }, { label: '10', yds: 10 }]) {
+    const py = yFromYards(yds, H);
+    ctx.save();
+    ctx.translate(numberInset, py);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(W - numberInset, py);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  }
+
+  // Line of scrimmage (the "20")
   const losY = yFromYards(0, H);
   ctx.strokeStyle = LOS_COLOR;
   ctx.lineWidth = 3 * scale;
@@ -370,19 +407,10 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   ctx.lineTo(W - pad, losY);
   ctx.stroke();
 
-  // Hash marks — 11v11 only; flag formats (5v5/7v7) play hashless.
-  if (gameType === '11v11') {
-    ctx.strokeStyle = HASH_COLOR;
-    ctx.lineWidth = Math.max(1, scale);
-    const tick = HASH_TICK_LEN * scale;
-    const lhx = pad + (W - pad * 2) * HASH_LEFT_X_RATIO;
-    const rhx = pad + (W - pad * 2) * HASH_RIGHT_X_RATIO;
-    for (let y = -FIELD_YARDS_ABOVE_LOS; y <= FIELD_YARDS_BELOW_LOS; y += 1) {
-      const py = yFromYards(y, H);
-      ctx.beginPath(); ctx.moveTo(lhx - tick / 2, py); ctx.lineTo(lhx + tick / 2, py); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rhx - tick / 2, py); ctx.lineTo(rhx + tick / 2, py); ctx.stroke();
-    }
-  }
+  // Bold border, drawn last so it sits crisply over the line ends.
+  ctx.strokeStyle = FIELD_BORDER_COLOR;
+  ctx.lineWidth = Math.max(1.5, 2 * scale);
+  ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
   ctx.restore();
 }
 
@@ -497,7 +525,6 @@ function renderScene(
   playerIcons: PlayerIcon[],
   zones: Zone[] = [],
   selectedZoneIndex: number | null = null,
-  gameType: GameType = '11v11',
 ) {
   const scale = Math.min(W, H) / REF_SIZE;
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
@@ -506,7 +533,7 @@ function renderScene(
   const iconSize = PLAYER_SIZE * scale;
 
   ctx.clearRect(0, 0, W, H);
-  drawField(ctx, W, H, scale, gameType);
+  drawField(ctx, W, H, scale);
   // Zones sit on top of the grid (translucent, so it shows through) but
   // underneath routes/icons, which should stay crisp.
   drawZones(ctx, W, H, zones, playerIcons, scale, selectedZoneIndex);
@@ -563,7 +590,7 @@ function renderScene(
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, gameType, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -833,7 +860,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, gameType);
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex);
 
       // Alignment guides while a drag is snapped to a row/column/centerline
       if (activeGuides.x !== null || activeGuides.y !== null) {
@@ -998,7 +1025,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone, gameType]);
+    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -1066,7 +1093,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         off.width = w;
         off.height = h;
         const ctx = off.getContext('2d')!;
-        renderScene(ctx, w, h, paths, playerIcons, zones, null, gameType);
+        renderScene(ctx, w, h, paths, playerIcons, zones);
         return off.toDataURL('image/png');
       },
       undo: () => {
@@ -1148,7 +1175,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       getPaths: () => paths,
       getIcons: () => playerIcons,
       getZones: () => zones,
-    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints, gameType]);
+    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints]);
 
     // ------------------------------------------
     // Pointer helpers

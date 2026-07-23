@@ -64,42 +64,22 @@ ownership patterns), invite-by-email flow, read-only vs. editor roles.
 Rough scope is a multi-PR epic — do NOT pick this up as a single nightly
 item; a human should approve the schema design first.
 
-### B-29b · Format-aware field depth (11v11 backfield + width) — on hold
+### B-29b · 5v5 field width (remaining sliver of the field audit) — on hold
 **Not for the nightly routine — do not pick this up until a human takes it
-off hold.** Jeremy: not worrying about the canvas for now (2026-07-20).
-The hash-mark half of the original B-29 audit shipped 2026-07-20 (see Done).
-What's left, and why it's on hold: these two remaining findings both
-change what a normalized Y (or X) coordinate *means*, which existing saved
-plays' `canvas_data` already encodes against the current geometry —
-changing the geometry silently moves every existing icon.
-- Depth is 15 yards above the LOS / 10 below (`FIELD_YARDS_ABOVE_LOS` /
-  `_BELOW_LOS`). Fine for flag; for 11v11, deep concepts (post/go/verts)
-  hit the ceiling and punt formations don't fit (see B-27 note). 20 above
-  would let deep routes breathe, but a saved play's icon at y=0.5 would
-  land at a different real yard line than when it was placed. No real user
-  has hit this — it's an audit finding, not a report — so the concrete
-  trigger to watch for is punt-formation depth feeling cramped once B-27's
-  special-teams K/P placement gets real use, not the (speculative) deep-
-  route ceiling.
-- The field is full width (160 ft) even for 5v5 flag, whose real fields
-  are ~30 yards wide. Tried narrowing it in the B-29 pass — broke the 5v5
-  Trips/Twins formation templates (`formations.ts`), whose receivers sit
-  at x=0.88–0.90 and now land outside the narrower drawn sidelines
-  (screenshotted, reverted). Unlike depth, this half has no coordinate
-  compatibility trap — the only blocker is rewriting those two templates'
-  receiver X-values to fit inside the narrower field. Low-risk, contained,
-  and fine to pick up on its own whenever the canvas is back in scope; it
-  doesn't need to wait on the depth decision below.
-**Compatibility trap** (depth only): player/route coordinates are stored
-normalized 0–1 against the whole canvas, so changing depth changes where
-existing saved 11v11 plays' icons land. If this comes off hold, prefer
-tagging only *newly created* plays with the deeper geometry (a
-`fieldDepth`/version key in `canvas_data`, existing plays keep rendering
-exactly as they do today) over migrating/remapping old plays' coordinates
-— same grandfather-old-behavior pattern already used for Founding Member
-entitlements and the legacy `isSquare` icon flag, and it carries zero risk
-of shifting anyone's saved play. Extend the smoke suite's snap/grid
-assertions (they encode the current 25-yard math) once this is unblocked.
+off hold.** The depth half of this item was resolved 2026-07-23: Jeremy
+chose a universal 17-up/13-down (30-yard) field for every format, styled
+after a printed flag playbook page (see Done), with a full coordinate
+migration of every saved play — so the old "grandfather vs. migrate"
+debate here is moot; migration was chosen and executed. What remains is
+only the width question: the field is full width (160 ft) even for 5v5
+flag, whose real fields are ~30 yards wide. Narrowing it was tried in the
+B-29 pass and reverted — it broke the 5v5 Trips/Twins formation templates
+(`formations.ts`), whose receivers sit at x=0.88–0.90 and land outside
+the narrower drawn sidelines. No coordinate compatibility trap; the only
+blocker is rewriting those templates' receiver X-values to fit. But note
+the direction of travel: Jeremy explicitly wants ONE universal catch-all
+canvas across formats now, which arguably retires this item entirely —
+confirm with him before doing anything here.
 
 ### B-31 · Official starter play library (content seeding) — full batch done, awaiting final review
 **Not for the nightly routine — content generation is complete; what's left
@@ -169,6 +149,27 @@ copy update goes through human review.
 
 ## Done
 
+- **2026-07-23 · Universal playbook-style field (17/13 window) + coordinate
+  migration** — one field for every game format, styled after a printed flag
+  playbook page Jeremy supplied: bold border, per-yard sideline ticks plus
+  the one-third-width interior hash columns (now on all formats), and
+  rotated 10/20/30 sideline numbers with the LOS labeled as the "20". Depth
+  extended from 15-up/10-down (25 yards) to 17-up/13-down (30) — the B-29b
+  depth decision, resolved by migrating rather than grandfathering:
+  `scripts/migrate-field-depth-2026-07.mjs` remapped every saved play's
+  y-coordinates (icons, route points, zone centers/radii) so everything
+  stays at its exact yards-from-LOS; `canvas_data.version` bumped 3→4 so the
+  script keys on it and is safely re-runnable (a stale pre-deploy tab saving
+  version-3 coords gets cleaned up by a later re-run). Formation templates
+  needed zero changes (authored LOS-relative against the exported
+  constants). 5-yard lines anchor to the LOS, not the field edges (with a
+  17/13 window the edges aren't on the 5-yard grid). `gameType` prop removed
+  from `Canvas` — the field no longer varies by format.
+  `scripts/seed-library/refresh-thumbnails.mjs` re-rendered all official-
+  library thumbnails through the real designer post-migration (it refuses to
+  run against unmigrated rows); user-owned plays' stored thumbnails show the
+  old field style until their owners re-save — cosmetic only.
+
 - **2026-07-21 · B-34: Pinch-to-zoom on the designer canvas** — `Canvas.tsx`
   now tracks every active pointer by ID in a map; a second finger touching
   down aborts whatever single-finger gesture the first one started (icon
@@ -205,8 +206,6 @@ copy update goes through human review.
   real-device pinch check is still recommended before merge — the CDP touch
   simulation exercises the same code path a real pinch would, but isn't a
   substitute for physical multi-touch hardware.
-
-## Done
 
 - **2026-07-20 · B-29: Format-aware hash marks (safe half of the field
   audit)** — 11v11 now draws hash marks at the youth/HS 53'4" (one-third
