@@ -288,6 +288,73 @@ test('offense: place a player, draw a straight route, undo both', async ({ page 
   expect(state.playerIcons).toHaveLength(0);
 });
 
+// Drag-to-draw route segments with axis-lock snapping: press-drag-release
+// rubber-bands a segment from the route's tip; within the snap tolerance of
+// dead-vertical/horizontal the point locks onto the axis (perfect
+// 90°-from-LOS go routes), while real diagonals (slants/posts) are untouched.
+// The old tap-tap flow is a press-release with no movement and must keep
+// working — covered by the straight-route test above.
+test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, respects magnet toggle', async ({ page }) => {
+  await openDesigner(page);
+
+  // Receiver off-center so the field-centerline snap can't interfere.
+  await btn(page, 'Player X').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = state.playerIcons[0];
+
+  // Press the icon and drag out ~5px off vertical in one motion.
+  await btn(page, 'Straight Line Route').click();
+  const iconPx = await canvasPoint(page, icon.x, icon.y);
+  await page.mouse.move(iconPx.x, iconPx.y);
+  await page.mouse.down();
+  await page.mouse.move(iconPx.x + 5, iconPx.y - 180, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points[1].x).toBe(state.paths[0].points[0].x); // exact vertical
+
+  // A real slant (far outside tolerance) keeps its angle.
+  await btn(page, 'Player Y').click();
+  const spot2 = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(spot2.x, spot2.y);
+  state = await canvasState(page);
+  const icon2 = state.playerIcons[1];
+  await btn(page, 'Straight Line Route').click();
+  const icon2Px = await canvasPoint(page, icon2.x, icon2.y);
+  await page.mouse.move(icon2Px.x, icon2Px.y);
+  await page.mouse.down();
+  await page.mouse.move(icon2Px.x + 120, icon2Px.y - 140, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  expect(Math.abs(state.paths[1].points[1].x - state.paths[1].points[0].x)).toBeGreaterThan(0.05);
+
+  // Magnet off: the same near-vertical drag stays freehand.
+  await btn(page, 'Snap to alignment').click();
+  await btn(page, 'Player Z').click();
+  const spot3 = await canvasPoint(page, 0.8, 0.6);
+  await page.mouse.click(spot3.x, spot3.y);
+  state = await canvasState(page);
+  const icon3 = state.playerIcons[2];
+  await btn(page, 'Straight Line Route').click();
+  const icon3Px = await canvasPoint(page, icon3.x, icon3.y);
+  await page.mouse.move(icon3Px.x, icon3Px.y);
+  await page.mouse.down();
+  await page.mouse.move(icon3Px.x + 5, icon3Px.y - 180, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(3);
+  expect(state.paths[2].points[1].x).not.toBe(state.paths[2].points[0].x);
+});
+
 test('offense: draw a block assignment (B-25), path mode is "block", undo clears it', async ({ page }) => {
   await openDesigner(page);
 

@@ -577,6 +577,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [waypointColor, setWaypointColor] = useState('#e05a1e');
     const [waypointIconIndex, setWaypointIconIndex] = useState<number | null>(null);
     const lastTapRef = useRef<number>(0);
+    // Rubber-band segment being dragged out from the route's current tip
+    // (press-drag-release adds one segment; a no-movement tap commits at the
+    // tap point, which is exactly the old tap-to-add behavior). Anchored at
+    // the tip no matter where the press lands, so phones get a forgiving
+    // touch target. State (not a ref) because the preview must re-render.
+    const [pendingPoint, setPendingPoint] = useState<Pt | null>(null);
+    const routeDragRef = useRef(false);
 
     // Hover highlight (shows which icon will be used as route origin)
     const [hoveredIconIndex, setHoveredIconIndex] = useState<number | null>(null);
@@ -752,6 +759,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       return { pos: { x, y }, guideX, guideY, distX, distY };
     }, [snapEnabled, playerIcons, width, height]);
 
+    /** Axis-lock a route point against the segment's start: within SNAP_PX
+     *  of dead-vertical the x locks to the previous point's x (perfect
+     *  90°-from-LOS routes), and within SNAP_PX of dead-horizontal the y
+     *  locks (outs/drags). Diagonals outside the tolerance pass through
+     *  untouched — slants and posts keep their intended angles. */
+    const snapRoutePoint = (p: Pt, prev: Pt): { pos: Pt; lockedX: number | null; lockedY: number | null } => {
+      if (!snapEnabled) return { pos: p, lockedX: null, lockedY: null };
+      if (Math.abs(p.x - prev.x) * width < SNAP_PX) {
+        return { pos: { x: prev.x, y: p.y }, lockedX: prev.x, lockedY: null };
+      }
+      if (Math.abs(p.y - prev.y) * height < SNAP_PX) {
+        return { pos: { x: p.x, y: prev.y }, lockedX: null, lockedY: prev.y };
+      }
+      return { pos: p, lockedX: null, lockedY: null };
+    };
+
     // Current on-screen scaling helpers
     const screenScale = Math.min(width, height) / REF_SIZE;
     const iconRadiusPx = (PLAYER_SIZE * screenScale) / 2;
@@ -892,9 +915,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.restore();
       }
 
-      // In-progress route preview
+      // In-progress route preview. The rubber-band pending point (drag in
+      // flight) renders as part of the route, so the user sees the live
+      // segment — including the arrowhead/T-cap — before releasing.
       if (waypointPoints.length >= 1) {
-        const pts = waypointPoints.map(toPx);
+        const previewPts = pendingPoint ? [...waypointPoints, pendingPoint] : waypointPoints;
+        const pts = previewPts.map(toPx);
         const isBlock = drawMode === 'block';
         const stroked = pts.length >= 2 && !isBlock ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
         if (drawMode === 'straight' || isBlock) {
@@ -972,7 +998,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone, gameType]);
+    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone, gameType]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -1189,6 +1215,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         panLastRef.current = null;
         zoneGestureRef.current = null;
         setZoneDraft(null);
+        // Abort a mid-drag route segment: committed points stay, the
+        // pending rubber band vanishes rather than committing garbage.
+        if (routeDragRef.current) {
+          routeDragRef.current = false;
+          setPendingPoint(null);
+          setActiveGuides({ x: null, y: null, distX: null, distY: null });
+        }
         if (draggingIndexRef.current !== null) {
           draggingIndexRef.current = null;
           setIsDragging(false);
@@ -1278,12 +1311,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               conflictFlashTimerRef.current = setTimeout(() => setConflictFlash(false), 2500);
               return;
             }
-            // User clicked a player icon — lock it as the route origin
+            // User clicked a player icon — lock it as the route origin and
+            // start a rubber-band segment immediately, so pressing the icon
+            // and dragging out draws the first segment in one motion. A
+            // plain tap discards the zero-length pending point on release.
             const icon = playerIcons[clicked];
             setWaypointColor(icon.color);
             setWaypointIconIndex(clicked);
             setWaypointPoints([{ x: icon.x, y: icon.y }]);
             setHoveredIconIndex(null);
+            routeDragRef.current = true;
+            setPendingPoint({ x: icon.x, y: icon.y });
           }
           // Clicked canvas without selecting a player — do nothing.
           // Hover highlight guides the user to tap a player first.
@@ -1300,8 +1338,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             setFinishFirstFlash(true);
             finishFirstFlashTimerRef.current = setTimeout(() => setFinishFirstFlash(false), 2500);
           } else {
-            // Tapped open canvas → add the next segment endpoint
-            setWaypointPoints((prev) => [...prev, p]);
+            // Pressed open canvas → rubber-band the next segment from the
+            // route's current tip; pointer-up commits it (a no-movement tap
+            // commits right here, matching the old tap-to-add behavior).
+            const tip = waypointPoints[waypointPoints.length - 1];
+            const { pos, lockedX, lockedY } = snapRoutePoint(p, tip);
+            routeDragRef.current = true;
+            setPendingPoint(pos);
+            setActiveGuides({ x: lockedX, y: lockedY, distX: null, distY: null });
           }
         }
         return;
@@ -1380,6 +1424,19 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Route rubber-band: live-update the pending segment, axis-locking
+      // against the tip when near vertical/horizontal (amber guide shows
+      // which axis is locked — the "snapped" feedback).
+      if (routeDragRef.current) {
+        const tip = waypointPoints[waypointPoints.length - 1];
+        if (tip) {
+          const { pos, lockedX, lockedY } = snapRoutePoint(p, tip);
+          setPendingPoint(pos);
+          setActiveGuides({ x: lockedX, y: lockedY, distX: null, distY: null });
+        }
+        return;
+      }
+
       // Zone creation: live-resize the draft as the drag continues.
       if (zoneDraft) {
         setZoneDraft((prev) => prev ? { ...prev, rx: Math.abs(p.x - prev.cx), ry: Math.abs(p.y - prev.cy) } : prev);
@@ -1453,6 +1510,26 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (pinchActiveRef.current) return; // one finger lifted, one still down — stay suppressed
 
       panLastRef.current = null;
+
+      // Commit the route rubber-band: the pending point becomes the next
+      // segment endpoint. A release still at (or within a jitter radius of)
+      // the tip is discarded — that's a plain tap on the origin icon
+      // locking the route, or an accidental micro-drag; never a segment.
+      if (routeDragRef.current) {
+        routeDragRef.current = false;
+        setActiveGuides({ x: null, y: null, distX: null, distY: null });
+        if (pendingPoint) {
+          const tip = waypointPoints[waypointPoints.length - 1];
+          const traveled = tip
+            ? Math.hypot((pendingPoint.x - tip.x) * width, (pendingPoint.y - tip.y) * height)
+            : 0;
+          if (traveled >= DRAG_THRESHOLD_PX) {
+            setWaypointPoints((prev) => [...prev, pendingPoint]);
+          }
+        }
+        setPendingPoint(null);
+        return;
+      }
 
       // Commit the zone creation gesture: pushSnapshot (pre-zone state) then
       // add the new zone, floored to a minimum visible radius so a tap
