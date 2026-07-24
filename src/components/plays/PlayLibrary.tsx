@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Check, Play as PlayIcon, Search } from 'lucide-react';
+import { Copy, Check, Play as PlayIcon, Search, Filter } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { PlayVoteButton } from './PlayVoteButton';
@@ -13,10 +13,13 @@ type PublicPlay = {
   type: 'offense' | 'defense' | 'special_teams';
   thumbnail: string | null;
   upvotes: number;
-  metadata: { gameType?: string; difficulty?: string } | null;
+  metadata: { gameType?: string; difficulty?: string; formation?: string } | null;
   user_id: string;
   author?: { username: string | null };
 };
+
+const TYPE_FILTERS = ['all', 'offense', 'defense', 'special_teams'] as const;
+const GAME_TYPE_FILTERS = ['all', '5v5', '7v7', '11v11'] as const;
 
 /**
  * Browsable grid of every public play (B-30) — the community "Play
@@ -30,6 +33,9 @@ export function PlayLibrary() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<(typeof TYPE_FILTERS)[number]>('all');
+  const [gameTypeFilter, setGameTypeFilter] = useState<(typeof GAME_TYPE_FILTERS)[number]>('all');
+  const [formationFilter, setFormationFilter] = useState('all');
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const [votedPlayIds, setVotedPlayIds] = useState<Set<string>>(new Set());
   const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
@@ -130,13 +136,33 @@ export function PlayLibrary() {
   };
 
   const gameFormatLabel = (p: PublicPlay) => p.metadata?.gameType || null;
-  const filtered = search
-    ? plays.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
-    : plays;
+
+  // Formation is free text a coach typed in, not an enum — offer whatever
+  // distinct values actually exist rather than a fixed list, so every
+  // option is guaranteed to return at least one play. Derived from the
+  // full unfiltered set (not the other active filters) so the dropdown's
+  // options stay stable while type/game format are toggled.
+  const availableFormations = useMemo(() => {
+    const values = new Set<string>();
+    plays.forEach((p) => {
+      const f = p.metadata?.formation?.trim();
+      if (f) values.add(f);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [plays]);
+
+  const filtered = plays.filter((p) => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (typeFilter !== 'all' && p.type !== typeFilter) return false;
+    if (gameTypeFilter !== 'all' && p.metadata?.gameType !== gameTypeFilter) return false;
+    if (formationFilter !== 'all' && p.metadata?.formation !== formationFilter) return false;
+    return true;
+  });
+  const filtersActive = typeFilter !== 'all' || gameTypeFilter !== 'all' || formationFilter !== 'all';
 
   return (
     <div>
-      <div className="relative mb-6">
+      <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-chalk/50" />
         <input
           type="text"
@@ -145,6 +171,56 @@ export function PlayLibrary() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-board border border-chalk/20 rounded-lg text-chalk placeholder-chalk/50 focus:outline-none focus:border-primary/50"
         />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-6">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-chalk/50 shrink-0" />
+          <div className="flex flex-wrap gap-1.5">
+            {TYPE_FILTERS.map((type) => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(type)}
+                className={`px-3 py-1 text-sm rounded-md capitalize transition-colors ${
+                  typeFilter === type
+                    ? 'bg-primary text-white'
+                    : 'bg-board text-chalk/70 hover:text-chalk border border-chalk/10'
+                }`}
+              >
+                {type.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {GAME_TYPE_FILTERS.map((gt) => (
+            <button
+              key={gt}
+              onClick={() => setGameTypeFilter(gt)}
+              className={`px-3 py-1 text-sm rounded-md capitalize transition-colors ${
+                gameTypeFilter === gt
+                  ? 'bg-primary text-white'
+                  : 'bg-board text-chalk/70 hover:text-chalk border border-chalk/10'
+              }`}
+            >
+              {gt === 'all' ? 'All formats' : gt}
+            </button>
+          ))}
+        </div>
+
+        {availableFormations.length > 0 && (
+          <select
+            value={formationFilter}
+            onChange={(e) => setFormationFilter(e.target.value)}
+            className="px-3 py-1 text-sm rounded-md bg-board text-chalk/70 border border-chalk/10 focus:outline-none focus:border-primary/50 hover:text-chalk"
+          >
+            <option value="all">All formations</option>
+            {availableFormations.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {error && (
@@ -169,13 +245,21 @@ export function PlayLibrary() {
         <div className="text-center py-16">
           <PlayIcon className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-chalk mb-2">
-            {search ? 'No plays match that search' : 'No public plays yet'}
+            {search || filtersActive ? 'No plays match those filters' : 'No public plays yet'}
           </h3>
           <p className="text-chalk/70">
-            {search
-              ? 'Try a different name.'
+            {search || filtersActive
+              ? 'Try a different search or clear a filter.'
               : 'Publish one of your own plays to get the library started.'}
           </p>
+          {filtersActive && (
+            <button
+              onClick={() => { setTypeFilter('all'); setGameTypeFilter('all'); setFormationFilter('all'); }}
+              className="mt-4 px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

@@ -1259,6 +1259,54 @@ test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ 
   await expect(page.getByText('is a Pro feature')).toHaveCount(0);
 });
 
+test('Community Play Library: type/game-format/formation filters compose correctly', async ({ page }) => {
+  const publicPlays = [
+    { id: 'p1', name: 'Four Verts', description: '', type: 'offense', thumbnail: null, upvotes: 3,
+      metadata: { gameType: '11v11', formation: 'Spread' }, user_id: 'u1' },
+    { id: 'p2', name: 'Mesh', description: '', type: 'offense', thumbnail: null, upvotes: 1,
+      metadata: { gameType: '7v7', formation: 'Twins' }, user_id: 'u1' },
+    { id: 'p3', name: 'Cover 2 Zone', description: '', type: 'defense', thumbnail: null, upvotes: 2,
+      metadata: { gameType: '11v11', formation: '4-3 Cover 2' }, user_id: 'u2' },
+    { id: 'p4', name: '5v5 Blitz', description: '', type: 'defense', thumbnail: null, upvotes: 0,
+      metadata: { gameType: '5v5', formation: 'Blitz' }, user_id: 'u2' },
+    { id: 'p5', name: 'Punt Coverage', description: '', type: 'special_teams', thumbnail: null, upvotes: 0,
+      metadata: { gameType: '11v11', formation: 'Punt' }, user_id: 'u2' },
+  ];
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(publicPlays) }),
+  );
+  await page.route('**/rest/v1/rpc/get_community_authors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  await page.goto('/plays?tab=community');
+  const cards = page.locator('.grid > div.bg-board-light');
+  await expect(cards).toHaveCount(5);
+
+  // Type filter alone
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+  await expect(cards).toHaveCount(2);
+
+  // Compose with game format — only p3 is defense + 11v11
+  await page.getByRole('button', { name: '11v11', exact: true }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(page.getByText('Cover 2 Zone')).toBeVisible();
+
+  // Formation dropdown only offers values actually present in the data
+  const formationOptions = await page.locator('select').first().locator('option').allTextContents();
+  expect(formationOptions).toEqual(
+    expect.arrayContaining(['All formations', 'Spread', 'Twins', '4-3 Cover 2', 'Blitz', 'Punt']),
+  );
+
+  // Clear filters via the empty-state button after narrowing to zero results
+  await page.locator('select').first().selectOption('Spread'); // combined with defense+11v11 => 0 results
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('No plays match those filters')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(cards).toHaveCount(5);
+});
+
 test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', async ({ page }) => {
   const userJson = {
     id: '33333333-3333-3333-3333-333333333333',
