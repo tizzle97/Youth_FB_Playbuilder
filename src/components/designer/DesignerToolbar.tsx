@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers, specialTeamsPlayers } from './PlayerToolbar';
 import { FormationMenu } from './FormationMenu';
 import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
@@ -24,6 +24,8 @@ interface DesignerToolbarProps {
   setZoneMode: (mode: boolean) => void;
   deleteZoneMode: boolean;
   setDeleteZoneMode: (mode: boolean) => void;
+  textMode: boolean;
+  setTextMode: (mode: boolean) => void;
   snapEnabled: boolean;
   setSnapEnabled: (enabled: boolean) => void;
   selectedPlayer: string | null;
@@ -56,6 +58,8 @@ export function DesignerToolbar({
   setZoneMode,
   deleteZoneMode,
   setDeleteZoneMode,
+  textMode,
+  setTextMode,
   snapEnabled,
   setSnapEnabled,
   selectedPlayer,
@@ -82,6 +86,7 @@ export function DesignerToolbar({
     setDeleteRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
+    setTextMode(false);
     onSelectPlayer(null);
   };
 
@@ -90,6 +95,7 @@ export function DesignerToolbar({
     setDeleteRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
+    setTextMode(false);
     setDrawMode(mode);
     onSelectPlayer(null);
   };
@@ -97,19 +103,25 @@ export function DesignerToolbar({
   const toggleDeleteRouteMode = () => {
     const next = !deleteRouteMode;
     setDeleteRouteMode(next);
-    if (next) { setDrawingMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleZoneMode = () => {
     const next = !zoneMode;
     setZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleDeleteZoneMode = () => {
     const next = !deleteZoneMode;
     setDeleteZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+  };
+
+  const toggleTextMode = () => {
+    const next = !textMode;
+    setTextMode(next);
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
   };
 
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => {
@@ -118,6 +130,7 @@ export function DesignerToolbar({
       setDeleteRouteMode(false);
       setZoneMode(false);
       setDeleteZoneMode(false);
+      setTextMode(false);
       onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare), shape: player.shape });
     } else {
       onSelectPlayer(null);
@@ -144,10 +157,20 @@ export function DesignerToolbar({
         <button
           onClick={selectMode}
           title="Select / Move"
-          className={`${vertical ? tool : iconOnly} ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode ? active : inactive}`}
+          className={`${vertical ? tool : iconOnly} ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode && !textMode ? active : inactive}`}
         >
           <MousePointer className="h-4 w-4" />
           {vertical && <span className="whitespace-nowrap">Select / Move</span>}
+        </button>
+
+        {/* Text box annotation — available for every play type */}
+        <button
+          onClick={toggleTextMode}
+          title="Add a text box (tap the field to place it)"
+          className={`${tool} ${textMode ? active : inactive}`}
+        >
+          <Type className="h-4 w-4" />
+          <span className={label}>Text</span>
         </button>
 
         {/* Snap to alignment (Visio-style guides + yard grid) */}
@@ -295,15 +318,16 @@ export function DesignerToolbar({
       </div>
 
       {/* Active mode label */}
-      {(activeDraw || deleteRouteMode || zoneMode || deleteZoneMode) && (
+      {(activeDraw || deleteRouteMode || zoneMode || deleteZoneMode || textMode) && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className={`font-semibold ${(deleteRouteMode || deleteZoneMode) ? 'text-amber-400' : 'text-primary'}`}>
             {deleteRouteMode && 'Remove route mode'}
             {deleteZoneMode && 'Remove zone mode'}
             {zoneMode && 'Zone mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'straight' && 'Straight line mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'waypoint' && 'Curved route mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'block' && 'Block assignment mode'}
+            {textMode && 'Text mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'block' && 'Block assignment mode'}
           </span>
           <span>· See field for instructions</span>
         </p>

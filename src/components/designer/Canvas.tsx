@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
+import { TextBoxEditor } from './TextBoxEditor';
 
 // ---------------------------------------------
 // Config
@@ -111,6 +112,26 @@ export type Zone = {
 type ZoneHandleAxis = 'x' | 'y' | 'both';
 type ZoneHandle = { x: number; y: number; axis: ZoneHandleAxis };
 
+/** A free-floating text annotation (e.g. "SNAP ON 2", a formation name).
+ *  Anchored by its center, like a player icon, so drag-to-move feels the
+ *  same for both. Independent of player icons/paths — never referenced by
+ *  index — so re-stamping a formation or editing routes never disturbs it. */
+export type TextBox = {
+  x: number; // normalized 0–1, center anchor
+  y: number; // normalized 0–1, center anchor
+  text: string; // may contain \n for multiple lines
+  color: string;
+  fontSize: number; // px at the REF_SIZE=600 baseline, scaled like PLAYER_FONT
+};
+
+export const TEXT_BOX_SIZES = { small: 14, medium: 20, large: 28 } as const;
+export const DEFAULT_TEXT_BOX_SIZE: number = TEXT_BOX_SIZES.medium;
+// The field background is white (a printed-playbook look — see FIELD_BG), so
+// black is the only default that's legible without the user picking a color.
+export const DEFAULT_TEXT_BOX_COLOR = '#000000';
+const TEXT_BOX_FONT = (px: number) => `700 ${px}px Inter, Arial, sans-serif`;
+const TEXT_BOX_LINE_HEIGHT_RATIO = 1.2;
+
 type CanvasProps = {
   width: number;
   height: number;
@@ -119,6 +140,7 @@ type CanvasProps = {
   deleteRouteMode: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
+  textMode: boolean;
   snapEnabled: boolean;
   selectedPlayer: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null;
   setSelectedPlayer: (p: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
@@ -144,7 +166,7 @@ export type CanvasHandle = {
   clear: () => void;
   clearRoutes: () => void;
   removeRouteForIcon: (iconIndex: number) => void;
-  loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[]; zones?: Zone[] }) => void;
+  loadState: (data: { paths: PathItem[]; playerIcons: PlayerIcon[]; zones?: Zone[]; textBoxes?: TextBox[] }) => void;
   /** Replaces the whole scene with a formation template's icons (paths and
    *  zones are cleared too, since they'd otherwise reference stale icon
    *  indices) as a single undo entry — used to stamp a formation template. */
@@ -154,6 +176,7 @@ export type CanvasHandle = {
   getPaths: () => PathItem[];
   getIcons: () => PlayerIcon[];
   getZones: () => Zone[];
+  getTextBoxes: () => TextBox[];
   getCanvas: () => HTMLCanvasElement | null;
   /** Render the play at a fixed standard resolution; returns a PNG data URL. */
   exportImage: (width?: number, height?: number) => string;
@@ -511,6 +534,62 @@ function drawZones(
   });
 }
 
+/** Pixel-space bounding box for hit-testing / selection outline — computed
+ *  from the same font metrics drawTextBoxes renders with, so a click always
+ *  matches what's visually there. A little padding keeps very short/empty
+ *  boxes (mid-edit) comfortably tappable. */
+function textBoxBounds(ctx: CanvasRenderingContext2D, W: number, H: number, tb: TextBox, scale: number) {
+  const cx = tb.x * W;
+  const cy = tb.y * H;
+  const fontSize = tb.fontSize * scale;
+  const lines = tb.text.length > 0 ? tb.text.split('\n') : [''];
+  ctx.save();
+  ctx.font = TEXT_BOX_FONT(fontSize);
+  const width = Math.max(...lines.map((l) => ctx.measureText(l).width), 24 * scale);
+  ctx.restore();
+  const lineHeight = fontSize * TEXT_BOX_LINE_HEIGHT_RATIO;
+  const height = Math.max(lineHeight * lines.length, lineHeight);
+  const padX = 8 * scale;
+  const padY = 6 * scale;
+  return { left: cx - width / 2 - padX, right: cx + width / 2 + padX, top: cy - height / 2 - padY, bottom: cy + height / 2 + padY };
+}
+
+function drawTextBoxes(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  textBoxes: TextBox[],
+  scale: number,
+  selectedTextIndex: number | null,
+) {
+  textBoxes.forEach((tb, i) => {
+    const cx = tb.x * W;
+    const cy = tb.y * H;
+    const fontSize = tb.fontSize * scale;
+    const lines = tb.text.split('\n');
+    const lineHeight = fontSize * TEXT_BOX_LINE_HEIGHT_RATIO;
+    const startY = cy - (lineHeight * (lines.length - 1)) / 2;
+
+    ctx.save();
+    ctx.fillStyle = tb.color;
+    ctx.font = TEXT_BOX_FONT(fontSize);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    lines.forEach((line, li) => ctx.fillText(line, cx, startY + li * lineHeight));
+    ctx.restore();
+
+    if (selectedTextIndex === i) {
+      const b = textBoxBounds(ctx, W, H, tb, scale);
+      ctx.save();
+      ctx.strokeStyle = GUIDE_COLOR;
+      ctx.lineWidth = Math.max(1, 1.5 * scale);
+      ctx.setLineDash([5 * scale, 4 * scale]);
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.restore();
+    }
+  });
+}
+
 /**
  * Render a complete play scene (field, zones, routes, icons) onto a context
  * at any pixel size. All input data is in normalized 0–1 coordinates; visual
@@ -525,6 +604,8 @@ function renderScene(
   playerIcons: PlayerIcon[],
   zones: Zone[] = [],
   selectedZoneIndex: number | null = null,
+  textBoxes: TextBox[] = [],
+  selectedTextIndex: number | null = null,
 ) {
   const scale = Math.min(W, H) / REF_SIZE;
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
@@ -584,20 +665,26 @@ function renderScene(
     ctx.fillText(icon.letter, c.x, c.y);
     ctx.restore();
   });
+
+  // Text annotations sit on top of everything — they're meant to stay
+  // legible over routes/zones/icons, like handwriting on a printed diagram.
+  drawTextBoxes(ctx, W, H, textBoxes, scale, selectedTextIndex);
 }
 
 // ---------------------------------------------
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
     const [playerIcons, setPlayerIcons] = useState<PlayerIcon[]>([]);
     const [zones, setZones] = useState<Zone[]>([]);
-    const [undoStack, setUndoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[]; zones: Zone[] }>>([]);
-    const [redoStack, setRedoStack] = useState<Array<{ paths: PathItem[]; playerIcons: PlayerIcon[]; zones: Zone[] }>>([]);
+    const [textBoxes, setTextBoxes] = useState<TextBox[]>([]);
+    type Snapshot = { paths: PathItem[]; playerIcons: PlayerIcon[]; zones: Zone[]; textBoxes: TextBox[] };
+    const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
+    const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
 
     // Waypoint mode state (normalized coords)
     const [waypointPoints, setWaypointPoints] = useState<Pt[]>([]);
@@ -635,9 +722,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [deletedZoneFlash, setDeletedZoneFlash] = useState(false);
     const deletedZoneFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Drag state
+    // Drag state. Shared between icons and text boxes — only one gesture is
+    // ever in flight (a single pointer-down picks exactly one target), so
+    // draggingIndexRef (icon) and draggingTextIndexRef (text box) are never
+    // both set; whichever one is non-null tells the move/up handlers which
+    // array to update.
     const [isDragging, setIsDragging] = useState(false);
     const draggingIndexRef = useRef<number | null>(null);
+    const draggingTextIndexRef = useRef<number | null>(null);
     const dragOffsetRef = useRef<Pt>({ x: 0, y: 0 });
     // Pointer-down position, used to tell a real drag from tap jitter (see
     // dragMovedRef below).
@@ -655,6 +747,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // Icon being edited via the tap-to-customize popover (Select mode only).
     const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
+    // Text box being edited via its popover (Select mode, or immediately
+    // after placing a new one in Text mode).
+    const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null);
 
     // Alignment guide lines shown while a drag is snapped to another icon's
     // row/column or the field centerline (normalized coords, null = none).
@@ -697,9 +792,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         paths: [...paths],
         playerIcons: playerIcons.map((i) => ({ ...i })),
         zones: zones.map((z) => ({ ...z })),
+        textBoxes: textBoxes.map((t) => ({ ...t })),
       }]);
       setRedoStack([]);
-    }, [paths, playerIcons, zones]);
+    }, [paths, playerIcons, zones, textBoxes]);
 
     /** Restyle an icon (label, color, shape) and keep its dependent artwork in
      *  sync: routes drawn from it and its zone always match the icon's color.
@@ -710,6 +806,37 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setPaths((prev) => prev.map((p) => (p.startIconIndex === idx ? { ...p, color } : p)));
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
+
+    /** Update a text box's content/color/size, or remove it if left blank —
+     *  an empty annotation is never worth persisting as clutter. Snapshotting
+     *  is left to the caller (the box already exists in the undo stack from
+     *  when it was placed or dragged; a no-op edit shouldn't push again). */
+    const applyTextBoxEdit = useCallback((idx: number, text: string, color: string, fontSize: number) => {
+      const trimmed = text.trim();
+      pushSnapshot();
+      if (trimmed.length === 0) {
+        setTextBoxes((prev) => prev.filter((_, i) => i !== idx));
+      } else {
+        setTextBoxes((prev) => { const c = [...prev]; c[idx] = { ...c[idx], text, color, fontSize }; return c; });
+      }
+    }, [pushSnapshot]);
+
+    const deleteTextBox = useCallback((idx: number) => {
+      pushSnapshot();
+      setTextBoxes((prev) => prev.filter((_, i) => i !== idx));
+      setEditingTextIndex(null);
+    }, [pushSnapshot]);
+
+    /** Cancelling a brand-new (still-blank) text box removes it instead of
+     *  leaving an empty entry; cancelling an edit to existing text just
+     *  closes the popover and leaves the text box as it was. No snapshot
+     *  here — placing the box already pushed one capturing "no box", so
+     *  removing an empty one just returns to that same state rather than
+     *  adding a redundant no-op undo entry. */
+    const cancelTextBoxEdit = useCallback((idx: number) => {
+      setTextBoxes((prev) => (prev[idx] && prev[idx].text.length === 0 ? prev.filter((_, i) => i !== idx) : prev));
+      setEditingTextIndex(null);
+    }, []);
 
     /** Visio-style snap for a prospective icon position. X magnetizes to other
      *  icons' columns or the field centerline; Y magnetizes to other icons'
@@ -847,6 +974,21 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       return null;
     }, [width, height, iconRadiusPx]);
 
+    /** Point-in-bounding-box hit test (normalized coords -> pixel bounds via
+     *  textBoxBounds, so a hit always matches what's visually rendered),
+     *  topmost (most recently added/moved-to-front) text box first. */
+    const findTextBox = useCallback((p: Pt): number => {
+      const ctx = canvasRef.current?.getContext('2d');
+      if (!ctx) return -1;
+      const scale = Math.min(width, height) / REF_SIZE;
+      const px = p.x * width, py = p.y * height;
+      for (let i = textBoxes.length - 1; i >= 0; i--) {
+        const b = textBoxBounds(ctx, width, height, textBoxes[i], scale);
+        if (px >= b.left && px <= b.right && py >= b.top && py <= b.bottom) return i;
+      }
+      return -1;
+    }, [textBoxes, width, height]);
+
     // ------------------------------------------
     // Full redraw (scene + interactive overlays)
     // ------------------------------------------
@@ -860,7 +1002,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex);
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, textBoxes, editingTextIndex);
 
       // Alignment guides while a drag is snapped to a row/column/centerline
       if (activeGuides.x !== null || activeGuides.y !== null) {
@@ -1025,7 +1167,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -1073,15 +1215,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     useEffect(() => {
       setSelectedZoneIndex(null);
       setZoneDraft(null);
-    }, [zoneMode, deleteZoneMode, drawingMode]);
+    }, [zoneMode, deleteZoneMode, drawingMode, textMode]);
 
-    // Close the icon-edit popover whenever any tool takes over the canvas —
-    // it only makes sense in plain Select mode.
+    // Close the icon-edit and text-box popovers whenever any tool takes over
+    // the canvas — they only make sense in plain Select mode (text mode gets
+    // its own popover right after placement, so it's excluded from closing
+    // itself here — see the textMode branch in handlePointerDown).
     useEffect(() => {
       if (drawingMode || zoneMode || deleteRouteMode || deleteZoneMode || selectedPlayer) {
         setEditingIconIndex(null);
+        setEditingTextIndex(null);
       }
     }, [drawingMode, zoneMode, deleteRouteMode, deleteZoneMode, selectedPlayer]);
+
+    // Switching into text mode dismisses the icon popover (they're mutually
+    // exclusive tools); leaving text mode dismisses the text popover.
+    useEffect(() => {
+      if (textMode) setEditingIconIndex(null);
+      else setEditingTextIndex(null);
+    }, [textMode]);
 
     // ------------------------------------------
     // Imperative handle
@@ -1093,7 +1245,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         off.width = w;
         off.height = h;
         const ctx = off.getContext('2d')!;
-        renderScene(ctx, w, h, paths, playerIcons, zones);
+        renderScene(ctx, w, h, paths, playerIcons, zones, null, textBoxes);
         return off.toDataURL('image/png');
       },
       undo: () => {
@@ -1124,14 +1276,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         // redo push and could leave phantom history entries.
         if (!undoStack.length) return;
         const prevState = undoStack[undoStack.length - 1];
-        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })) };
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })), textBoxes: textBoxes.map((t) => ({ ...t })) };
         setUndoStack((us) => us.slice(0, -1));
         setRedoStack((rs) => [...rs, current]);
         setPaths(prevState.paths);
         setPlayerIcons(prevState.playerIcons);
         setZones(prevState.zones);
+        setTextBoxes(prevState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
+        setEditingTextIndex(null);
       },
       redo: () => {
         // Mirrors the undo guard above: redoing a committed change could
@@ -1141,23 +1295,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         if (waypointPoints.length > 0) return;
         if (!redoStack.length) return;
         const nextState = redoStack[redoStack.length - 1];
-        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })) };
+        const current = { paths: [...paths], playerIcons: playerIcons.map((i) => ({ ...i })), zones: zones.map((z) => ({ ...z })), textBoxes: textBoxes.map((t) => ({ ...t })) };
         setRedoStack((rs) => rs.slice(0, -1));
         setUndoStack((us) => [...us, current]);
         setPaths(nextState.paths);
         setPlayerIcons(nextState.playerIcons);
         setZones(nextState.zones);
+        setTextBoxes(nextState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
+        setEditingTextIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
-      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); },
+      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); },
       // Replaces the whole scene with the template (routes/zones would
       // otherwise reference icon indices that no longer line up once a
       // different formation is stamped over the old one) — same shape as
       // clear(), just landing on the new icons instead of an empty canvas.
+      // Text boxes are untouched: they're free-floating annotations with no
+      // dependency on icon indices, so a re-stamp has no reason to wipe them.
       stampFormation: (icons) => {
         pushSnapshot();
         setPaths([]);
@@ -1175,7 +1333,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       getPaths: () => paths,
       getIcons: () => playerIcons,
       getZones: () => zones,
-    }), [paths, playerIcons, zones, pushSnapshot, undoStack, redoStack, waypointPoints]);
+      getTextBoxes: () => textBoxes,
+    }), [paths, playerIcons, zones, textBoxes, pushSnapshot, undoStack, redoStack, waypointPoints]);
 
     // ------------------------------------------
     // Pointer helpers
@@ -1249,8 +1408,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           setPendingPoint(null);
           setActiveGuides({ x: null, y: null, distX: null, distY: null });
         }
-        if (draggingIndexRef.current !== null) {
+        if (draggingIndexRef.current !== null || draggingTextIndexRef.current !== null) {
           draggingIndexRef.current = null;
+          draggingTextIndexRef.current = null;
           setIsDragging(false);
           setActiveGuides({ x: null, y: null, distX: null, distY: null });
         }
@@ -1260,6 +1420,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
       const p = getPos(e);
       const clicked = findIcon(p);
+
+      // Text mode — tap the field to drop a new text box right there, open
+      // its editor immediately so the user can type without a second tap.
+      // Stays active across multiple placements (like Zone mode does for
+      // multiple defenders), rather than one-shot like selectedPlayer.
+      if (textMode) {
+        pushSnapshot();
+        setTextBoxes((prev) => {
+          const next = [...prev, { x: p.x, y: p.y, text: '', color: DEFAULT_TEXT_BOX_COLOR, fontSize: DEFAULT_TEXT_BOX_SIZE }];
+          setEditingTextIndex(next.length - 1);
+          return next;
+        });
+        return;
+      }
 
       // Place player
       if (selectedPlayer && !drawingMode) {
@@ -1381,16 +1555,32 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // Default Select/Move mode. Any tap here dismisses an open icon-edit
       // popover (tapping an icon below may immediately reopen it on pointer-up).
       if (editingIconIndex !== null) setEditingIconIndex(null);
+      if (editingTextIndex !== null) setEditingTextIndex(null);
 
-      // Hit priority: a selected zone's resize handles first, then icons
-      // (drawn on top of zones, so hits should match what's visible), then
-      // zone bodies (to select/move them).
+      // Hit priority: a selected zone's resize handles first, then text boxes
+      // (drawn on top of everything, so hits should match what's visible),
+      // then icons (drawn on top of zones), then zone bodies (to select/move
+      // them).
       if (selectedZoneIndex !== null && zones[selectedZoneIndex]) {
         const axis = findZoneHandle(p, zones[selectedZoneIndex]);
         if (axis) {
           zoneGestureRef.current = { type: 'resize', zoneIndex: selectedZoneIndex, axis, moved: false };
           return;
         }
+      }
+
+      // Drag text box — a tap without movement opens its editor instead
+      // (see handlePointerUp).
+      const clickedText = findTextBox(p);
+      if (clickedText >= 0) {
+        if (selectedZoneIndex !== null) setSelectedZoneIndex(null);
+        const tb = textBoxes[clickedText];
+        draggingTextIndexRef.current = clickedText;
+        dragOffsetRef.current = { x: p.x - tb.x, y: p.y - tb.y };
+        dragStartRef.current = p;
+        dragMovedRef.current = false;
+        setIsDragging(true);
+        return;
       }
 
       // Drag icon — a tap without movement opens the customize popover instead
@@ -1516,6 +1706,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      if (isDragging && draggingTextIndexRef.current !== null) {
+        // Same deferred-snapshot-on-first-move pattern as icon dragging.
+        // No snap-to-guides: text annotations are freeform, unlike icons.
+        if (!dragMovedRef.current) {
+          const traveled = Math.hypot(
+            (p.x - dragStartRef.current.x) * width,
+            (p.y - dragStartRef.current.y) * height,
+          );
+          if (traveled < DRAG_THRESHOLD_PX) return;
+          dragMovedRef.current = true;
+          pushSnapshot();
+        }
+        const pos = { x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
+        setTextBoxes((prev) => {
+          const c = [...prev];
+          c[draggingTextIndexRef.current!] = { ...c[draggingTextIndexRef.current!], x: pos.x, y: pos.y };
+          return c;
+        });
+        return;
+      }
+
       // Hover highlight: show which icon will be the route origin (or deletion target)
       if ((drawingMode && waypointPoints.length === 0) || deleteRouteMode || zoneMode || deleteZoneMode) {
         const idx = findIcon(p);
@@ -1579,12 +1790,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (isDragging) {
         // A press-and-release with no movement is a tap: open the customize
         // popover for that icon (Select mode is the only mode that sets
-        // draggingIndexRef, so no other tool can trigger this).
+        // draggingIndexRef, so no other tool can trigger this) — or the text
+        // editor, if a text box was the drag target instead.
         if (!dragMovedRef.current && draggingIndexRef.current !== null) {
           setEditingIconIndex(draggingIndexRef.current);
         }
+        if (!dragMovedRef.current && draggingTextIndexRef.current !== null) {
+          setEditingTextIndex(draggingTextIndexRef.current);
+        }
         setIsDragging(false);
         draggingIndexRef.current = null;
+        draggingTextIndexRef.current = null;
         setActiveGuides({ x: null, y: null, distX: null, distY: null });
       }
     };
@@ -1624,6 +1840,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
     }
 
+    // ── Text-box popover placement ────────────────────────────────
+    // Anchored under the text box's bounding box, same clamp/flip logic as
+    // the icon editor above.
+    const editingText = editingTextIndex !== null ? textBoxes[editingTextIndex] : null;
+    let textEditorLeft = 0;
+    let textEditorTop = 0;
+    if (editingText) {
+      const ctx = canvasRef.current?.getContext('2d');
+      const scale = Math.min(width, height) / REF_SIZE;
+      const POPOVER_W = 230;
+      const POPOVER_H = 280;
+      const b = ctx ? textBoxBounds(ctx, width, height, editingText, scale) : { left: editingText.x * width, right: editingText.x * width, top: editingText.y * height, bottom: editingText.y * height };
+      textEditorLeft = Math.min(Math.max((b.left + b.right) / 2 - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
+      textEditorTop = b.bottom + 10;
+      if (textEditorTop + POPOVER_H > height - 8) {
+        textEditorTop = Math.max(8, b.top - POPOVER_H - 10);
+      }
+    }
+
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
     const hoveredHasRoute = hoveredIconIndex !== null && iconHasRoute(hoveredIconIndex);
@@ -1656,6 +1891,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       } else {
         instructionText = 'Hover a defender, then drag to draw their zone';
       }
+    } else if (textMode) {
+      instructionText = 'Tap the field to add a text box';
     } else if (drawingMode) {
       if (waypointPoints.length === 0) {
         if (hoveredHasRoute) {
@@ -1724,6 +1961,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 setEditingIconIndex(null);
               }}
               onCancel={() => setEditingIconIndex(null)}
+            />
+          </div>
+        )}
+
+        {/* ── Text box popover (tap a text box in Select mode, or right after placing one) ── */}
+        {editingText && editingTextIndex !== null && (
+          <div className="absolute z-20" style={{ left: textEditorLeft, top: textEditorTop }}>
+            <TextBoxEditor
+              key={editingTextIndex}
+              initialText={editingText.text}
+              initialColor={editingText.color}
+              initialFontSize={editingText.fontSize}
+              onApply={(text, color, fontSize) => {
+                applyTextBoxEdit(editingTextIndex, text, color, fontSize);
+                setEditingTextIndex(null);
+              }}
+              onDelete={() => deleteTextBox(editingTextIndex)}
+              onCancel={() => cancelTextBoxEdit(editingTextIndex)}
             />
           </div>
         )}

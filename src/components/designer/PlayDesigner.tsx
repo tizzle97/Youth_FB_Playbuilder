@@ -36,6 +36,7 @@ export function PlayDesigner() {
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
+  const [textMode, setTextMode] = useState(false);
   // Visio-style alignment snapping (icons/centerline/yard grid) — on by default
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null>(null);
@@ -61,7 +62,7 @@ export function PlayDesigner() {
   // The loaded play's current is_public, so the Save modal can prefill the
   // checkbox with reality instead of the account's generic default.
   const [loadedIsPublic, setLoadedIsPublic] = useState(false);
-  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[] } | null>(null);
+  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[]; textBoxes?: any[] } | null>(null);
 
   // Locks once the play has content — reusing history.canUndo, which is
   // already true exactly when there's committed history or an in-progress
@@ -119,15 +120,17 @@ export function PlayDesigner() {
         if (fetchError) throw fetchError;
         if (cancelled || !data) return;
 
-        // canvas_data is JSON { version, paths, playerIcons, zones } (normalized coords)
+        // canvas_data is JSON { version, paths, playerIcons, zones, textBoxes } (normalized coords)
         let paths: any[] = [];
         let playerIcons: any[] = [];
         let zones: any[] = [];
+        let textBoxes: any[] = [];
         try {
           const parsed = JSON.parse(data.canvas_data || '{}');
           paths = Array.isArray(parsed.paths) ? parsed.paths : [];
           playerIcons = Array.isArray(parsed.playerIcons) ? parsed.playerIcons : [];
           zones = Array.isArray(parsed.zones) ? parsed.zones : [];
+          textBoxes = Array.isArray(parsed.textBoxes) ? parsed.textBoxes : [];
         } catch {
           throw new Error('This play could not be opened (unrecognized format).');
         }
@@ -138,7 +141,7 @@ export function PlayDesigner() {
         setLoadedIsPublic(Boolean(data.is_public));
         setEditingPlayId(data.id);
         setIsEditingExistingPlay(true);
-        setPendingLoad({ paths, playerIcons, zones });
+        setPendingLoad({ paths, playerIcons, zones, textBoxes });
       } catch (err) {
         if (!cancelled) {
           console.error('Load play error:', err);
@@ -260,6 +263,7 @@ export function PlayDesigner() {
         paths: canvasRef.current?.getPaths?.() ?? [],
         playerIcons: canvasRef.current?.getIcons?.() ?? [],
         zones: canvasRef.current?.getZones?.() ?? [],
+        textBoxes: canvasRef.current?.getTextBoxes?.() ?? [],
       }),
     };
     return () => { delete (window as any).__PBP_TEST__; };
@@ -304,6 +308,7 @@ export function PlayDesigner() {
         paths: canvasRef.current?.getPaths?.() || [],
         playerIcons: canvasRef.current?.getIcons?.() || [],
         zones: canvasRef.current?.getZones?.() || [],
+        textBoxes: canvasRef.current?.getTextBoxes?.() || [],
       });
       const thumbnail = canvasRef.current?.exportImage?.(660, 510) || '';
 
@@ -485,6 +490,8 @@ export function PlayDesigner() {
             setZoneMode={setZoneMode}
             deleteZoneMode={deleteZoneMode}
             setDeleteZoneMode={setDeleteZoneMode}
+            textMode={textMode}
+            setTextMode={setTextMode}
             snapEnabled={snapEnabled}
             setSnapEnabled={setSnapEnabled}
             selectedPlayer={selectedPlayer?.letter || null}
@@ -516,6 +523,7 @@ export function PlayDesigner() {
               deleteRouteMode={deleteRouteMode}
               zoneMode={zoneMode}
               deleteZoneMode={deleteZoneMode}
+              textMode={textMode}
               snapEnabled={snapEnabled}
               selectedPlayer={selectedPlayer}
               setSelectedPlayer={setSelectedPlayer}
@@ -577,6 +585,8 @@ export function PlayDesigner() {
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}
           setDeleteZoneMode={setDeleteZoneMode}
+          textMode={textMode}
+          setTextMode={setTextMode}
           snapEnabled={snapEnabled}
           setSnapEnabled={setSnapEnabled}
           selectedPlayer={selectedPlayer?.letter || null}

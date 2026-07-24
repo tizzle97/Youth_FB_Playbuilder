@@ -25,6 +25,7 @@ type CanvasState = {
   paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
+  textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
 };
 
 async function openDesigner(page: Page) {
@@ -600,6 +601,116 @@ test('special teams: roster swaps, zone tool available, formation menu is not', 
   await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
 });
 
+test('text box: place, type, drag, edit, undo, delete', async ({ page }) => {
+  await openDesigner(page);
+
+  // Placing opens the editor immediately so the user can type without a second tap.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  const spot = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+  const textarea = page.getByLabel('Text box content');
+  await expect(textarea).toBeVisible();
+  await textarea.fill('SNAP ON 2');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  let state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(1);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2');
+  // Field background is white (FIELD_BG) — the default color must be legible on it.
+  expect(state.textBoxes[0].color).toBe('#000000');
+
+  // Text mode stays active across placements (like Zone mode) — switch to
+  // Select before dragging.
+  await btn(page, 'Select / Move').click();
+  const from = await canvasPoint(page, state.textBoxes[0].x, state.textBoxes[0].y);
+  const to = await canvasPoint(page, 0.6, 0.5);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.textBoxes[0].x).toBeCloseTo(0.6, 1);
+  expect(state.textBoxes[0].y).toBeCloseTo(0.5, 1);
+
+  // A tap without movement re-opens the editor with the existing content.
+  const moved = await canvasPoint(page, state.textBoxes[0].x, state.textBoxes[0].y);
+  await page.mouse.click(moved.x, moved.y);
+  await expect(textarea).toBeVisible();
+  await expect(textarea).toHaveValue('SNAP ON 2');
+  await textarea.fill('SNAP ON 2 GO');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2 GO');
+
+  // Every content/position change pushed its own snapshot: undo the edit,
+  // then the drag, then the initial "SNAP ON 2" text, then the placement
+  // itself (which started life as an empty box before any text was typed).
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2');
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].x).toBeCloseTo(0.4, 1);
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('');
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(0);
+});
+
+test('text box: Delete button removes it, Cancel on a fresh blank box discards it', async ({ page }) => {
+  await openDesigner(page);
+
+  // Delete button, on an existing (typed) box.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  let spot = await canvasPoint(page, 0.3, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByLabel('Text box content').fill('TO DELETE');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(1);
+
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByRole('button', { name: 'Delete' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(0);
+
+  // Cancel on a brand-new, never-typed-in box discards it rather than
+  // leaving an empty annotation.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  spot = await canvasPoint(page, 0.6, 0.4);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByLabel('Text box content')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(0);
+});
+
+test('text box: renders on top and wins hit-testing over an icon underneath it', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByLabel('Text box content').fill('QB');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  // Same coordinates as the icon — Select-mode tap must hit the text box
+  // (rendered on top) rather than the icon underneath it.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByLabel('Text box content')).toBeVisible();
+  await expect(page.getByLabel('Player label')).not.toBeVisible();
+});
+
 test('snap: centerline + yard grid on placement, row alignment, magnet toggles off', async ({ page }) => {
   await openDesigner(page);
 
@@ -1028,7 +1139,9 @@ test('account settings: free-plan user sees no Founding Member badge', async ({ 
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
   // Covers the client half of the save→reload seam without needing an
   // authenticated Supabase session: version-3 canvas_data with icons, a
-  // route, and a zone must all land back on the canvas.
+  // route, and a zone must all land back on the canvas. No textBoxes key at
+  // all (pre-dates the feature) — the loader must fall back to [] rather
+  // than throwing.
   const canvasData = JSON.stringify({
     version: 3,
     paths: [
@@ -1069,11 +1182,49 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   expect(state.paths[0].startIconIndex).toBe(1);
   expect(state.zones).toHaveLength(1);
   expect(state.zones[0].iconIndex).toBe(0);
+  expect(state.textBoxes).toEqual([]);
 
   // Editing mode + defense roster active
   await expect(page.getByText('(editing)')).toBeVisible();
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
+});
+
+test('loads a saved play with text boxes via /designer?play= (mocked backend, version 4)', async ({ page }) => {
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.45, y: 0.7, letter: 'S', color: '#E11D48' }],
+    zones: [],
+    textBoxes: [{ x: 0.5, y: 0.2, text: 'COVER 2', color: '#000000', fontSize: 28 }],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000004',
+        name: 'Cover 2 Text',
+        type: 'defense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Cover 2 Text' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000004');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(1);
+  expect(state.textBoxes[0].text).toBe('COVER 2');
+  expect(state.textBoxes[0].fontSize).toBe(28);
 });
 
 // B-27 regression: the load path used to collapse any non-'defense' saved
