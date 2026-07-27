@@ -62,24 +62,27 @@ export function PlayLibrary() {
         if (fetchError) throw fetchError;
         const rows = (data || []) as PublicPlay[];
 
-        // Author names in one batched call (same pattern as the forum)
+        // Author names + the current user's votes, fetched in parallel (both
+        // only depend on `rows`/`currentUser`, not on each other).
         const authorIds = Array.from(new Set(rows.map((p) => p.user_id)));
-        if (authorIds.length > 0) {
-          const { data: authors } = await supabase.rpc('get_community_authors', {
-            target_ids: authorIds,
-          });
-          const byId = Object.fromEntries((authors || []).map((a: any) => [a.id, a]));
-          rows.forEach((p) => { p.author = byId[p.user_id]; });
-        }
+        const [authorsResult, votesResult] = await Promise.all([
+          authorIds.length > 0
+            ? supabase.rpc('get_community_authors', { target_ids: authorIds })
+            : Promise.resolve({ data: null }),
+          currentUser && rows.length > 0
+            ? supabase
+                .from('play_votes')
+                .select('play_id')
+                .eq('user_id', currentUser.id)
+                .in('play_id', rows.map((p) => p.id))
+            : Promise.resolve({ data: null }),
+        ]);
 
-        // Which plays has the current user already voted for?
-        if (currentUser && rows.length > 0) {
-          const { data: votes } = await supabase
-            .from('play_votes')
-            .select('play_id')
-            .eq('user_id', currentUser.id)
-            .in('play_id', rows.map((p) => p.id));
-          if (!cancelled) setVotedPlayIds(new Set((votes || []).map((v: any) => v.play_id)));
+        const byId = Object.fromEntries((authorsResult.data || []).map((a: any) => [a.id, a]));
+        rows.forEach((p) => { p.author = byId[p.user_id]; });
+
+        if (!cancelled) {
+          setVotedPlayIds(new Set((votesResult.data || []).map((v: any) => v.play_id)));
         }
 
         if (!cancelled) setPlays(rows);
