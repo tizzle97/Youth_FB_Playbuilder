@@ -82,3 +82,8 @@ plumbing) is done; Stripe checkout + feature gates come next.
   Co-Authored-By trailer.
 - Don't ship misleading placeholder content (fabricated testimonials, non-working
   donate buttons, etc.) — prefer removing or honestly labeling "coming soon".
+- The `react-best-practices` skill is installed (`.claude/skills/`), but it's
+  written for Next.js/RSC — this is a Vite SPA, so skip rules about
+  `next/dynamic`, server components, RSC serialization, and API-route
+  waterfalls. Use only the client-side subset: re-render optimization, bundle
+  splitting, and Canvas.tsx hot-path performance.
