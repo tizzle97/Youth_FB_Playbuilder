@@ -19,6 +19,8 @@ export default {
       },
       fontFamily: {
         sans: ['Inter var', 'sans-serif'],
+        display: ['Anton', 'sans-serif'],
+        label: ['"JetBrains Mono"', 'monospace'],
       },
     },
   },

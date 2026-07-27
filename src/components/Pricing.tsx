@@ -56,7 +56,7 @@ export function Pricing() {
     <div className="py-16 bg-board-light border-t border-chalk/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center">
-          <h2 className="text-3xl font-chalk font-bold text-chalk">Simple Pricing</h2>
+          <h2 className="font-display text-3xl text-chalk">Simple Pricing</h2>
           <p className="mt-4 text-lg text-chalk/70 max-w-2xl mx-auto">
             Playbuilder Pro is free for youth coaches. Create a free account to save your
             plays and playbooks — no credit card required.
