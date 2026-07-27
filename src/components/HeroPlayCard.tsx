@@ -10,35 +10,53 @@ import type { PathItem, PlayerIcon, Pt } from '../lib/renderPlayScene';
  * actually produces.
  *
  * Sample: a 5v5/7v7 trips-right look (no offensive line, matching how flag
- * formations are actually drawn) with a slant-flat combo out of trips.
+ * formations are actually drawn) — a 3-level flood to the trips side (slant,
+ * out, flat). Receivers line up on the LOS (the field's "20" line, at
+ * FIELD_YARDS_ABOVE_LOS / TOTAL_FIELD_YARDS of the height); only the QB sits
+ * behind it. The snapper (C) has no route, same as a real snap.
  */
+const LOS_Y = 17 / 30; // FIELD_YARDS_ABOVE_LOS / TOTAL_FIELD_YARDS, kept in sync with renderPlayScene's field
+
 const DEMO_ICONS: PlayerIcon[] = [
-  { x: 0.5, y: 0.82, letter: 'C', color: '#16283D' },
-  { x: 0.5, y: 0.94, letter: 'Q', color: '#16283D' },
-  { x: 0.62, y: 0.8, letter: 'H', color: '#16283D' },
-  { x: 0.74, y: 0.78, letter: 'Z', color: '#16283D' },
-  { x: 0.86, y: 0.76, letter: 'X', color: '#16283D' },
+  { x: 0.5, y: LOS_Y, letter: 'C', color: '#16283D' },
+  { x: 0.5, y: 0.72, letter: 'Q', color: '#16283D' },
+  { x: 0.62, y: LOS_Y, letter: 'H', color: '#16283D' },
+  { x: 0.74, y: LOS_Y, letter: 'Z', color: '#16283D' },
+  { x: 0.86, y: LOS_Y, letter: 'X', color: '#16283D' },
 ];
 
 const DEMO_PATHS: PathItem[] = [
   {
+    // H: slant
     startIconIndex: 2,
     color: '#1FA75D',
     mode: 'waypoint',
     points: [
-      { x: 0.62, y: 0.8 },
-      { x: 0.55, y: 0.6 },
-      { x: 0.46, y: 0.46 },
+      { x: 0.62, y: LOS_Y },
+      { x: 0.55, y: 0.42 },
+      { x: 0.46, y: 0.32 },
     ],
   },
   {
+    // Z: out
+    startIconIndex: 3,
+    color: '#1FA75D',
+    mode: 'waypoint',
+    points: [
+      { x: 0.74, y: LOS_Y },
+      { x: 0.74, y: 0.45 },
+      { x: 0.82, y: 0.4 },
+    ],
+  },
+  {
+    // X: flat
     startIconIndex: 4,
     color: '#1FA75D',
     mode: 'straight',
     points: [
-      { x: 0.86, y: 0.76 },
-      { x: 0.86, y: 0.62 },
-      { x: 0.95, y: 0.58 },
+      { x: 0.86, y: LOS_Y },
+      { x: 0.86, y: 0.5 },
+      { x: 0.94, y: 0.47 },
     ],
   },
 ];
@@ -112,7 +130,7 @@ export function HeroPlayCard() {
   return (
     <div className="rounded-xl border-2 border-board/15 bg-white shadow-xl p-3">
       <p className="font-label text-xs tracking-widest uppercase text-board/50 mb-2 px-1">
-        Trips Rt &middot; Slant-Flat
+        Trips Rt &middot; Flood
       </p>
       <canvas
         ref={canvasRef}
@@ -120,7 +138,7 @@ export function HeroPlayCard() {
         height={CANVAS_H}
         className="w-full h-auto rounded-md"
         role="img"
-        aria-label="Sample play diagram: trips right formation with a slant-flat route combo, drawn in Playbuilder Pro"
+        aria-label="Sample play diagram: trips right formation with a slant, out, and flat route flood, drawn in Playbuilder Pro"
       />
     </div>
   );
