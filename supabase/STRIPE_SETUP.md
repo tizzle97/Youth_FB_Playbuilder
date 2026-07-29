@@ -7,14 +7,22 @@ inert until these steps are done: the UI stays in its honest
 **Never commit any of these keys.** They live only in Stripe, the Supabase
 secrets store, and Netlify env vars.
 
-## 1. Stripe account & product
+> **Test mode first.** Steps 1–5 below use Stripe **test mode** end to end —
+> this is safe to run any time and takes no real money. Section 6
+> ("Going live") is a separate, gated checklist — read the note there
+> before starting it.
 
-1. Create/sign in at https://dashboard.stripe.com (start in **Test mode**).
+## 1. Stripe account & product (test mode)
+
+1. Create/sign in at https://dashboard.stripe.com, and confirm the
+   dashboard toggle in the top-left reads **Test mode** (Stripe keeps test
+   and live as fully separate environments — separate products, prices,
+   keys, and webhooks — so nothing here touches live mode).
 2. **Product catalog → Add product**: name `Playbuilder Pro`, add a
    **recurring yearly** price of **$39.00 USD**.
 3. Copy the price ID (`price_...`) — this is `STRIPE_PRICE_ID`.
-4. **Developers → API keys**: copy the **secret key** (`sk_test_...` now;
-   repeat with `sk_live_...` when going live) — this is `STRIPE_SECRET_KEY`.
+4. **Developers → API keys**: copy the **secret key**, which in test mode
+   starts with `sk_test_` — this is `STRIPE_SECRET_KEY`.
 
 ## 2. Deploy the Edge Functions
 
@@ -70,10 +78,11 @@ supabase secrets set STRIPE_PRICE_ID=price_...       # from step 1
 supabase secrets set SITE_URL=https://playbuilderpro.com
 ```
 
-Use the **test-mode** `sk_test_` key for now; swap in `sk_live_` when
-going live. `STRIPE_WEBHOOK_SECRET` is set in step 3, *after* the
-webhook endpoint exists — secrets apply without redeploying. Verify with
-`supabase secrets list` (shows names + digests, never values).
+These are the **test-mode** values from step 1 — live-mode values are set
+separately in section 6, not here. `STRIPE_WEBHOOK_SECRET` is set in
+step 3, *after* the webhook endpoint exists — secrets apply without
+redeploying. Verify with `supabase secrets list` (shows names + digests,
+never values).
 
 ### 2e. Deploy
 
@@ -99,9 +108,10 @@ supabase functions deploy stripe-webhook --no-verify-jwt
   A `401` response is the **correct** result — the function is deployed
   and rejecting unauthenticated callers.
 
-## 3. Webhook endpoint
+## 3. Webhook endpoint (test mode)
 
-1. Stripe Dashboard → **Developers → Webhooks → Add endpoint**.
+1. Stripe Dashboard → **Developers → Webhooks → Add endpoint** (with the
+   dashboard still toggled to **Test mode**).
 2. URL: `https://<project-ref>.supabase.co/functions/v1/stripe-webhook`
 3. Events: `checkout.session.completed`,
    `customer.subscription.updated`, `customer.subscription.deleted`.
@@ -133,7 +143,51 @@ users get a **Manage billing** portal button on `/account`.
       and is never downgraded by webhook events.
 - [ ] Free-tier limit triggers (16th play) still behave for free users.
 
-Then repeat steps 1–4 with **live mode** keys.
+## 6. Going live (real money) — gated, see BACKLOG.md B-18/B-21
+
+> **Do not start this section until B-21 (attorney review of `/privacy`
+> and `/terms`) is complete.** `BACKLOG.md` tracks B-18 (this go-live swap)
+> as blocked on B-21 by deliberate choice, not oversight — real subscribers
+> start getting charged real money as soon as section 6.4 finishes, so the
+> legal pages need sign-off first. If B-21 isn't checked off in
+> `BACKLOG.md`, stop here.
+
+Once B-21 is cleared, live mode is a **separate Stripe environment** from
+test mode — its own product, price, keys, and webhook. Repeat sections
+1–3 with the dashboard toggled to **Live mode** instead of Test mode:
+
+### 6.1 Product & price (live mode)
+Same as section 1, but with the dashboard toggle set to **Live mode**.
+Live prices/products are distinct objects from the test ones created
+earlier — this is a new `STRIPE_PRICE_ID`, not a rename of the test one.
+
+### 6.2 Live secret key
+**Developers → API keys** in live mode gives a **different** secret key,
+starting `sk_live_` instead of `sk_test_`.
+
+### 6.3 Set the live secrets
+```sh
+supabase secrets set STRIPE_SECRET_KEY=sk_live_...   # from 6.2
+supabase secrets set STRIPE_PRICE_ID=price_...       # the LIVE price id from 6.1
+```
+This **overwrites** the test-mode secrets from section 2d — Edge
+Functions read whichever value is currently set, there's no separate
+test/live secret slot. From this point on, checkout charges real cards.
+
+### 6.4 Live webhook endpoint
+Same as section 3, but **Add endpoint** with the dashboard in **Live
+mode** — this is a separate webhook registration from the test one, with
+its own signing secret:
+```sh
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...  # the LIVE whsec, from the live webhook
+```
+
+### 6.5 One real transaction
+Run one real subscription purchase with a real card (yours) to confirm
+checkout → webhook → `subscriptions` row → Pro badge → billing portal all
+work with real money end to end, exactly like the test checklist in
+section 5. Cancel it afterward via the billing portal if it was only a
+verification purchase.
 
 ## Notes / design decisions
 
