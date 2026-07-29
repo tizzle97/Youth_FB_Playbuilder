@@ -6,6 +6,7 @@ import { useEntitlement, FREE_LIMITS } from '../lib/entitlements';
 import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
 import { getSafeErrorMessage } from '../lib/errors';
 import { supabase } from '../lib/supabase';
+import { UpgradeConsentModal } from './billing/UpgradeConsentModal';
 
 const freeFeatures = [
   'All Play Designer tools',
@@ -29,6 +30,7 @@ export function Pricing() {
   const [user, setUser] = useState<User | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showConsent, setShowConsent] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -139,7 +141,7 @@ export function Pricing() {
             ) : BILLING_ENABLED ? (
               <>
                 <button
-                  onClick={handleUpgrade}
+                  onClick={() => setShowConsent(true)}
                   disabled={checkoutBusy}
                   className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-wait"
                 >
@@ -160,6 +162,15 @@ export function Pricing() {
           </div>
         </div>
       </div>
+
+      {showConsent && (
+        <UpgradeConsentModal
+          busy={checkoutBusy}
+          error={checkoutError}
+          onCancel={() => setShowConsent(false)}
+          onConfirm={handleUpgrade}
+        />
+      )}
     </div>
   );
 }

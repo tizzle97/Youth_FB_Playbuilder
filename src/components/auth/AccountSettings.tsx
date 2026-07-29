@@ -17,6 +17,7 @@ import {
 } from '../../lib/userPreferences';
 import { BILLING_ENABLED, openBillingPortal, startProCheckout } from '../../lib/billing';
 import { usePageMeta } from '../../lib/seo';
+import { UpgradeConsentModal } from '../billing/UpgradeConsentModal';
 
 export default function AccountSettings() {
   usePageMeta({ title: 'Account Settings', path: '/account' });
@@ -41,6 +42,8 @@ export default function AccountSettings() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
+  const [showUpgradeConsent, setShowUpgradeConsent] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [initialPrefs, setInitialPrefs] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -446,11 +449,7 @@ export default function AccountSettings() {
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      BILLING_ENABLED
-                        ? startProCheckout().catch((err) => setError(getSafeErrorMessage(err, 'Could not start checkout')))
-                        : navigate('/')
-                    }
+                    onClick={() => (BILLING_ENABLED ? setShowUpgradeConsent(true) : navigate('/'))}
                     className="w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
                   >
                     Upgrade to Pro — $39/yr
@@ -808,6 +807,22 @@ export default function AccountSettings() {
         imageUrl={tempImageUrl}
         onCropComplete={handleCroppedImage}
       />
+
+      {showUpgradeConsent && (
+        <UpgradeConsentModal
+          busy={checkoutBusy}
+          error={error || null}
+          onCancel={() => setShowUpgradeConsent(false)}
+          onConfirm={() => {
+            setError('');
+            setCheckoutBusy(true);
+            startProCheckout().catch((err) => {
+              setError(getSafeErrorMessage(err, 'Could not start checkout'));
+              setCheckoutBusy(false);
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
