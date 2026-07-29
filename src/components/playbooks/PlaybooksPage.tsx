@@ -26,6 +26,7 @@ import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
+import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
 
 interface Playbook {
   id: string;
@@ -805,6 +806,12 @@ export function PlaybooksPage() {
       color: #64748b;
     }
 
+    .wb-compat {
+      font-size: 6.5pt;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+
     .wb-grid {
       display: grid;
       grid-template-columns: repeat(2, 4.5in);
@@ -928,6 +935,7 @@ export function PlaybooksPage() {
     ${teamBrandHTML(prefs)}
     <div class="playbook-title">${playbookName}</div>
     <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along dashed lines</div>
+    <div class="wb-compat">Compatible with ${WRISTBAND_PRODUCT_NAME} (${WRISTBAND_PRODUCT_URL}) and any wristband with a ${WRISTBAND_WINDOW_SIZE} play window.${SHOW_AFFILIATE_DISCLOSURE ? ' As an Amazon Associate we earn from qualifying purchases.' : ''}</div>
   </div>
 
   <div class="wb-grid">
@@ -1266,6 +1274,21 @@ export function PlaybooksPage() {
                                     <div className="text-xs text-chalk/70">Sized for a 4.5"x2.2" QB wristband insert, cut and slide in</div>
                                   </div>
                                 </button>
+                                <div className="px-4 pt-1 pb-2" onClick={(e) => e.stopPropagation()}>
+                                  <p className="text-[10px] text-chalk/50 leading-snug">
+                                    Compatible with{' '}
+                                    <a
+                                      href={wristbandProductLink()}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="underline hover:text-chalk/70"
+                                    >
+                                      {WRISTBAND_PRODUCT_NAME}
+                                    </a>{' '}
+                                    and any wristband with a {WRISTBAND_WINDOW_SIZE} play window.
+                                    {SHOW_AFFILIATE_DISCLOSURE && ' As an Amazon Associate we earn from qualifying purchases.'}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           )}
