@@ -537,31 +537,49 @@ export function ExportModal({
   };
 
   const generateWristbandPlaybookHTML = (plays: PlayData[]): string => {
-    const cards = plays.map((play, index) => `
-      <div class="wb-card">
-        <div class="wb-number">${index + 1}</div>
-        <div class="wb-body">
-          <div class="wb-name">${play.metadata.playName || 'Untitled'}</div>
-          <div class="wb-image">
-            <img src="${play.canvasDataURL}" alt="${play.metadata.playName}" />
+    // 4.5in x 2.2in matches the play window on Wristband Interactive Y23-style
+    // QB wristbands, which hold 3 cut inserts of up to ~5 plays each.
+    const PLAYS_PER_INSERT = 5;
+    const INSERTS_PER_BAND = 3;
+
+    const insertGroups: PlayData[][] = [];
+    for (let i = 0; i < plays.length; i += PLAYS_PER_INSERT) {
+      insertGroups.push(plays.slice(i, i + PLAYS_PER_INSERT));
+    }
+
+    const inserts = insertGroups.map((group, groupIndex) => {
+      const rows = group.map((play, i) => {
+        const playNumber = groupIndex * PLAYS_PER_INSERT + i + 1;
+        return `
+        <div class="wb-row">
+          <div class="wb-number">${playNumber}</div>
+          <div class="wb-thumb"><img src="${play.canvasDataURL}" alt="" /></div>
+          <div class="wb-text">
+            <div class="wb-name">${play.metadata.playName || 'Untitled'}</div>
+            ${play.metadata.formation ? `<div class="wb-formation">${play.metadata.formation}</div>` : ''}
           </div>
-          <div class="wb-info">
-            ${play.metadata.playType ? `<span class="play-type">${play.metadata.playType}</span>` : ''}
-            ${play.metadata.formation ? ` &middot; ${play.metadata.formation}` : ''}
-          </div>
-        </div>
-      </div>
-    `).join('');
+        </div>`;
+      }).join('');
+
+      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
+      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
+
+      return `
+      <div class="wb-insert">
+        <div class="wb-insert-label">Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}</div>
+        <div class="wb-rows">${rows}</div>
+      </div>`;
+    }).join('');
 
     return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Playbook - Wristband Call Sheet</title>
+  <title>Playbook - Wristband Inserts</title>
   <style>
     @page {
-      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
+      size: ${(preferences?.paper_size ?? 'letter') === 'a4' ? 'A4 landscape' : '11in 8.5in'};
       margin: 0.4in;
     }
 
@@ -573,63 +591,106 @@ export function ExportModal({
 
     body {
       font-family: Arial, sans-serif;
-      font-size: 8pt;
-      line-height: 1.2;
       color: #000;
       background: white;
     }
 
     .playbook-header {
       text-align: center;
-      margin-bottom: 15px;
-      padding-bottom: 10px;
+      margin-bottom: 0.15in;
+      padding-bottom: 0.1in;
       border-bottom: 3px solid #2563eb;
     }
 
     .playbook-title {
-      font-size: 18pt;
+      font-size: 16pt;
       font-weight: bold;
       color: #1e40af;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .playbook-subtitle {
-      font-size: 10pt;
+      font-size: 9pt;
       color: #64748b;
     }
 
     .wb-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(2, 4.5in);
+      gap: 0.2in;
+      justify-content: center;
     }
 
-    .wb-card {
-      display: flex;
+    .wb-insert {
+      width: 4.5in;
+      height: 2.2in;
       border: 1px dashed #9ca3af;
       border-radius: 4px;
-      padding: 6px;
+      padding: 0.06in 0.1in;
       background: #fafafa;
       page-break-inside: avoid;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .wb-insert-label {
+      font-size: 6.5pt;
+      color: #6b7280;
+      text-align: center;
+      margin-bottom: 0.03in;
+      flex-shrink: 0;
+    }
+
+    .wb-rows {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0.08in;
+      min-height: 0;
+    }
+
+    .wb-row {
+      display: flex;
       align-items: center;
+      gap: 0.06in;
+      min-height: 0;
     }
 
     .wb-number {
       flex-shrink: 0;
-      width: 22px;
-      height: 22px;
+      width: 0.28in;
+      height: 0.28in;
       border-radius: 50%;
       background: #1e40af;
       color: white;
       font-weight: bold;
-      font-size: 10pt;
+      font-size: 8pt;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 6px;
     }
 
-    .wb-body {
+    .wb-thumb {
+      flex-shrink: 0;
+      width: 0.32in;
+      height: 0.32in;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .wb-thumb img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .wb-text {
       flex: 1;
       min-width: 0;
     }
@@ -637,41 +698,23 @@ export function ExportModal({
     .wb-name {
       font-weight: bold;
       color: #1e40af;
-      font-size: 8pt;
+      font-size: 7.5pt;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .wb-image {
-      height: 46px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 3px;
-      margin: 3px 0;
-    }
-
-    .wb-image img {
-      max-width: 100%;
-      max-height: 100%;
-    }
-
-    .wb-info {
-      font-size: 7pt;
+    .wb-formation {
+      font-size: 6pt;
       color: #6b7280;
-    }
-
-    .play-type {
-      text-transform: capitalize;
-      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
-      .wb-card { page-break-inside: avoid; }
+      .wb-insert { page-break-inside: avoid; }
     }
   </style>
 </head>
@@ -679,14 +722,14 @@ export function ExportModal({
   <div class="playbook-header">
     ${teamBrandHTML(preferences)}
     <div class="playbook-title">${preferences?.team_name ? `${escapeHtml(preferences.team_name)} Playbook` : 'Football Playbook'}</div>
-    <div class="playbook-subtitle">Wristband Call Sheet &mdash; cut along dashed lines</div>
+    <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along dashed lines</div>
   </div>
 
   <div class="wb-grid">
-    ${cards}
+    ${inserts}
   </div>
 
-  <div style="margin-top: 15px; text-align: center; font-size: 8pt; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 8px;">
+  <div style="margin-top: 0.15in; text-align: center; font-size: 8pt; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 0.08in;">
     Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} | Total Plays: ${plays.length}
   </div>
 </body>
@@ -797,7 +840,7 @@ export function ExportModal({
     {
       id: 'wristband-playbook',
       name: 'Wristband Sheet',
-      description: 'Numbered call sheet, cut for a wristband',
+      description: 'Sized for a 4.5"x2.2" QB wristband insert, cut and slide in',
       icon: Watch
     }
   ];
@@ -900,7 +943,7 @@ export function ExportModal({
                       <p className="text-xs text-chalk/70 mt-1">
                         {selectedFormat === 'detailed-playbook' && 'This will print all plays in your playbook with detailed information'}
                         {selectedFormat === 'grid-playbook' && 'This will print all plays in a compact grid format on one page'}
-                        {selectedFormat === 'wristband-playbook' && 'This will print a numbered call sheet sized to cut and slide into a wristband'}
+                        {selectedFormat === 'wristband-playbook' && 'This will print inserts sized 4.5" x 2.2" to cut and slide into a QB wristband'}
                       </p>
                     </div>
                   </div>
