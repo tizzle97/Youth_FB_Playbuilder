@@ -723,8 +723,10 @@ export function PlaybooksPage() {
 
   const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string): string => {
     // 4.5in x 2.2in matches the play window on Wristband Interactive Y23-style
-    // QB wristbands, which hold 3 cut inserts of up to ~5 plays each.
-    const PLAYS_PER_INSERT = 5;
+    // QB wristbands, which hold 3 cut inserts arranged as a 4x2 grid of
+    // numbered plays (8 per insert) — same layout as the printed inserts
+    // that ship with those wristbands.
+    const PLAYS_PER_INSERT = 8;
     const INSERTS_PER_BAND = 3;
 
     const insertGroups: PlayInPlaybook[][] = [];
@@ -733,20 +735,19 @@ export function PlaybooksPage() {
     }
 
     const inserts = insertGroups.map((group, groupIndex) => {
-      const rows = group.map((play, i) => {
+      const cells = group.map((play, i) => {
         const playNumber = groupIndex * PLAYS_PER_INSERT + i + 1;
         return `
-        <div class="wb-row">
-          <div class="wb-number">${playNumber}</div>
+        <div class="wb-cell">
+          <div class="wb-cell-header">
+            <div class="wb-number">${playNumber}</div>
+            <div class="wb-name">${play.name}</div>
+          </div>
           <div class="wb-thumb">
             ${play.thumbnail ?
               `<img src="${play.thumbnail}" alt="" />` :
               `<div class="no-image">&mdash;</div>`
             }
-          </div>
-          <div class="wb-text">
-            <div class="wb-name">${play.name}</div>
-            ${play.metadata?.formation ? `<div class="wb-formation">${play.metadata.formation}</div>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -757,7 +758,7 @@ export function PlaybooksPage() {
       return `
       <div class="wb-insert">
         <div class="wb-insert-label">Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}</div>
-        <div class="wb-rows">${rows}</div>
+        <div class="wb-cells">${cells}</div>
       </div>`;
     }).join('');
 
@@ -832,46 +833,68 @@ export function PlaybooksPage() {
       flex-shrink: 0;
     }
 
-    .wb-rows {
+    .wb-cells {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      gap: 0.08in;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 0.04in;
       min-height: 0;
     }
 
-    .wb-row {
+    .wb-cell {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 2px;
+      overflow: hidden;
+      background: white;
+    }
+
+    .wb-cell-header {
+      flex-shrink: 0;
       display: flex;
       align-items: center;
-      gap: 0.06in;
-      min-height: 0;
+      gap: 2px;
+      padding: 1px 2px;
+      background: #eef2ff;
+      min-width: 0;
     }
 
     .wb-number {
       flex-shrink: 0;
-      width: 0.28in;
-      height: 0.28in;
+      width: 0.15in;
+      height: 0.15in;
       border-radius: 50%;
       background: #1e40af;
       color: white;
       font-weight: bold;
-      font-size: 8pt;
+      font-size: 5.5pt;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
+    .wb-name {
+      flex: 1;
+      min-width: 0;
+      font-weight: bold;
+      color: #1e40af;
+      font-size: 5.5pt;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .wb-thumb {
-      flex-shrink: 0;
-      width: 0.32in;
-      height: 0.32in;
+      flex: 1;
+      min-height: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 2px;
       overflow: hidden;
     }
 
@@ -883,28 +906,6 @@ export function PlaybooksPage() {
     .no-image {
       color: #9ca3af;
       font-size: 7pt;
-    }
-
-    .wb-text {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .wb-name {
-      font-weight: bold;
-      color: #1e40af;
-      font-size: 7.5pt;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .wb-formation {
-      font-size: 6pt;
-      color: #6b7280;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     .footer {
