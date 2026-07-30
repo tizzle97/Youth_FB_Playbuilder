@@ -1,8 +1,8 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers, specialTeamsPlayers } from './PlayerToolbar';
 import { FormationMenu } from './FormationMenu';
-import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
+import type { DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
 export type PlayType = 'offense' | 'defense' | 'special_teams';
@@ -18,6 +18,13 @@ interface DesignerToolbarProps {
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
   setDrawMode: (mode: DrawMode) => void;
+  /** Terminal decoration for the next route finished in Straight or Route
+   *  mode — sticky until changed, independent of shape. */
+  capStyle: CapStyle;
+  setCapStyle: (style: CapStyle) => void;
+  /** Solid vs dashed stroke for the next route finished — sticky until changed. */
+  dashed: boolean;
+  setDashed: (dashed: boolean) => void;
   deleteRouteMode: boolean;
   setDeleteRouteMode: (mode: boolean) => void;
   zoneMode: boolean;
@@ -52,6 +59,10 @@ export function DesignerToolbar({
   setDrawingMode,
   drawMode,
   setDrawMode,
+  capStyle,
+  setCapStyle,
+  dashed,
+  setDashed,
   deleteRouteMode,
   setDeleteRouteMode,
   zoneMode,
@@ -205,15 +216,33 @@ export function DesignerToolbar({
           <span className={label}>Route</span>
         </button>
 
-        {/* Block (B-25): same drag-or-tap-to-place-points flow as Straight,
-            but ends in a perpendicular T-cap instead of an arrowhead. */}
+        <div className={divider} />
+
+        {/* Ending style: click to flip between arrowhead and a perpendicular
+            block cap. Independent of shape (Straight/Route above) — a route
+            can now be curved AND end in a block cap, which wasn't possible
+            when Block was its own separate mode. Sticky until changed, like
+            drawMode. A single toggle button (rather than a two-button pill)
+            keeps the mobile toolbar's scrollable width from growing enough
+            to push the Formation trigger out of view — see FormationMenu's
+            close-on-scroll effect. */}
         <button
-          onClick={() => pickDraw('block')}
-          title="Block Assignment (drag or tap to place points, double-tap to finish)"
-          className={`${tool} ${activeDraw === 'block' ? active : inactive}`}
+          onClick={() => setCapStyle(capStyle === 'arrow' ? 'block' : 'arrow')}
+          title="Ending style: Route (arrow) / Block (perpendicular cap)"
+          className={`${tool} ${capStyle === 'block' ? active : inactive}`}
         >
-          <Shield className="h-4 w-4" />
-          <span className={label}>Block</span>
+          {capStyle === 'block' ? <Shield className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+          <span className={label}>{capStyle === 'block' ? 'Block' : 'Route'}</span>
+        </button>
+
+        {/* Line style: click to flip between solid and dotted stroke. */}
+        <button
+          onClick={() => setDashed(!dashed)}
+          title="Line style: Solid / Dotted"
+          className={`${tool} ${dashed ? active : inactive}`}
+        >
+          <span className={`block h-0 w-4 border-t-2 border-current ${dashed ? 'border-dotted' : ''}`} />
+          <span className={label}>{dashed ? 'Dotted' : 'Solid'}</span>
         </button>
 
         {/* Remove Route for a player */}
@@ -327,8 +356,12 @@ export function DesignerToolbar({
             {textMode && 'Text mode'}
             {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
             {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'block' && 'Block assignment mode'}
           </span>
+          {activeDraw && (
+            <span>
+              — {capStyle === 'block' ? 'block ending' : 'route ending'}, {dashed ? 'dotted' : 'solid'}
+            </span>
+          )}
           <span>· See field for instructions</span>
         </p>
       )}

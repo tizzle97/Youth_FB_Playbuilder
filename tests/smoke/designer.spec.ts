@@ -22,7 +22,7 @@ const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-aut
 const TAP_GAP = 450;
 
 type CanvasState = {
-  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string }>;
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
   textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
@@ -356,7 +356,7 @@ test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, 
   expect(state.paths[2].points[1].x).not.toBe(state.paths[2].points[0].x);
 });
 
-test('offense: draw a block assignment (B-25), path mode is "block", undo clears it', async ({ page }) => {
+test('offense: block ending toggle on Straight mode, path mode stays "straight", capStyle is "block", undo clears it', async ({ page }) => {
   await openDesigner(page);
 
   // Place a lineman
@@ -366,8 +366,10 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
   let state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(1);
 
-  // Block mode uses the same drag-or-tap-to-place-points flow as Straight
-  await btn(page, 'Block Assignment (drag or tap to place points, double-tap to finish)').click();
+  // Block is now an ending-style toggle, not its own mode — select Straight,
+  // then switch the ending to Block before drawing.
+  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -377,7 +379,8 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
 
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
-  expect(state.paths[0].mode).toBe('block');
+  expect(state.paths[0].mode).toBe('straight');
+  expect(state.paths[0].capStyle).toBe('block');
   expect(state.paths[0].startIconIndex).toBe(0);
 
   // Undo removes the block path first, then the icon — same history
@@ -390,6 +393,35 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
   await btn(page, 'Undo').click();
   state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(0);
+});
+
+test('offense: curved route with block ending and dotted line — new combination not possible under the old 3-mode toolbar', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player C').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
+  await btn(page, 'Line style: Solid / Dotted').click();
+
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.5, 0.45);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('waypoint');
+  expect(state.paths[0].capStyle).toBe('block');
+  expect(state.paths[0].dashed).toBe(true);
 });
 
 test('formation templates (B-24): stamping I-Formation places 11 icons as one undo entry', async ({ page }) => {
@@ -1188,6 +1220,50 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   await expect(page.getByText('(editing)')).toBeVisible();
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
+});
+
+test('loads a saved play with a legacy mode:"block" path (pre-dates capStyle) without choking', async ({ page }) => {
+  // Regression guard: 'block' used to be a whole draw mode; it's now just
+  // the fallback capStyle for paths saved before capStyle existed (see
+  // renderScene's useBlockCap). Old saved JSON with mode: 'block' and no
+  // capStyle/dashed fields must still load cleanly.
+  const canvasData = JSON.stringify({
+    version: 3,
+    paths: [
+      { points: [{ x: 0.5, y: 0.6 }, { x: 0.5, y: 0.35 }], color: '#14B8A6', startIconIndex: 0, mode: 'block' },
+    ],
+    playerIcons: [
+      { x: 0.5, y: 0.6, letter: 'C', color: '#14B8A6' },
+    ],
+    zones: [],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000002',
+        name: 'Legacy block route',
+        type: 'offense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Legacy block route' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000002');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('block');
+  expect(state.paths[0].capStyle).toBeUndefined();
 });
 
 test('loads a saved play with text boxes via /designer?play= (mocked backend, version 4)', async ({ page }) => {

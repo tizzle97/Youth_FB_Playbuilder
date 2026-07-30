@@ -42,7 +42,12 @@ const GUIDE_COLOR = '#f59e0b';
 // ---------------------------------------------
 // Types
 // ---------------------------------------------
+// 'block' stays in the union so old saved plays (mode: 'block') still
+// type-check and load — new code no longer writes it, using 'straight'/
+// 'waypoint' for shape plus the independent `capStyle` field below instead.
 export type DrawMode = 'straight' | 'waypoint' | 'block';
+
+export type CapStyle = 'arrow' | 'block';
 
 export type Pt = { x: number; y: number }; // normalized 0–1
 
@@ -51,6 +56,13 @@ export type PathItem = {
   color: string;
   startIconIndex?: number;
   mode: DrawMode;
+  /** Terminal decoration. Omitted/undefined means 'arrow' — the default
+   *  for both new paths and pre-existing saved plays that predate this
+   *  field. A legacy `mode === 'block'` path is still treated as a block
+   *  ending even without this field (see renderScene's useBlockCap). */
+  capStyle?: CapStyle;
+  /** Dashed vs solid stroke. Omitted/undefined means solid. */
+  dashed?: boolean;
 };
 
 export type IconShape = 'circle' | 'square' | 'triangle' | 'star';
@@ -547,16 +559,21 @@ export function renderScene(
   paths.forEach((p, i) => {
     const pts = p.points.map(toPx);
     const isLast = p.startIconIndex !== undefined ? lastByIcon.get(p.startIconIndex) === i : true;
-    const useBlockCap = p.mode === 'block';
+    // p.mode === 'block' is the back-compat fallback for plays saved before
+    // capStyle existed, when 'block' was a whole mode rather than an ending.
+    const useBlockCap = p.capStyle === 'block' || p.mode === 'block';
     // Stop the stroked line short of the tip so it tucks behind the
     // arrowhead. Skipped for the block cap, which sits on the endpoint
     // rather than tapering to it.
     const stroked = isLast && !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
+    ctx.save();
+    ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
     if (p.mode === 'waypoint') {
       strokeRoute(ctx, stroked, p.color, lineWidth);
     } else {
       strokeStraight(ctx, stroked, p.color, lineWidth);
     }
+    ctx.restore();
     if (isLast) {
       if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
       else drawArrowhead(ctx, pts, p.color, arrowSize);

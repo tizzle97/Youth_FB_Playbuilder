@@ -34,6 +34,7 @@ import {
 } from '../../lib/renderPlayScene';
 import type {
   DrawMode,
+  CapStyle,
   Pt,
   PathItem,
   IconShape,
@@ -77,7 +78,7 @@ export const EXPORT_HEIGHT = 1275;
 // Re-exported so existing imports from './Canvas' across the designer keep
 // working — the types themselves now live in ../../lib/renderPlayScene
 // alongside the rendering code that defines their shape.
-export type { DrawMode, PathItem, IconShape, PlayerIcon, Zone, TextBox };
+export type { DrawMode, CapStyle, PathItem, IconShape, PlayerIcon, Zone, TextBox };
 export { FIELD_YARDS_ABOVE_LOS, FIELD_YARDS_BELOW_LOS, TOTAL_FIELD_YARDS, TEXT_BOX_SIZES, DEFAULT_TEXT_BOX_SIZE, DEFAULT_TEXT_BOX_COLOR };
 
 type CanvasProps = {
@@ -85,6 +86,11 @@ type CanvasProps = {
   height: number;
   drawingMode: boolean;
   drawMode: DrawMode;
+  /** Terminal decoration for the next route finished in 'straight' or
+   *  'waypoint' mode — sticky until changed, like drawMode itself. */
+  capStyle: CapStyle;
+  /** Solid vs dashed stroke for the next route finished — sticky until changed. */
+  dashed: boolean;
   deleteRouteMode: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
@@ -134,7 +140,7 @@ export type CanvasHandle = {
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, deleteRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, capStyle, dashed, deleteRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -549,9 +555,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (waypointPoints.length >= 1) {
         const previewPts = pendingPoint ? [...waypointPoints, pendingPoint] : waypointPoints;
         const pts = previewPts.map(toPx);
-        const isBlock = drawMode === 'block';
+        const isBlock = capStyle === 'block';
         const stroked = pts.length >= 2 && !isBlock ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
-        if (drawMode === 'straight' || isBlock) {
+        ctx.save();
+        ctx.setLineDash(dashed ? [ROUTE_LINE_WIDTH * scale * 2.5, ROUTE_LINE_WIDTH * scale * 2] : []);
+        if (drawMode === 'straight' || drawMode === 'block') {
           strokeStraight(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
           pts.slice(1).forEach((pt) => {
             ctx.save();
@@ -564,6 +572,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         } else {
           strokeRoute(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
         }
+        ctx.restore();
         if (pts.length >= 2) {
           if (isBlock) drawBlockCap(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
           else drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
@@ -626,7 +635,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, capStyle, dashed, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -822,10 +831,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const finishRoute = useCallback((pts: Pt[], color: string, iconIdx: number | null, mode: DrawMode) => {
       if (pts.length < 2) return;
       pushSnapshot();
-      const newPath: PathItem = { points: pts, color, startIconIndex: iconIdx ?? undefined, mode };
+      const newPath: PathItem = {
+        points: pts,
+        color,
+        startIconIndex: iconIdx ?? undefined,
+        mode,
+        capStyle,
+        dashed,
+      };
       setPaths((prev) => [...prev, newPath]);
       if (onDrawingComplete) onDrawingComplete(pts);
-    }, [pushSnapshot, onDrawingComplete]);
+    }, [pushSnapshot, onDrawingComplete, capStyle, dashed]);
 
     // ------------------------------------------
     // Waypoint: finish
@@ -952,7 +968,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
 
       // Straight + Waypoint modes — click-to-add-segments flow
-      if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight' || drawMode === 'block')) {
+      if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
         const isDoubleTap = now - lastTapRef.current < 350;
         lastTapRef.current = now;
@@ -1443,7 +1459,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         )}
 
         {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
-        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight' || drawMode === 'block') && waypointPoints.length >= 1 && (
+        {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 1 && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
             {waypointPoints.length >= 2 && (
               <button

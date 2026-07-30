@@ -7,7 +7,7 @@ import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
-import type { CanvasHandle, DrawMode, IconShape, PlayerIcon } from './Canvas';
+import type { CanvasHandle, DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -33,6 +33,11 @@ export function PlayDesigner() {
 
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
+  // Ending decoration + line style for the next route finished — sticky
+  // until changed, independent of drawMode (shape) so e.g. a curved route
+  // can end in a block T-cap and be dashed at the same time.
+  const [capStyle, setCapStyle] = useState<CapStyle>('arrow');
+  const [dashed, setDashed] = useState(false);
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
@@ -484,6 +489,10 @@ export function PlayDesigner() {
             setDrawingMode={setDrawingMode}
             drawMode={drawMode}
             setDrawMode={setDrawMode}
+            capStyle={capStyle}
+            setCapStyle={setCapStyle}
+            dashed={dashed}
+            setDashed={setDashed}
             deleteRouteMode={deleteRouteMode}
             setDeleteRouteMode={setDeleteRouteMode}
             zoneMode={zoneMode}
@@ -520,6 +529,8 @@ export function PlayDesigner() {
               height={canvasSize.height * zoom}
               drawingMode={drawingMode}
               drawMode={drawMode}
+              capStyle={capStyle}
+              dashed={dashed}
               deleteRouteMode={deleteRouteMode}
               zoneMode={zoneMode}
               deleteZoneMode={deleteZoneMode}
@@ -579,6 +590,10 @@ export function PlayDesigner() {
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
+          capStyle={capStyle}
+          setCapStyle={setCapStyle}
+          dashed={dashed}
+          setDashed={setDashed}
           deleteRouteMode={deleteRouteMode}
           setDeleteRouteMode={setDeleteRouteMode}
           zoneMode={zoneMode}

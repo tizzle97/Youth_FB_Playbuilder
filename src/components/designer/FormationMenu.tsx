@@ -30,6 +30,7 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
 
   useEffect(() => {
     if (!open) return;
+    const openedAt = Date.now();
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -47,15 +48,25 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
     };
     updatePosition();
     // The toolbar can scroll/resize (horizontal scroll row, mobile rotation);
-    // close instead of leaving the popover pinned to a stale position.
+    // close instead of leaving the popover pinned to a stale position. But a
+    // scroll in the first moment after opening is typically the browser's
+    // own "scroll the just-focused trigger into view" behavior inside the
+    // horizontally-scrolling toolbar row (happens whenever the trigger isn't
+    // already fully in view when clicked) — reposition instead of closing,
+    // or the menu would flicker shut immediately after the click that opened
+    // it whenever the trigger sits near the scrollable edge.
     const close = () => setOpen(false);
+    const onScroll = () => {
+      if (Date.now() - openedAt < 300) { updatePosition(); return; }
+      close();
+    };
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
