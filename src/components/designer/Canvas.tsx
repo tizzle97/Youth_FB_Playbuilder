@@ -23,6 +23,7 @@ import {
   ZONE_FILL_ALPHA,
   ZONE_STROKE_ALPHA,
   iconShape,
+  iconScaleForCount,
   strokeRoute,
   strokeStraight,
   trimEnd,
@@ -394,9 +395,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       return { pos: p, lockedX: null, lockedY: null };
     };
 
-    // Current on-screen scaling helpers
+    // Current on-screen scaling helpers. Icon size auto-shrinks as more
+    // icons share the field (see iconScaleForCount) — hit-testing/rings/
+    // popover offsets below must track the same factor so they stay
+    // aligned with what's actually drawn.
     const screenScale = Math.min(width, height) / REF_SIZE;
-    const iconRadiusPx = (PLAYER_SIZE * screenScale) / 2;
+    const iconRadiusPx = (PLAYER_SIZE * screenScale * iconScaleForCount(playerIcons.length)) / 2;
 
     /** True if the given icon index already has at least one saved route. */
     const iconHasRoute = useCallback(
@@ -501,7 +505,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.lineWidth = Math.max(1, 1.5 * scale);
         ctx.globalAlpha = 0.9;
         const tick = 5 * scale;
-        const off = (PLAYER_SIZE * scale) / 2 + 10 * scale;
+        const off = (PLAYER_SIZE * scale * iconScaleForCount(playerIcons.length)) / 2 + 10 * scale;
         if (activeGuides.distX) {
           const { ax, bx, y: ry } = activeGuides.distX;
           const gy = ry * H - off;
@@ -579,7 +583,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         }
       }
 
-      const ringRadius = (PLAYER_SIZE * scale) / 2;
+      const ringRadius = (PLAYER_SIZE * scale * iconScaleForCount(playerIcons.length)) / 2;
 
       // Origin-locked indicator (solid bright ring)
       if (waypointPoints.length >= 1 && waypointIconIndex !== null && playerIcons[waypointIconIndex]) {

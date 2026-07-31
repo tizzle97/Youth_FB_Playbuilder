@@ -14,6 +14,24 @@ export const ARROWHEAD_SIZE = 14;
 export const PLAYER_SIZE = 36;
 const PLAYER_FONT = 16;
 
+// 11v11 formations felt crowded at a fixed icon size — not because template
+// spacing overlaps (it doesn't), but because a fixed diameter is a larger
+// fraction of the gap once 10-11 icons share the field vs. 5v5/7v7. Icons
+// shrink smoothly as more of them are on the field, rather than a fixed size
+// per game format (which wouldn't help a hand-edited formation with an
+// unusual count) or a global shrink (which would needlessly shrink the
+// already-fine 5v5/7v7 sizes).
+const ICON_SCALE_FULL_AT = 7; // 5v5/7v7-sized rosters stay full size
+const ICON_SCALE_MIN_AT = 11; // 11v11-sized rosters hit the floor
+const ICON_SCALE_FLOOR = 0.8; // never shrink below 80% — stays legible/tappable
+
+export function iconScaleForCount(n: number): number {
+  if (n <= ICON_SCALE_FULL_AT) return 1;
+  if (n >= ICON_SCALE_MIN_AT) return ICON_SCALE_FLOOR;
+  const t = (n - ICON_SCALE_FULL_AT) / (ICON_SCALE_MIN_AT - ICON_SCALE_FULL_AT);
+  return 1 - t * (1 - ICON_SCALE_FLOOR);
+}
+
 const FIELD_BG = '#FFFFFF';
 const SIDELINE_PADDING = 8;
 const FIELD_BORDER_COLOR = '#1a1a1a';
@@ -544,7 +562,7 @@ export function renderScene(
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
   const lineWidth = ROUTE_LINE_WIDTH * scale;
   const arrowSize = ARROWHEAD_SIZE * scale;
-  const iconSize = PLAYER_SIZE * scale;
+  const iconSize = PLAYER_SIZE * scale * iconScaleForCount(playerIcons.length);
 
   ctx.clearRect(0, 0, W, H);
   drawField(ctx, W, H, scale);
