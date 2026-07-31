@@ -485,6 +485,7 @@ export function PlayDesigner() {
             gameType={currentPlayMetadata.gameType}
             onSetGameType={handleSetGameType}
             onStampFormation={handleStampFormation}
+            getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
             drawingMode={drawingMode}
             setDrawingMode={setDrawingMode}
             drawMode={drawMode}
@@ -586,6 +587,7 @@ export function PlayDesigner() {
           gameType={currentPlayMetadata.gameType}
           onSetGameType={handleSetGameType}
           onStampFormation={handleStampFormation}
+          getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}

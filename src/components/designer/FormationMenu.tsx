@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Layout } from 'lucide-react';
-import { formationsFor } from './formations';
+import { Layout, Lock, Plus, Trash2 } from 'lucide-react';
+import { formationsFor, type FormationTemplate } from './formations';
 import type { PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
+import { useEntitlement } from '../../lib/entitlements';
+import { UpgradePrompt } from '../UpgradePrompt';
+import { loadCustomFormations, saveCustomFormation, deleteCustomFormation } from '../../lib/customFormations';
+import { getSafeErrorMessage } from '../../lib/errors';
 
 const GAME_TYPES: PlayMetadata['gameType'][] = ['5v5', '7v7', '11v11'];
 
@@ -11,12 +15,21 @@ interface FormationMenuProps {
   gameType: PlayMetadata['gameType'];
   onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStamp: (icons: PlayerIcon[]) => void;
+  /** The only thing FormationMenu can't self-serve — it has no canvas ref. */
+  getCurrentIcons: () => PlayerIcon[];
   /** Full-width left-aligned trigger for the sidebar layout. */
   fullWidth?: boolean;
 }
 
-export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = false }: FormationMenuProps) {
+export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcons, fullWidth = false }: FormationMenuProps) {
   const [open, setOpen] = useState(false);
+  const { isPro, loading: entitlementLoading } = useEntitlement();
+  const [customFormations, setCustomFormations] = useState<FormationTemplate[]>([]);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   // Position is computed from the trigger button's real screen location and
   // the popover is portaled to <body> as position:fixed — the toolbar row it
   // lives in scrolls horizontally (`overflow-x-auto`), which per the CSS
@@ -70,6 +83,44 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
+
+  // Custom formations are a Pro feature — only fetch while the popover is
+  // open (avoids a background request on every mount) and only for Pro
+  // users (non-Pro see a locked upsell row instead of an empty section).
+  useEffect(() => {
+    if (!open || !isPro) { setCustomFormations([]); return; }
+    let cancelled = false;
+    loadCustomFormations(gameType)
+      .then((rows) => { if (!cancelled) setCustomFormations(rows); })
+      .catch((err) => { if (!cancelled) console.error('Failed to load custom formations:', err); });
+    return () => { cancelled = true; };
+  }, [open, isPro, gameType]);
+
+  const handleSaveCurrent = async () => {
+    if (!saveName.trim()) return;
+    setSaveBusy(true);
+    setSaveError(null);
+    try {
+      const icons = getCurrentIcons();
+      const saved = await saveCustomFormation(saveName.trim(), gameType, icons);
+      setCustomFormations((prev) => [...prev, saved]);
+      setSaveName('');
+      setShowSaveInput(false);
+    } catch (err) {
+      setSaveError(getSafeErrorMessage(err, 'Could not save this formation.'));
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  const handleDeleteCustom = async (id: string) => {
+    setCustomFormations((prev) => prev.filter((f) => f.id !== id));
+    try {
+      await deleteCustomFormation(id);
+    } catch (err) {
+      console.error('Failed to delete custom formation:', err);
+    }
+  };
 
   const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
   const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
@@ -135,10 +186,98 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, fullWidth = fa
                 ))}
               </div>
             )}
+
+            <div className="my-2 border-t border-chalk/10" />
+
+            {isPro ? (
+              <>
+                <p className="text-[10px] uppercase tracking-wide text-chalk/40 px-1.5 pb-1">
+                  Your Formations
+                </p>
+                {customFormations.length > 0 && (
+                  <div className="flex flex-col gap-0.5 mb-1">
+                    {customFormations.map((f) => (
+                      <div key={f.id} className="flex items-center gap-1 group">
+                        <button
+                          onClick={() => {
+                            onStamp(f.icons);
+                            setOpen(false);
+                          }}
+                          className="flex-1 text-left px-2 py-1.5 rounded-lg text-sm text-chalk hover:bg-primary/20 hover:text-primary transition-colors"
+                        >
+                          {f.name}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCustom(f.id)}
+                          title="Delete this formation"
+                          className="p-1.5 rounded-lg text-chalk/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {showSaveInput ? (
+                  <div className="px-1.5 py-1 space-y-1.5" onPointerDown={(e) => e.stopPropagation()}>
+                    <input
+                      autoFocus
+                      value={saveName}
+                      onChange={(e) => setSaveName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCurrent(); if (e.key === 'Escape') setShowSaveInput(false); }}
+                      placeholder="Formation name"
+                      className="w-full px-2 py-1 text-sm bg-board border border-chalk/20 rounded-md text-chalk placeholder-chalk/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    {saveError && <p className="text-[11px] text-red-400">{saveError}</p>}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={handleSaveCurrent}
+                        disabled={saveBusy || !saveName.trim()}
+                        className="flex-1 px-2 py-1 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {saveBusy ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setShowSaveInput(false); setSaveError(null); }}
+                        className="px-2 py-1 text-xs text-chalk/60 hover:text-chalk"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSaveInput(true)}
+                    className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-lg text-sm text-chalk/70 hover:bg-primary/20 hover:text-primary transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Save current arrangement
+                  </button>
+                )}
+              </>
+            ) : (
+              !entitlementLoading && (
+                <button
+                  onClick={() => { setOpen(false); setShowUpgradePrompt(true); }}
+                  className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-lg text-sm text-chalk/50 hover:bg-primary/10 hover:text-primary transition-colors"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  Save your own formations — Pro
+                </button>
+              )
+            )}
           </div>
         </>,
         document.body,
       )}
+
+      <UpgradePrompt
+        isOpen={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        feature="Custom formations"
+        description="Saving your own formations to reuse later is part of Playbuilder Pro ($39/yr)."
+      />
     </div>
   );
 }

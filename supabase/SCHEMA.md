@@ -48,7 +48,8 @@ idempotent `.sql` file and update this doc in the same change.
 | `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, `upvotes int` (trigger-cached from `play_votes`), timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`. `BEFORE INSERT` trigger blocks a 16th row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbooks` | `id`, `user_id`, `name`, `description`, timestamps | Owner full access. `BEFORE INSERT` trigger blocks a 3rd row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbook_plays` | `id`, `playbook_id`, `play_id`, `order_position`; UNIQUE`(playbook_id,play_id)` & `(playbook_id,order_position)` | Access via owning playbook (`playbooks.user_id=auth.uid()`). |
-| `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. |
+| `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. **Unused** — no frontend references; superseded by `custom_formations` below. |
+| `custom_formations` | `id`, `user_id`, `name`, `game_type ('5v5'\|'7v7'\|'11v11')`, `icons jsonb` (offense-only `PlayerIcon[]`, same shape as the curated templates in `formations.ts`), `created_at` | Owner full access. `BEFORE INSERT` trigger blocks all non-`is_pro()` users — Pro-only feature, not just free-tier-capped (`custom_formations.sql`). |
 | `categories` | `id`, `name`, `type`, `parent_id`, `playbook_id`, `order_position` | Access via owning playbook. |
 
 ### Community / social

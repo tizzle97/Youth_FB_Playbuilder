@@ -424,6 +424,91 @@ test('offense: curved route with block ending and dotted line — new combinatio
   expect(state.paths[0].dashed).toBe(true);
 });
 
+test('custom formations: signed-out/free user sees a locked upsell instead of the save flow', async ({ page }) => {
+  await openDesigner(page);
+  await btn(page, 'Formation templates').click();
+  const lockedRow = page.getByText('Save your own formations — Pro');
+  await expect(lockedRow).toBeVisible();
+  // Never even attempts a custom_formations fetch for non-Pro users.
+  await expect(page.getByText('Save current arrangement')).toHaveCount(0);
+
+  await lockedRow.click();
+  await expect(page.getByText('Custom formations is a Pro feature')).toBeVisible();
+});
+
+test('custom formations (Pro): save current icons, see it listed, stamp it, then delete it', async ({ page }) => {
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated', role: 'authenticated', email: 'pro-coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'pro', current_period_end: null }) }));
+
+  const savedRow = {
+    id: 'cf-1', name: 'My Trips Set', game_type: '11v11',
+    icons: [{ x: 0.5, y: 0.6, letter: 'Q', color: '#3B82F6', shape: 'circle' }],
+  };
+  // Reflects real backend state across the test's save → reopen → delete →
+  // reopen sequence, since the menu refetches the list every time it opens.
+  let stored: typeof savedRow | null = null;
+  await page.route('**/rest/v1/custom_formations**', (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stored ? [stored] : []) });
+    }
+    if (method === 'POST') {
+      stored = savedRow;
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(savedRow) });
+    }
+    if (method === 'DELETE') {
+      stored = null;
+      return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
+    }
+    return route.continue();
+  });
+
+  await openDesigner(page);
+
+  // Place one icon so there's something to save.
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+
+  await btn(page, 'Formation templates').click();
+  await expect(page.getByText('Save your own formations')).toHaveCount(0);
+  const popover = page.locator('div.fixed.z-40');
+  await popover.getByText('Save current arrangement').click();
+  await popover.getByPlaceholder('Formation name').fill('My Trips Set');
+  await popover.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByRole('button', { name: 'My Trips Set' })).toBeVisible();
+
+  // Clear the field, then stamp the just-saved custom formation back on.
+  await page.keyboard.press('Escape').catch(() => {});
+  await btn(page, 'Clear All').click();
+  expect((await canvasState(page)).playerIcons).toHaveLength(0);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'My Trips Set' }));
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+  expect((await canvasState(page)).playerIcons[0].letter).toBe('Q');
+
+  // Delete it and confirm it's gone from the list.
+  await btn(page, 'Formation templates').click();
+  await page.locator('button[title="Delete this formation"]').click();
+  await expect(page.getByRole('button', { name: 'My Trips Set' })).toHaveCount(0);
+});
+
 test('formation templates (B-24): stamping I-Formation places 11 icons as one undo entry', async ({ page }) => {
   await openDesigner(page);
 

@@ -27,9 +27,10 @@ export function getSafeErrorMessage(
     const { code, message } = err as { code: unknown; message: unknown };
     if (code === '23505') return 'That already exists.';
     if (code === '23503') return 'That item could not be found or no longer exists.';
-    // Free-tier limit triggers (see supabase/free_tier_limits.sql) raise these
-    // custom codes with an already user-safe, upgrade-prompt message.
-    if (code === 'PBP01' || code === 'PBP02') return String(message);
+    // Free-tier limit triggers (see supabase/free_tier_limits.sql) and the
+    // custom-formations Pro gate (supabase/custom_formations.sql) raise
+    // these custom codes with an already user-safe, upgrade-prompt message.
+    if (code === 'PBP01' || code === 'PBP02' || code === 'PBP03') return String(message);
     if (code === '42501' || (typeof message === 'string' && /row-level security/i.test(message))) {
       return "You don't have permission to do that.";
     }

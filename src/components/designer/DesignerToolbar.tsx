@@ -14,6 +14,7 @@ interface DesignerToolbarProps {
   gameType: PlayMetadata['gameType'];
   onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStampFormation: (icons: PlayerIcon[]) => void;
+  getCurrentIcons: () => PlayerIcon[];
   drawingMode: boolean;
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
@@ -55,6 +56,7 @@ export function DesignerToolbar({
   gameType,
   onSetGameType,
   onStampFormation,
+  getCurrentIcons,
   drawingMode,
   setDrawingMode,
   drawMode,
@@ -258,7 +260,7 @@ export function DesignerToolbar({
         {playType === 'offense' && (
           <>
             <div className={divider} />
-            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} fullWidth={vertical} />
+            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} getCurrentIcons={getCurrentIcons} fullWidth={vertical} />
           </>
         )}
 
