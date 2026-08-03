@@ -1307,6 +1307,87 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
 });
 
+test('"Use as Template" (/designer?template=): loads the source play, prefixes the name, and Save does an INSERT not an UPDATE', async ({ page }) => {
+  const userJson = {
+    id: '55555555-5555-5555-5555-555555555555',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }));
+
+  // Source play belongs to a DIFFERENT user and is public — the scenario
+  // this feature exists for (a community play used as a template). Loading
+  // it must still succeed (RLS already permits reading public plays), and
+  // saving afterward must never attempt to touch this row.
+  const sourcePlayId = '00000000-0000-0000-0000-0000000000aa';
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.5, y: 0.6, letter: 'QB', color: '#3B82F6' }],
+    zones: [],
+  });
+
+  const methodsSeen: string[] = [];
+  await page.route('**/rest/v1/plays**', (route) => {
+    const method = route.request().method();
+    methodsSeen.push(method);
+    if (method === 'GET') {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          id: sourcePlayId,
+          name: 'Mesh',
+          type: 'offense',
+          canvas_data: canvasData,
+          description: '',
+          is_public: true,
+          user_id: '99999999-9999-9999-9999-999999999999', // not this test's user
+          metadata: { playName: 'Mesh' },
+        }),
+      });
+    }
+    if (method === 'POST') {
+      return route.fulfill({
+        status: 201, contentType: 'application/json',
+        body: JSON.stringify({ id: '00000000-0000-0000-0000-0000000000bb' }),
+      });
+    }
+    // A PATCH here would mean the client tried to update the source play —
+    // exactly what this feature must never do.
+    return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'unexpected write' }) });
+  });
+
+  await page.goto(`/designer?template=${sourcePlayId}`);
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  // Template mode: never shows "(editing)", header button reads "Save".
+  await expect(page.getByText('(editing)')).toHaveCount(0);
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Copy of Mesh');
+
+  await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();
+  await page.getByRole('button', { name: 'Save Play' }).click();
+  await expect(page.getByText('Play saved!')).toBeVisible();
+
+  expect(methodsSeen).toContain('GET');
+  expect(methodsSeen).toContain('POST');
+  expect(methodsSeen).not.toContain('PATCH');
+});
+
 test('loads a saved play with a legacy mode:"block" path (pre-dates capStyle) without choking', async ({ page }) => {
   // Regression guard: 'block' used to be a whole draw mode; it's now just
   // the fallback capStyle for paths saved before capStyle existed (see
@@ -1619,6 +1700,45 @@ test('Community Play Library: type/game-format/formation filters compose correct
   await expect(cards).toHaveCount(5);
 });
 
+test('Community Play Library: "Use as Template" navigates to /designer?template=<id> (signed in) or /auth (signed out)', async ({ page }) => {
+  const publicPlays = [
+    { id: 'p1', name: 'Four Verts', description: '', type: 'offense', thumbnail: null, upvotes: 3,
+      metadata: { gameType: '11v11', formation: 'Spread' }, user_id: 'u1' },
+  ];
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(publicPlays) }),
+  );
+  await page.route('**/rest/v1/rpc/get_community_authors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  // Signed out: clicking "Use as Template" redirects to sign-in, same gate
+  // as the existing "Copy to My Plays" button, instead of opening the
+  // Designer only to fail on Save.
+  await page.goto('/plays?tab=community');
+  await page.locator('button[title="Sign in to use this play as a template"]').click();
+  await expect(page).toHaveURL(/\/auth/);
+
+  // Signed in: navigates straight to the template load.
+  const userJson = {
+    id: '66666666-6666-6666-6666-666666666666',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+
+  await page.goto('/plays?tab=community');
+  await page.locator('button[title="Open in the Designer to edit and save as a new play"]').click();
+  await expect(page).toHaveURL(/\/designer\?template=p1/);
+});
+
 test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', async ({ page }) => {
   const userJson = {
     id: '33333333-3333-3333-3333-333333333333',
@@ -1663,6 +1783,38 @@ test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', asy
 
   await page.goto('/plays');
   await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
+});
+
+test('My Plays: card shows a "Use as Template" link to /designer?template=<id>', async ({ page }) => {
+  const userJson = {
+    id: '77777777-7777-7777-7777-777777777777',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() === 'HEAD') {
+      return route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'my-play-1', name: 'Trips Right', type: 'offense', thumbnail: null, is_public: false, upvotes: 0 }]),
+    });
+  });
+
+  await page.goto('/plays');
+  await expect(page.locator('a[href="/designer?template=my-play-1"]')).toBeVisible();
 });
 
 test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usage nudge', async ({ page }) => {

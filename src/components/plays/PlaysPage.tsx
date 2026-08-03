@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
+import { Book, Plus, Filter, Trash2, LogIn, Wand2 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { checkIsAdmin } from '../../lib/admin';
@@ -477,6 +477,17 @@ export function PlaysPage() {
                 console.log(`"${play.name}" added to playbook successfully!`);
               }}
             />
+
+            {/* Opens this play in the Designer without editingPlayId set, so
+                Save creates a new play instead of updating this one — see
+                PlayDesigner.tsx's load effect. */}
+            <Link
+              to={`/designer?template=${play.id}`}
+              title="Use this play as a starting point for a new one"
+              className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
+            >
+              <Wand2 className="h-4 w-4" />
+            </Link>
 
             {play.is_public && (
               <PlayVoteButton

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Check, Play as PlayIcon, Search, Filter } from 'lucide-react';
+import { Copy, Check, Play as PlayIcon, Search, Filter, Wand2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { PlayVoteButton } from './PlayVoteButton';
@@ -136,6 +136,17 @@ export function PlayLibrary() {
     } finally {
       setCopyingId(null);
     }
+  };
+
+  // Opens this play in the Designer without editingPlayId set, so Save
+  // creates a new play instead of updating this one (PlayDesigner.tsx's
+  // load effect) — an editable alternative to the instant handleCopy above.
+  const handleUseAsTemplate = (play: PublicPlay) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    navigate(`/designer?template=${play.id}`);
   };
 
   const gameFormatLabel = (p: PublicPlay) => p.metadata?.gameType || null;
@@ -305,26 +316,35 @@ export function PlayLibrary() {
                     userId={user?.id}
                     onError={setError}
                   />
-                  {copiedIds.has(play.id) ? (
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => navigate('/plays')}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-lg"
-                      title="View in My Plays"
+                      onClick={() => handleUseAsTemplate(play)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-chalk/70 hover:text-chalk bg-board-light hover:bg-board border border-chalk/10 rounded-lg transition-colors"
+                      title={user ? 'Open in the Designer to edit and save as a new play' : 'Sign in to use this play as a template'}
                     >
-                      <Check className="h-4 w-4" />
-                      Copied — view
+                      <Wand2 className="h-4 w-4" />
                     </button>
-                  ) : (
-                    <button
-                      onClick={() => handleCopy(play)}
-                      disabled={copyingId === play.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors disabled:opacity-50"
-                      title={user ? 'Copy this play into My Plays' : 'Sign in to copy this play'}
-                    >
-                      <Copy className="h-4 w-4" />
-                      {copyingId === play.id ? 'Copying…' : user ? 'Copy to My Plays' : 'Sign in to copy'}
-                    </button>
-                  )}
+                    {copiedIds.has(play.id) ? (
+                      <button
+                        onClick={() => navigate('/plays')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-lg"
+                        title="View in My Plays"
+                      >
+                        <Check className="h-4 w-4" />
+                        Copied — view
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleCopy(play)}
+                        disabled={copyingId === play.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors disabled:opacity-50"
+                        title={user ? 'Copy this play into My Plays' : 'Sign in to copy this play'}
+                      >
+                        <Copy className="h-4 w-4" />
+                        {copyingId === play.id ? 'Copying…' : user ? 'Copy to My Plays' : 'Sign in to copy'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

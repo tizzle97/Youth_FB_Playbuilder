@@ -67,6 +67,11 @@ export function PlayDesigner() {
   // The loaded play's current is_public, so the Save modal can prefill the
   // checkbox with reality instead of the account's generic default.
   const [loadedIsPublic, setLoadedIsPublic] = useState(false);
+  // Set whenever ANY play was loaded (via ?play= to edit, or ?template= to
+  // start a new one from it) — distinct from editingPlayId, which stays
+  // null for a template load. Used only to tell SavePlayModal "prefill from
+  // currentPlayMetadata" vs. "this is a genuinely blank new play."
+  const [loadedPlayKey, setLoadedPlayKey] = useState<string | null>(null);
   const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[]; textBoxes?: any[] } | null>(null);
 
   // Locks once the play has content — reusing history.canUndo, which is
@@ -106,13 +111,25 @@ export function PlayDesigner() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Fetch an existing play when opened via /designer?play=<id>.
-  // The parsed scene is stashed in pendingLoad and applied to the canvas by a
-  // separate effect — applying here directly is unreliable because the canvas
-  // may not be mounted yet at the moment the fetch resolves.
+  // Fetch an existing play when opened via /designer?play=<id> (edit in
+  // place) or /designer?template=<id> (start a new play from this one —
+  // "Use as Template", see PlaysPage.tsx/PlayLibrary.tsx). Both fetch the
+  // same row the same way; only what happens to editingPlayId differs
+  // below. The parsed scene is stashed in pendingLoad and applied to the
+  // canvas by a separate effect — applying here directly is unreliable
+  // because the canvas may not be mounted yet at the moment the fetch
+  // resolves.
   useEffect(() => {
     const playId = searchParams.get('play');
-    if (!playId) return;
+    const templateId = searchParams.get('template');
+    const sourceId = playId || templateId;
+    // Template loads never set editingPlayId, so handleSavePlay's existing
+    // `if (editingPlayId) UPDATE else INSERT` naturally saves this as a
+    // brand-new play — no changes needed there. RLS already permits reading
+    // any *public* play regardless of owner, so this works for community
+    // plays too, not just the signed-in user's own.
+    const isTemplate = !playId && Boolean(templateId);
+    if (!sourceId) return;
 
     let cancelled = false;
     (async () => {
@@ -120,7 +137,7 @@ export function PlayDesigner() {
         const { data, error: fetchError } = await supabase
           .from('plays')
           .select('*')
-          .eq('id', playId)
+          .eq('id', sourceId)
           .single();
         if (fetchError) throw fetchError;
         if (cancelled || !data) return;
@@ -141,11 +158,17 @@ export function PlayDesigner() {
         }
 
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
-        setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
+        const baseName = data.name || 'Untitled Play';
+        setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: isTemplate ? `Copy of ${baseName}` : baseName }));
         setPlayType(data.type === 'defense' || data.type === 'special_teams' ? data.type : 'offense');
-        setLoadedIsPublic(Boolean(data.is_public));
-        setEditingPlayId(data.id);
-        setIsEditingExistingPlay(true);
+        // A template-derived play always starts private, regardless of the
+        // source's visibility — matches PlayLibrary's instant-copy convention.
+        setLoadedIsPublic(isTemplate ? false : Boolean(data.is_public));
+        if (!isTemplate) {
+          setEditingPlayId(data.id);
+          setIsEditingExistingPlay(true);
+        }
+        setLoadedPlayKey(data.id);
         setPendingLoad({ paths, playerIcons, zones, textBoxes });
       } catch (err) {
         if (!cancelled) {
@@ -638,8 +661,8 @@ export function PlayDesigner() {
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
         preferences={preferences}
         isEditingExistingPlay={isEditingExistingPlay}
-        editingPlayId={editingPlayId}
-        existingPlay={isEditingExistingPlay ? {
+        prefillKey={loadedPlayKey}
+        existingPlay={loadedPlayKey ? {
           name: currentPlayMetadata.playName,
           metadata: currentPlayMetadata,
           isPublic: loadedIsPublic,
