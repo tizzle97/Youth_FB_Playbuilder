@@ -77,6 +77,25 @@ test('home page renders without uncaught errors', async ({ page }) => {
 const gaScriptPresent = (page: Page) =>
   page.evaluate(() => Boolean(document.querySelector('script[src*="googletagmanager.com/gtag/js"]')));
 
+/**
+ * Whether a usable GA `config` command actually reached dataLayer.
+ *
+ * The script tag existing is NOT enough: gtag.js only recognizes an entry as a command
+ * when it's an `arguments` object. A regression that pushed a plain Array instead left
+ * the tag loading normally while GA recorded nothing for three weeks, and the old
+ * script-tag-only assertion passed the whole time. Assert the shape, not the tag.
+ */
+const gaConfigCommandSent = (page: Page, measurementId: string) =>
+  page.evaluate((id) => {
+    const entries: unknown[] = (window as unknown as { dataLayer?: unknown[] }).dataLayer ?? [];
+    return entries.some(
+      (e) =>
+        Object.prototype.toString.call(e) === '[object Arguments]' &&
+        (e as IArguments)[0] === 'config' &&
+        (e as IArguments)[1] === id,
+    );
+  }, measurementId);
+
 test('GA consent banner (B-19): declining hides it and blocks the GA script', async ({ page }) => {
   await page.goto('/');
   const banner = page.getByText('We use Google Analytics', { exact: false });
@@ -91,6 +110,7 @@ test('GA consent banner (B-19): declining hides it and blocks the GA script', as
   await page.reload();
   await expect(banner).not.toBeVisible();
   expect(await gaScriptPresent(page)).toBe(false);
+  expect(await gaConfigCommandSent(page, 'G-LS75BRZG15')).toBe(false);
 });
 
 test('GA consent banner (B-19): accepting loads gtag.js and remembers the choice', async ({ page }) => {
@@ -99,9 +119,32 @@ test('GA consent banner (B-19): accepting loads gtag.js and remembers the choice
   await expect(page.getByText('We use Google Analytics', { exact: false })).not.toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('pbp-analytics-consent'))).toBe('granted');
   expect(await gaScriptPresent(page)).toBe(true);
+  expect(await gaConfigCommandSent(page, 'G-LS75BRZG15')).toBe(true);
 
   await page.reload();
   expect(await gaScriptPresent(page)).toBe(true);
+  expect(await gaConfigCommandSent(page, 'G-LS75BRZG15')).toBe(true);
+});
+
+const cfBeaconPresent = (page: Page) =>
+  page.evaluate(() =>
+    Boolean(document.querySelector('script[src*="static.cloudflareinsights.com/beacon"]')));
+
+test('Cloudflare Web Analytics is cookieless, so it loads without consent', async ({ page }) => {
+  // The whole point of the CF beacon is that it is NOT consent-gated: it measures 100% of
+  // visitors, where GA only ever sees the share who accept. If someone moves it behind the
+  // banner "for consistency", this fails.
+  await page.goto('/');
+  expect(await cfBeaconPresent(page)).toBe(true);
+  expect(await gaScriptPresent(page)).toBe(false); // GA still waits for consent
+
+  await page.getByRole('button', { name: 'Decline' }).click();
+  expect(await cfBeaconPresent(page)).toBe(true);
+  expect(await gaScriptPresent(page)).toBe(false);
+
+  // ...and it must set no cookies, which is what exempts it from the consent prompt.
+  const cookies = await page.context().cookies();
+  expect(cookies.filter((c) => /cf|cloudflare/i.test(c.name))).toEqual([]);
 });
 
 test('GA consent banner is hidden on the full-screen Play Designer', async ({ page }) => {
