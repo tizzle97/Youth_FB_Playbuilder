@@ -17,15 +17,28 @@ const CONSENT_STORAGE_KEY = 'pbp-analytics-consent';
 
 export type ConsentChoice = 'granted' | 'denied';
 
-/** The visitor's stored consent choice, or null if they haven't decided yet. */
+/**
+ * The visitor's stored consent choice, or null if they haven't decided yet.
+ * localStorage access throws outright where storage is blocked (Safari private mode,
+ * embedded contexts) — treat that as "undecided" rather than letting it take out the
+ * ConsentBanner effect that calls this.
+ */
 export function getStoredConsent(): ConsentChoice | null {
-  const value = localStorage.getItem(CONSENT_STORAGE_KEY);
-  return value === 'granted' || value === 'denied' ? value : null;
+  try {
+    const value = localStorage.getItem(CONSENT_STORAGE_KEY);
+    return value === 'granted' || value === 'denied' ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Persists the visitor's choice and loads GA immediately if they granted it. */
 export function storeConsent(choice: ConsentChoice): void {
-  localStorage.setItem(CONSENT_STORAGE_KEY, choice);
+  try {
+    localStorage.setItem(CONSENT_STORAGE_KEY, choice);
+  } catch {
+    // Storage blocked — honor the choice for this page view even if it can't persist.
+  }
   if (choice === 'granted') loadGoogleAnalytics();
 }
 
@@ -42,9 +55,14 @@ export function loadGoogleAnalytics(): void {
   document.head.appendChild(script);
 
   window.dataLayer = window.dataLayer || [];
-  window.gtag = function gtag(...args: unknown[]) {
-    window.dataLayer.push(args);
-  };
+  // Must push the `arguments` object, NOT a rest-param array. gtag.js only treats a
+  // dataLayer entry as a command (js/config/event) when it is [object Arguments]; a real
+  // Array is read as a data push and silently ignored. Using `...args` here meant no
+  // `config` ever registered, so GA recorded nothing at all — even for visitors who
+  // accepted consent. That regression zeroed analytics from 2026-07-17 until it was
+  // caught. Keep this as Google's canonical snippet.
+  // eslint-disable-next-line prefer-rest-params
+  window.gtag = function gtag() { window.dataLayer.push(arguments); };
   window.gtag('js', new Date());
   window.gtag('config', GA_MEASUREMENT_ID);
 }
