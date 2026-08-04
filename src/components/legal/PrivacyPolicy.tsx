@@ -29,7 +29,7 @@ export function PrivacyPolicy() {
             <><strong className="text-chalk">Profile and team content.</strong> Optional profile pictures you upload or icons you select, and optional team settings such as a team name and logo used on your printed playbooks.</>,
             <><strong className="text-chalk">Content you create.</strong> Plays, playbooks, community posts, comments, votes, and feedback you submit. Content you mark public (public plays, community posts) is visible to other users along with your username and avatar.</>,
             <><strong className="text-chalk">Subscription information.</strong> If you upgrade to Pro, payment is processed by Stripe. Your card number never touches our servers. We store your subscription status and Stripe customer/subscription identifiers so we can provide Pro features.</>,
-            <><strong className="text-chalk">Usage data.</strong> We use Google Analytics 4, which sets cookies and collects information such as pages visited, approximate location, and device/browser type. See &ldquo;Cookies and analytics&rdquo; below.</>,
+            <><strong className="text-chalk">Usage data.</strong> We use Cloudflare Web Analytics, which is cookieless and records only aggregate page views, referrer, and general device type — it does not track you across sites or build a profile of you. If you accept our cookie banner, we additionally use Google Analytics 4, which sets cookies and collects information such as pages visited, approximate location, and device/browser type. See &ldquo;Cookies and analytics&rdquo; below.</>,
             <><strong className="text-chalk">Technical data.</strong> A session token stored in your browser&rsquo;s local storage keeps you signed in.</>,
           ]}
         />
@@ -62,11 +62,18 @@ export function PrivacyPolicy() {
 
       <LegalSection heading="Cookies and analytics">
         <p>
-          We use Google Analytics 4 to understand aggregate site usage, but only after you accept the cookie
-          consent banner shown on your first visit. It sets cookies and may collect your IP-derived approximate
-          location and device information. Declining means Google Analytics never loads and no analytics
-          cookies are set; you can change your mind at any time by clearing your browser&rsquo;s local storage
-          for this site, or opt out with the{' '}
+          <strong className="text-chalk">Cloudflare Web Analytics.</strong> We use Cloudflare Web Analytics on
+          every page to count visits. It is cookieless: it sets no cookies, writes nothing to your browser
+          storage, and does not use fingerprinting or any cross-site identifier. Because it cannot identify or
+          follow you, it runs without a consent prompt and there is nothing to opt out of. It reports only
+          aggregate figures such as page views, referring site, and broad device category.
+        </p>
+        <p>
+          <strong className="text-chalk">Google Analytics 4.</strong> We use GA4 to understand aggregate site
+          usage, but only after you accept the cookie consent banner shown on your first visit. It sets cookies
+          and may collect your IP-derived approximate location and device information. Declining means Google
+          Analytics never loads and no analytics cookies are set; you can change your mind at any time by
+          clearing your browser&rsquo;s local storage for this site, or opt out with the{' '}
           <a className="text-primary hover:underline" href="https://tools.google.com/dlpage/gaoptout" rel="noopener noreferrer" target="_blank">Google Analytics opt-out browser add-on</a>.
           Apart from analytics, we use browser storage only for essential functions such as keeping you signed in.
         </p>

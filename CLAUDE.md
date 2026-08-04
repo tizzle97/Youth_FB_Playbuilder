@@ -24,6 +24,16 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
   cookie consent banner (`ConsentBanner.tsx`); the measurement ID lives in that
   file. Declining means gtag.js never loads (asserted by smoke tests, and
   promised by the live Privacy Policy — don't make GA unconditional).
+  **Cloudflare Web Analytics is the opposite and that's intentional:** a static
+  tag in `index.html`, cookieless, *not* consent-gated, so it measures 100% of
+  visitors (GA only ever sees the share who accept). Don't "fix" it by moving it
+  behind the banner. Its site token is public, like the GA measurement ID.
+  ⚠ **In `analytics.ts`, gtag must push `arguments`, never a rest-param array** —
+  gtag.js only treats `[object Arguments]` entries as commands, so an array
+  silently discards every `config`/`event` and GA records nothing at all. That
+  exact regression zeroed analytics 2026-07-17 → 2026-08-04; the smoke suite now
+  asserts a real `config` command reached `dataLayer`, not just that the script
+  tag exists.
 
 ## Commands
 - `npm run dev` — local dev server
