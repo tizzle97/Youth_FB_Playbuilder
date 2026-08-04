@@ -7,9 +7,11 @@ import { checkIsAdmin } from '../../lib/admin';
 
 interface UserMenuProps {
   user: SupabaseUser;
+  /** Hide the username label — used in the cramped mobile navbar row. */
+  showName?: boolean;
 }
 
-export function UserMenu({ user }: UserMenuProps) {
+export function UserMenu({ user, showName = true }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -147,6 +149,7 @@ export function UserMenu({ user }: UserMenuProps) {
     >
       <button
         onClick={() => isMobile && setIsOpen(!isOpen)}
+        aria-label={showName ? undefined : displayName}
         className="flex items-center gap-2 px-3 py-2 rounded-md text-chalk hover:bg-board transition-colors"
       >
         <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
@@ -160,14 +163,16 @@ export function UserMenu({ user }: UserMenuProps) {
             <User className="h-5 w-5 text-primary" />
           )}
         </div>
-        <span className="text-sm font-medium">
-          {displayName}
-          {isAdmin && (
-            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary/20 text-primary">
-              Admin
-            </span>
-          )}
-        </span>
+        {showName && (
+          <span className="text-sm font-medium">
+            {displayName}
+            {isAdmin && (
+              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary/20 text-primary">
+                Admin
+              </span>
+            )}
+          </span>
+        )}
       </button>
 
       {isOpen && (
@@ -178,7 +183,8 @@ export function UserMenu({ user }: UserMenuProps) {
         >
           <div className="px-4 py-2 text-sm text-chalk/70 border-b border-chalk/10">
             Signed in as<br />
-            <span className="font-medium text-chalk">{user.email}</span>
+            {/* break-all: long addresses otherwise spill past the w-48 panel */}
+            <span className="font-medium text-chalk break-all">{user.email}</span>
           </div>
           
           {isAdmin && (

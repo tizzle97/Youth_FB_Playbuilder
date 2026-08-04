@@ -42,6 +42,10 @@ export function Navbar() {
     { path: '/blog', label: 'Blog' }
   ];
 
+  // Deliberately no `position`/`z-index` here: the nav must stay a plain in-flow box so it
+  // doesn't form a stacking context. That lets UserMenu's `z-50` dropdown compete in the root
+  // context and paint above the Hero's `relative z-10`. Adding `relative z-50` here instead
+  // floats the whole bar over page content and swallows clicks on the designer toolbar.
   return (
     <nav className="bg-board-light border-b border-chalk/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -80,7 +84,8 @@ export function Navbar() {
               </button>
             )}
           </div>
-          <div className="flex items-center sm:hidden">
+          <div className="flex items-center gap-1 sm:hidden">
+            {user && <UserMenu user={user} showName={false} />}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-chalk/70 hover:text-chalk hover:bg-board-light focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
@@ -116,7 +121,7 @@ export function Navbar() {
                 <>
                   <div className="px-4 py-2 text-sm text-chalk/70">
                     Signed in as<br />
-                    <span className="font-medium text-chalk">{user.email}</span>
+                    <span className="font-medium text-chalk break-all">{user.email}</span>
                   </div>
                   <button
                     onClick={() => {

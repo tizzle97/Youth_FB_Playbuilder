@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Link } from 'react-router-dom';
-import { UserMenu } from './auth/UserMenu';
 import { HeroPlayCard } from './HeroPlayCard';
 import { supabase } from '../lib/supabase';
 
@@ -66,11 +65,6 @@ export function Hero() {
 
       <div className="max-w-7xl mx-auto">
         <div className="relative z-10 pb-8 bg-transparent sm:pb-16 md:pb-20 lg:pb-24 xl:pb-28">
-          <div className="absolute right-0 top-4 sm:hidden">
-            {user ? (
-              <UserMenu user={user} />
-            ) : null}
-          </div>
           <main className="mt-10 mx-auto max-w-7xl px-4 sm:mt-12 sm:px-6 md:mt-16 lg:mt-20 lg:px-8 xl:mt-24">
             <div className="lg:grid lg:grid-cols-2 lg:gap-12 lg:items-center">
               <div className="text-center lg:text-left max-w-3xl mx-auto lg:mx-0 lg:max-w-none">
