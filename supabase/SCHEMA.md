@@ -25,7 +25,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `user_preferences.sql` | applied (2026-07-15) | B-14/B-15 per-user settings: team identity (name/logo for export stamping), default game format, save & export defaults. |
 | `blog_seo.sql` | applied (2026-07-15) | SEO: adds `blog_posts.slug` (unique, backfilled), `description`, `status ('draft'\|'published')`; public SELECT now shows published only (admins see drafts). |
 | `football_avatars.sql` | **pending — needs SQL run** | Replaces the seeded Dicebear "bottts" robot avatar icons with 8 self-contained football-themed SVG data URIs (football, helmet, flag, whistle, goalpost, cleat, playbook, trophy). Repoints any user on an old icon to the new default first. |
-| `playbook_packs.sql` | **pending — needs SQL run** | B-33 starter playbook packs: adds `playbooks.is_public`; public-read policies for public playbooks, their `playbook_plays` rows, and the plays inside them; `clone_playbook_pack(pack_playbook_id)` (Pro-gated, `SECURITY DEFINER`) clones a public playbook + its plays into the caller's own account. |
+| `playbook_packs.sql` | applied (2026-08-03) | B-33 starter playbook packs: adds `playbooks.is_public`; public-read policies for public playbooks, their `playbook_plays` rows, and the plays inside them; `clone_playbook_pack(pack_playbook_id)` (Pro-gated, `SECURITY DEFINER`) clones a public playbook + its plays into the caller's own account. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.

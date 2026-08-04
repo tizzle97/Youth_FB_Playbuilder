@@ -151,9 +151,11 @@ Requires B-31's generation/thumbnail tooling to exist first.
   preserving order — one round trip, atomic. Individual plays already clone
   for free via the Play Library (B-30); bundling a whole curated pack in one
   tap is the Pro differentiator, so the function raises a new custom
-  SQLSTATE `PBP03` (mapped to a friendly message in `src/lib/errors.ts`,
+  SQLSTATE `PBP04` (mapped to a friendly message in `src/lib/errors.ts`,
   same pattern as B-1's `PBP01`/`PBP02`) if the caller isn't `is_pro()`, and
-  `PBP04` if the target isn't actually a public playbook. Free/signed-out
+  `PBP05` if the target isn't actually a public playbook — renumbered from
+  the original `PBP03`/`PBP04` during the merge-conflict fix below, since
+  `PBP03` was claimed by `custom_formations.sql` in the meantime. Free/signed-out
   visitors can browse and see the pack contents count, but the clone button
   shows a Pro lock (signed-out click routes to `/auth` first, matching
   `PlayLibrary.tsx`'s existing copy-gate UX). New RLS policies let
@@ -163,10 +165,13 @@ Requires B-31's generation/thumbnail tooling to exist first.
   public. **Not done, per the item's original scope:** actually seeding any
   real starter packs (no official-account public playbooks exist yet — this
   ships the capability, not the content) and the pricing-copy update, both
-  deferred to human review/action. **⚠ requires SQL run:**
+  deferred to human review/action. **✅ SQL run 2026-08-03:**
   `supabase/playbook_packs.sql` (adds `playbooks.is_public`, three RLS
   policies, and the `clone_playbook_pack()` function — idempotent, safe to
-  re-run). **Verification:** `npx tsc --noEmit` and `npm run build` both
+  re-run). PR #23 conflicted with main (wristband export, custom
+  formations, and "Use as Template" had landed since this was branched) —
+  resolved 2026-08-03 (see the `PBP04`/`PBP05` renumbering above), merged,
+  then this SQL was run. **Verification:** `npx tsc --noEmit` and `npm run build` both
   pass clean; `npm run lint` shows only pre-existing errors (all in
   `scripts/seed-library/*.mjs`, unrelated to this change) plus warnings, no
   new errors. Full Playwright smoke suite (33/33) passed against a
