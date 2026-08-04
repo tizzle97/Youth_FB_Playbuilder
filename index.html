@@ -38,5 +38,17 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Cloudflare Web Analytics — cookieless, so unlike GA it is NOT consent-gated and
+         loads for every visitor (including on /designer, where the banner is hidden).
+         This is deliberately a static tag, not a conditional import like analytics.ts:
+         there is no consent decision to wait for. The token is a public site token,
+         same as the GA measurement ID — not a secret.
+         Requires static.cloudflareinsights.com in script-src and cloudflareinsights.com
+         in connect-src (public/_headers), or it fails silently. -->
+    <script
+      type="module"
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "b57642dff5a44b7c942b23f56663faf5"}'
+    ></script>
   </body>
 </html>
