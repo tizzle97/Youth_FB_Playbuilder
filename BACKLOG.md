@@ -20,6 +20,18 @@ section); schema context lives in `supabase/SCHEMA.md`.
    you discover new work, append it to the bottom of Up next — don't reprioritize
    without a human.
 
+### Two automated lanes — stay in yours
+
+- **Nightly backlog routine** owns `nightly/*` branches and works this file
+  top-down.
+- **Feedback triage routine** (`docs/automation/feedback-triage.md`) owns
+  `feedback/*` branches and works the `feedback` table.
+
+Neither touches the other's branches, so either can be paused alone. Items
+prefixed **`[from feedback]`** were filed by the triage routine and are already
+classified — treat them as normal backlog items; don't re-triage them or go
+looking for the original submission.
+
 ## Up next
 
 ### B-18 · Stripe go-live: swap sandbox → live mode (human)
@@ -140,6 +152,37 @@ Requires B-31's generation/thumbnail tooling to exist first.
 
 ## Done
 
+- **2026-08-04 · B-35: Automated feedback triage** — a scheduled agent now
+  reads user-submitted feedback and routes it by kind instead of letting it
+  sit in the admin tab: **bugs** → fix on a `feedback/bug-*` branch → PR you
+  review and merge; **feature requests** → design proposal in
+  `docs/proposals/` + a `[from feedback]` backlog entry on a **draft** PR, no
+  speculative feature code. Pieces: `supabase/feedback_triage.sql` (additive
+  `triage_class`/`triage_state`/`triage_ref`/`triage_notes`/`triaged_at`
+  columns — deliberately separate from the human-owned `status` column so
+  automation can't make the admin UI misreport what a person has reviewed);
+  `supabase/functions/feedback-triage/` (Edge Function, shared-secret auth,
+  service role stays server-side — chosen over handing the agent a
+  service-role key so a leaked token can only read feedback and mark it
+  triaged, not touch `users`/`subscriptions`/`plays`); and
+  `docs/automation/feedback-triage.md`, the routine prompt **checked into the
+  repo** rather than living only in the cloud UI like the nightly routine's
+  does. Feedback text is untrusted public input, so the prompt treats it
+  strictly as data, never instructions; submissions that try to issue
+  commands are classified `injection`, flagged for a human, and never acted
+  on. Bugs touching billing/auth/RLS/legal/SQL are never auto-coded
+  regardless of type — they become backlog entries (agent rule 4). Caps per
+  run: ≤10 items, ≤3 code PRs. The endpoint deliberately withholds `user_id`
+  and submitter email so no PII can reach a public PR. Also fixed a duplicate
+  `## Done` heading this file picked up in the B-33 merge.
+  **⚠ requires SQL run:** `supabase/feedback_triage.sql`. **Also required
+  before it runs:** `supabase secrets set FEEDBACK_TRIAGE_SECRET=…`,
+  `supabase functions deploy feedback-triage --no-verify-jwt`, and creating
+  the routine (see the doc). **Verification:** `npm run typecheck` and
+  `npm run build` clean, smoke suite 46/46; auth logic unit-tested for
+  constant-time compare, prefix/length rejection, and fail-closed behavior
+  when the secret is unset.
+
 - **2026-07-23 · B-33: Starter playbook packs (Pro hook)** — a "pack" is a
   public playbook (`playbooks.is_public`, new column) that any signed-in
   visitor can browse via a new "Starter Packs" tab on `/playbooks`
@@ -183,8 +226,6 @@ Requires B-31's generation/thumbnail tooling to exist first.
   canvas or its save/load path, which is the smoke suite's scope (existing
   precedent: B-22's PlaybooksPage usage-nudge banner also shipped without
   smoke coverage for the same reason).
-
-## Done
 
 - **2026-07-23 · Universal playbook-style field (17/13 window) + coordinate
   migration** — one field for every game format, styled after a printed flag

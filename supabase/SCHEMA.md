@@ -26,6 +26,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `blog_seo.sql` | applied (2026-07-15) | SEO: adds `blog_posts.slug` (unique, backfilled), `description`, `status ('draft'\|'published')`; public SELECT now shows published only (admins see drafts). |
 | `football_avatars.sql` | **pending — needs SQL run** | Replaces the seeded Dicebear "bottts" robot avatar icons with 8 self-contained football-themed SVG data URIs (football, helmet, flag, whistle, goalpost, cleat, playbook, trophy). Repoints any user on an old icon to the new default first. |
 | `playbook_packs.sql` | applied (2026-08-03) | B-33 starter playbook packs: adds `playbooks.is_public`; public-read policies for public playbooks, their `playbook_plays` rows, and the plays inside them; `clone_playbook_pack(pack_playbook_id)` (Pro-gated, `SECURITY DEFINER`) clones a public playbook + its plays into the caller's own account. |
+| `feedback_triage.sql` | **pending — needs SQL run** | B-35 automated feedback triage: additive `triage_class`/`triage_state`/`triage_ref`/`triage_notes`/`triaged_at` columns on `feedback` + a partial index on untriaged rows. No RLS or existing-column changes. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -67,7 +68,7 @@ idempotent `.sql` file and update this doc in the same change.
 ### Platform
 | Table | Key columns | RLS summary |
 |---|---|---|
-| `feedback` | `id`, `user_id`, `type ('bug'\|'feature'\|'general')`, `content`, `status ('pending'\|'reviewed'\|'resolved')`, timestamps | User inserts/reads own; admins read+update all (`feedback_admin.sql`). |
+| `feedback` | `id`, `user_id`, `type ('bug'\|'feature'\|'general')`, `content`, `status ('pending'\|'reviewed'\|'resolved')`, timestamps. Triage columns (B-35, `feedback_triage.sql`): `triage_class ('bug'\|'feature'\|'general'\|'spam'\|'injection')`, `triage_state ('untriaged'\|'triaged'\|'skipped'\|'flagged')`, `triage_ref`, `triage_notes`, `triaged_at` | User inserts/reads own; admins read+update all (`feedback_admin.sql`). No DELETE policy exists — nobody can delete feedback via the client. **`status` is the human admin workflow** (shown in `FeedbackManagement.tsx`); **`triage_state` is the agent's**, deliberately separate so automation can't make the admin UI misreport what a human has reviewed. Triage columns are written only by the `feedback-triage` Edge Function (service role). |
 | `blog_posts` | `id`, `author_id`, `title`, `content`, `slug` (unique), `description`, `status ('draft'\|'published')`, `published_at`, timestamps | Public SELECT of published rows only; admins see drafts and manage all (RLS + `enforce_admin_blog_posts` trigger). Served at `/blog/<slug>`; listed in `/sitemap.xml` (edge fn `sitemap`). |
 | `admin_users` | `user_id` (PK→auth.users), `created_at` | Only admins can SELECT. Insert via SQL only. Grant admin: `INSERT INTO admin_users (user_id) SELECT id FROM auth.users WHERE email='you@example.com';` |
 | `subscriptions` | `user_id` (PK), `plan ('free'\|'founding'\|'pro')`, `status`, `stripe_customer_id`, `stripe_subscription_id`, `current_period_end`, timestamps | User reads **own only**. Writes via Stripe webhook (service role) / admin SQL only — never the client. |
