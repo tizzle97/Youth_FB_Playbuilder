@@ -7,7 +7,7 @@ import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
-import type { CanvasHandle, DrawMode, IconShape, PlayerIcon } from './Canvas';
+import type { CanvasHandle, DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -33,9 +33,15 @@ export function PlayDesigner() {
 
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
+  // Ending decoration + line style for the next route finished — sticky
+  // until changed, independent of drawMode (shape) so e.g. a curved route
+  // can end in a block T-cap and be dashed at the same time.
+  const [capStyle, setCapStyle] = useState<CapStyle>('arrow');
+  const [dashed, setDashed] = useState(false);
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
+  const [textMode, setTextMode] = useState(false);
   // Visio-style alignment snapping (icons/centerline/yard grid) — on by default
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedPlayer, setSelectedPlayer] = useState<{ letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null>(null);
@@ -61,7 +67,12 @@ export function PlayDesigner() {
   // The loaded play's current is_public, so the Save modal can prefill the
   // checkbox with reality instead of the account's generic default.
   const [loadedIsPublic, setLoadedIsPublic] = useState(false);
-  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[] } | null>(null);
+  // Set whenever ANY play was loaded (via ?play= to edit, or ?template= to
+  // start a new one from it) — distinct from editingPlayId, which stays
+  // null for a template load. Used only to tell SavePlayModal "prefill from
+  // currentPlayMetadata" vs. "this is a genuinely blank new play."
+  const [loadedPlayKey, setLoadedPlayKey] = useState<string | null>(null);
+  const [pendingLoad, setPendingLoad] = useState<{ paths: any[]; playerIcons: any[]; zones?: any[]; textBoxes?: any[] } | null>(null);
 
   // Locks once the play has content — reusing history.canUndo, which is
   // already true exactly when there's committed history or an in-progress
@@ -100,13 +111,25 @@ export function PlayDesigner() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Fetch an existing play when opened via /designer?play=<id>.
-  // The parsed scene is stashed in pendingLoad and applied to the canvas by a
-  // separate effect — applying here directly is unreliable because the canvas
-  // may not be mounted yet at the moment the fetch resolves.
+  // Fetch an existing play when opened via /designer?play=<id> (edit in
+  // place) or /designer?template=<id> (start a new play from this one —
+  // "Use as Template", see PlaysPage.tsx/PlayLibrary.tsx). Both fetch the
+  // same row the same way; only what happens to editingPlayId differs
+  // below. The parsed scene is stashed in pendingLoad and applied to the
+  // canvas by a separate effect — applying here directly is unreliable
+  // because the canvas may not be mounted yet at the moment the fetch
+  // resolves.
   useEffect(() => {
     const playId = searchParams.get('play');
-    if (!playId) return;
+    const templateId = searchParams.get('template');
+    const sourceId = playId || templateId;
+    // Template loads never set editingPlayId, so handleSavePlay's existing
+    // `if (editingPlayId) UPDATE else INSERT` naturally saves this as a
+    // brand-new play — no changes needed there. RLS already permits reading
+    // any *public* play regardless of owner, so this works for community
+    // plays too, not just the signed-in user's own.
+    const isTemplate = !playId && Boolean(templateId);
+    if (!sourceId) return;
 
     let cancelled = false;
     (async () => {
@@ -114,31 +137,39 @@ export function PlayDesigner() {
         const { data, error: fetchError } = await supabase
           .from('plays')
           .select('*')
-          .eq('id', playId)
+          .eq('id', sourceId)
           .single();
         if (fetchError) throw fetchError;
         if (cancelled || !data) return;
 
-        // canvas_data is JSON { version, paths, playerIcons, zones } (normalized coords)
+        // canvas_data is JSON { version, paths, playerIcons, zones, textBoxes } (normalized coords)
         let paths: any[] = [];
         let playerIcons: any[] = [];
         let zones: any[] = [];
+        let textBoxes: any[] = [];
         try {
           const parsed = JSON.parse(data.canvas_data || '{}');
           paths = Array.isArray(parsed.paths) ? parsed.paths : [];
           playerIcons = Array.isArray(parsed.playerIcons) ? parsed.playerIcons : [];
           zones = Array.isArray(parsed.zones) ? parsed.zones : [];
+          textBoxes = Array.isArray(parsed.textBoxes) ? parsed.textBoxes : [];
         } catch {
           throw new Error('This play could not be opened (unrecognized format).');
         }
 
         const meta = (data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
-        setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: data.name || 'Untitled Play' }));
+        const baseName = data.name || 'Untitled Play';
+        setCurrentPlayMetadata((prev) => ({ ...prev, ...meta, playName: isTemplate ? `Copy of ${baseName}` : baseName }));
         setPlayType(data.type === 'defense' || data.type === 'special_teams' ? data.type : 'offense');
-        setLoadedIsPublic(Boolean(data.is_public));
-        setEditingPlayId(data.id);
-        setIsEditingExistingPlay(true);
-        setPendingLoad({ paths, playerIcons, zones });
+        // A template-derived play always starts private, regardless of the
+        // source's visibility — matches PlayLibrary's instant-copy convention.
+        setLoadedIsPublic(isTemplate ? false : Boolean(data.is_public));
+        if (!isTemplate) {
+          setEditingPlayId(data.id);
+          setIsEditingExistingPlay(true);
+        }
+        setLoadedPlayKey(data.id);
+        setPendingLoad({ paths, playerIcons, zones, textBoxes });
       } catch (err) {
         if (!cancelled) {
           console.error('Load play error:', err);
@@ -260,6 +291,7 @@ export function PlayDesigner() {
         paths: canvasRef.current?.getPaths?.() ?? [],
         playerIcons: canvasRef.current?.getIcons?.() ?? [],
         zones: canvasRef.current?.getZones?.() ?? [],
+        textBoxes: canvasRef.current?.getTextBoxes?.() ?? [],
       }),
     };
     return () => { delete (window as any).__PBP_TEST__; };
@@ -294,12 +326,17 @@ export function PlayDesigner() {
         return;
       }
 
-      // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx)
+      // Play data is stored in normalized 0-1 coordinates (see Canvas.tsx).
+      // Version 4 = coordinates in the 17-up/13-down (30-yard) field window
+      // (2026-07-23); version ≤3 rows were remapped from the older 25-yard
+      // window by scripts/migrate-field-depth-2026-07.mjs, which keys on
+      // this number — bump it again if the window ever changes again.
       const canvasData = JSON.stringify({
-        version: 3,
+        version: 4,
         paths: canvasRef.current?.getPaths?.() || [],
         playerIcons: canvasRef.current?.getIcons?.() || [],
         zones: canvasRef.current?.getZones?.() || [],
+        textBoxes: canvasRef.current?.getTextBoxes?.() || [],
       });
       const thumbnail = canvasRef.current?.exportImage?.(660, 510) || '';
 
@@ -471,16 +508,23 @@ export function PlayDesigner() {
             gameType={currentPlayMetadata.gameType}
             onSetGameType={handleSetGameType}
             onStampFormation={handleStampFormation}
+            getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
             drawingMode={drawingMode}
             setDrawingMode={setDrawingMode}
             drawMode={drawMode}
             setDrawMode={setDrawMode}
+            capStyle={capStyle}
+            setCapStyle={setCapStyle}
+            dashed={dashed}
+            setDashed={setDashed}
             deleteRouteMode={deleteRouteMode}
             setDeleteRouteMode={setDeleteRouteMode}
             zoneMode={zoneMode}
             setZoneMode={setZoneMode}
             deleteZoneMode={deleteZoneMode}
             setDeleteZoneMode={setDeleteZoneMode}
+            textMode={textMode}
+            setTextMode={setTextMode}
             snapEnabled={snapEnabled}
             setSnapEnabled={setSnapEnabled}
             selectedPlayer={selectedPlayer?.letter || null}
@@ -507,12 +551,14 @@ export function PlayDesigner() {
               id="play-canvas"
               width={canvasSize.width * zoom}
               height={canvasSize.height * zoom}
-              gameType={currentPlayMetadata.gameType}
               drawingMode={drawingMode}
               drawMode={drawMode}
+              capStyle={capStyle}
+              dashed={dashed}
               deleteRouteMode={deleteRouteMode}
               zoneMode={zoneMode}
               deleteZoneMode={deleteZoneMode}
+              textMode={textMode}
               snapEnabled={snapEnabled}
               selectedPlayer={selectedPlayer}
               setSelectedPlayer={setSelectedPlayer}
@@ -564,16 +610,23 @@ export function PlayDesigner() {
           gameType={currentPlayMetadata.gameType}
           onSetGameType={handleSetGameType}
           onStampFormation={handleStampFormation}
+          getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
           drawingMode={drawingMode}
           setDrawingMode={setDrawingMode}
           drawMode={drawMode}
           setDrawMode={setDrawMode}
+          capStyle={capStyle}
+          setCapStyle={setCapStyle}
+          dashed={dashed}
+          setDashed={setDashed}
           deleteRouteMode={deleteRouteMode}
           setDeleteRouteMode={setDeleteRouteMode}
           zoneMode={zoneMode}
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}
           setDeleteZoneMode={setDeleteZoneMode}
+          textMode={textMode}
+          setTextMode={setTextMode}
           snapEnabled={snapEnabled}
           setSnapEnabled={setSnapEnabled}
           selectedPlayer={selectedPlayer?.letter || null}
@@ -608,8 +661,8 @@ export function PlayDesigner() {
         previewThumbnail={canvasRef.current?.exportImage?.(660, 510) || ''}
         preferences={preferences}
         isEditingExistingPlay={isEditingExistingPlay}
-        editingPlayId={editingPlayId}
-        existingPlay={isEditingExistingPlay ? {
+        prefillKey={loadedPlayKey}
+        existingPlay={loadedPlayKey ? {
           name: currentPlayMetadata.playName,
           metadata: currentPlayMetadata,
           isPublic: loadedIsPublic,

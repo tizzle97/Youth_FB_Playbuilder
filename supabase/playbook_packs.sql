@@ -42,10 +42,11 @@ CREATE POLICY "Anyone can read plays in public playbooks"
   );
 
 -- Clones a public playbook pack into the caller's own account. Pro-gated
--- (PBP03) and re-checks the source is actually a public pack (PBP04) —
+-- (PBP04) and re-checks the source is actually a public pack (PBP05) —
 -- mirrors the enforce_*_free_limit() trigger convention in
--- free_tier_limits.sql (custom SQLSTATE, user-safe message). Only Pro callers
--- ever reach the inserts below, and Pro users are already exempt from the
+-- free_tier_limits.sql (custom SQLSTATE, user-safe message). PBP03 is
+-- already taken by custom_formations.sql's Pro gate. Only Pro callers ever
+-- reach the inserts below, and Pro users are already exempt from the
 -- free-tier INSERT triggers on plays/playbooks, so no separate handling of
 -- those limits is needed here.
 CREATE OR REPLACE FUNCTION clone_playbook_pack(pack_playbook_id uuid)
@@ -63,7 +64,7 @@ DECLARE
 BEGIN
   IF NOT is_pro() THEN
     RAISE EXCEPTION 'Cloning a starter playbook pack requires Pro. Upgrade to Pro for unlimited playbooks and one-tap pack cloning.'
-      USING ERRCODE = 'PBP03';
+      USING ERRCODE = 'PBP04';
   END IF;
 
   SELECT name, description INTO pack_name, pack_description
@@ -71,7 +72,7 @@ BEGIN
 
   IF pack_name IS NULL THEN
     RAISE EXCEPTION 'This starter playbook pack could not be found.'
-      USING ERRCODE = 'PBP04';
+      USING ERRCODE = 'PBP05';
   END IF;
 
   INSERT INTO playbooks (user_id, name, description)

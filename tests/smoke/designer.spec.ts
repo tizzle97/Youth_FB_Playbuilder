@@ -22,9 +22,10 @@ const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-aut
 const TAP_GAP = 450;
 
 type CanvasState = {
-  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string }>;
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
+  textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
 };
 
 async function openDesigner(page: Page) {
@@ -288,7 +289,74 @@ test('offense: place a player, draw a straight route, undo both', async ({ page 
   expect(state.playerIcons).toHaveLength(0);
 });
 
-test('offense: draw a block assignment (B-25), path mode is "block", undo clears it', async ({ page }) => {
+// Drag-to-draw route segments with axis-lock snapping: press-drag-release
+// rubber-bands a segment from the route's tip; within the snap tolerance of
+// dead-vertical/horizontal the point locks onto the axis (perfect
+// 90°-from-LOS go routes), while real diagonals (slants/posts) are untouched.
+// The old tap-tap flow is a press-release with no movement and must keep
+// working — covered by the straight-route test above.
+test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, respects magnet toggle', async ({ page }) => {
+  await openDesigner(page);
+
+  // Receiver off-center so the field-centerline snap can't interfere.
+  await btn(page, 'Player X').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = state.playerIcons[0];
+
+  // Press the icon and drag out ~5px off vertical in one motion.
+  await btn(page, 'Straight Line Route').click();
+  const iconPx = await canvasPoint(page, icon.x, icon.y);
+  await page.mouse.move(iconPx.x, iconPx.y);
+  await page.mouse.down();
+  await page.mouse.move(iconPx.x + 5, iconPx.y - 180, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points[1].x).toBe(state.paths[0].points[0].x); // exact vertical
+
+  // A real slant (far outside tolerance) keeps its angle.
+  await btn(page, 'Player Y').click();
+  const spot2 = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(spot2.x, spot2.y);
+  state = await canvasState(page);
+  const icon2 = state.playerIcons[1];
+  await btn(page, 'Straight Line Route').click();
+  const icon2Px = await canvasPoint(page, icon2.x, icon2.y);
+  await page.mouse.move(icon2Px.x, icon2Px.y);
+  await page.mouse.down();
+  await page.mouse.move(icon2Px.x + 120, icon2Px.y - 140, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  expect(Math.abs(state.paths[1].points[1].x - state.paths[1].points[0].x)).toBeGreaterThan(0.05);
+
+  // Magnet off: the same near-vertical drag stays freehand.
+  await btn(page, 'Snap to alignment').click();
+  await btn(page, 'Player Z').click();
+  const spot3 = await canvasPoint(page, 0.8, 0.6);
+  await page.mouse.click(spot3.x, spot3.y);
+  state = await canvasState(page);
+  const icon3 = state.playerIcons[2];
+  await btn(page, 'Straight Line Route').click();
+  const icon3Px = await canvasPoint(page, icon3.x, icon3.y);
+  await page.mouse.move(icon3Px.x, icon3Px.y);
+  await page.mouse.down();
+  await page.mouse.move(icon3Px.x + 5, icon3Px.y - 180, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(3);
+  expect(state.paths[2].points[1].x).not.toBe(state.paths[2].points[0].x);
+});
+
+test('offense: block ending toggle on Straight mode, path mode stays "straight", capStyle is "block", undo clears it', async ({ page }) => {
   await openDesigner(page);
 
   // Place a lineman
@@ -298,8 +366,10 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
   let state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(1);
 
-  // Block mode uses the same click-to-place-points flow as Straight
-  await btn(page, 'Block Assignment (tap points, double-tap to finish)').click();
+  // Block is now an ending-style toggle, not its own mode — select Straight,
+  // then switch the ending to Block before drawing.
+  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -309,7 +379,8 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
 
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
-  expect(state.paths[0].mode).toBe('block');
+  expect(state.paths[0].mode).toBe('straight');
+  expect(state.paths[0].capStyle).toBe('block');
   expect(state.paths[0].startIconIndex).toBe(0);
 
   // Undo removes the block path first, then the icon — same history
@@ -322,6 +393,120 @@ test('offense: draw a block assignment (B-25), path mode is "block", undo clears
   await btn(page, 'Undo').click();
   state = await canvasState(page);
   expect(state.playerIcons).toHaveLength(0);
+});
+
+test('offense: curved route with block ending and dotted line — new combination not possible under the old 3-mode toolbar', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player C').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
+  await btn(page, 'Line style: Solid / Dotted').click();
+
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.5, 0.45);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('waypoint');
+  expect(state.paths[0].capStyle).toBe('block');
+  expect(state.paths[0].dashed).toBe(true);
+});
+
+test('custom formations: signed-out/free user sees a locked upsell instead of the save flow', async ({ page }) => {
+  await openDesigner(page);
+  await btn(page, 'Formation templates').click();
+  const lockedRow = page.getByText('Save your own formations — Pro');
+  await expect(lockedRow).toBeVisible();
+  // Never even attempts a custom_formations fetch for non-Pro users.
+  await expect(page.getByText('Save current arrangement')).toHaveCount(0);
+
+  await lockedRow.click();
+  await expect(page.getByText('Custom formations is a Pro feature')).toBeVisible();
+});
+
+test('custom formations (Pro): save current icons, see it listed, stamp it, then delete it', async ({ page }) => {
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated', role: 'authenticated', email: 'pro-coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'pro', current_period_end: null }) }));
+
+  const savedRow = {
+    id: 'cf-1', name: 'My Trips Set', game_type: '11v11',
+    icons: [{ x: 0.5, y: 0.6, letter: 'Q', color: '#3B82F6', shape: 'circle' }],
+  };
+  // Reflects real backend state across the test's save → reopen → delete →
+  // reopen sequence, since the menu refetches the list every time it opens.
+  let stored: typeof savedRow | null = null;
+  await page.route('**/rest/v1/custom_formations**', (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stored ? [stored] : []) });
+    }
+    if (method === 'POST') {
+      stored = savedRow;
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(savedRow) });
+    }
+    if (method === 'DELETE') {
+      stored = null;
+      return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
+    }
+    return route.continue();
+  });
+
+  await openDesigner(page);
+
+  // Place one icon so there's something to save.
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+
+  await btn(page, 'Formation templates').click();
+  await expect(page.getByText('Save your own formations')).toHaveCount(0);
+  const popover = page.locator('div.fixed.z-40');
+  await popover.getByText('Save current arrangement').click();
+  await popover.getByPlaceholder('Formation name').fill('My Trips Set');
+  await popover.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByRole('button', { name: 'My Trips Set' })).toBeVisible();
+
+  // Clear the field, then stamp the just-saved custom formation back on.
+  await page.keyboard.press('Escape').catch(() => {});
+  await btn(page, 'Clear All').click();
+  expect((await canvasState(page)).playerIcons).toHaveLength(0);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'My Trips Set' }));
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+  expect((await canvasState(page)).playerIcons[0].letter).toBe('Q');
+
+  // Delete it and confirm it's gone from the list.
+  await btn(page, 'Formation templates').click();
+  await page.locator('button[title="Delete this formation"]').click();
+  await expect(page.getByRole('button', { name: 'My Trips Set' })).toHaveCount(0);
 });
 
 test('formation templates (B-24): stamping I-Formation places 11 icons as one undo entry', async ({ page }) => {
@@ -392,13 +577,10 @@ test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 s
   expect(state.playerIcons).toHaveLength(5);
 });
 
-// B-29: field rendering (hash marks) is now format-aware — 11v11 draws
-// wider-spaced youth/HS hashes, 5v5/7v7 are hashless. None of this is
-// observable through the canvas-state bridge (it's pixels, not data), so
-// this guards the wiring instead: gameType must reach the live draw path
-// and re-render cleanly for every format, with content already on canvas
-// (the case that actually exercises drawField's hash-mark branch, unlike
-// an empty field).
+// The field is one universal canvas for every game format (2026-07-23,
+// superseding B-29's format-aware hashes), but the format picker still
+// drives formation templates — this guards that switching formats with
+// content already on canvas re-renders cleanly and never disturbs it.
 test('field rendering: switching game format re-renders cleanly for every format', async ({ page }) => {
   const errors: Error[] = [];
   page.on('pageerror', (err) => errors.push(err));
@@ -536,18 +718,128 @@ test('special teams: roster swaps, zone tool available, formation menu is not', 
   await expect(page.getByRole('button', { name: 'offense', exact: true })).toBeDisabled();
 });
 
+test('text box: place, type, drag, edit, undo, delete', async ({ page }) => {
+  await openDesigner(page);
+
+  // Placing opens the editor immediately so the user can type without a second tap.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  const spot = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+  const textarea = page.getByLabel('Text box content');
+  await expect(textarea).toBeVisible();
+  await textarea.fill('SNAP ON 2');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  let state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(1);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2');
+  // Field background is white (FIELD_BG) — the default color must be legible on it.
+  expect(state.textBoxes[0].color).toBe('#000000');
+
+  // Text mode stays active across placements (like Zone mode) — switch to
+  // Select before dragging.
+  await btn(page, 'Select / Move').click();
+  const from = await canvasPoint(page, state.textBoxes[0].x, state.textBoxes[0].y);
+  const to = await canvasPoint(page, 0.6, 0.5);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  expect(state.textBoxes[0].x).toBeCloseTo(0.6, 1);
+  expect(state.textBoxes[0].y).toBeCloseTo(0.5, 1);
+
+  // A tap without movement re-opens the editor with the existing content.
+  const moved = await canvasPoint(page, state.textBoxes[0].x, state.textBoxes[0].y);
+  await page.mouse.click(moved.x, moved.y);
+  await expect(textarea).toBeVisible();
+  await expect(textarea).toHaveValue('SNAP ON 2');
+  await textarea.fill('SNAP ON 2 GO');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2 GO');
+
+  // Every content/position change pushed its own snapshot: undo the edit,
+  // then the drag, then the initial "SNAP ON 2" text, then the placement
+  // itself (which started life as an empty box before any text was typed).
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('SNAP ON 2');
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].x).toBeCloseTo(0.4, 1);
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes[0].text).toBe('');
+
+  await btn(page, 'Undo').click();
+  state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(0);
+});
+
+test('text box: Delete button removes it, Cancel on a fresh blank box discards it', async ({ page }) => {
+  await openDesigner(page);
+
+  // Delete button, on an existing (typed) box.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  let spot = await canvasPoint(page, 0.3, 0.3);
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByLabel('Text box content').fill('TO DELETE');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(1);
+
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByRole('button', { name: 'Delete' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(0);
+
+  // Cancel on a brand-new, never-typed-in box discards it rather than
+  // leaving an empty annotation.
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  spot = await canvasPoint(page, 0.6, 0.4);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByLabel('Text box content')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  expect((await canvasState(page)).textBoxes).toHaveLength(0);
+});
+
+test('text box: renders on top and wins hit-testing over an icon underneath it', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  expect((await canvasState(page)).playerIcons).toHaveLength(1);
+
+  await btn(page, 'Add a text box (tap the field to place it)').click();
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByLabel('Text box content').fill('QB');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  // Same coordinates as the icon — Select-mode tap must hit the text box
+  // (rendered on top) rather than the icon underneath it.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByLabel('Text box content')).toBeVisible();
+  await expect(page.getByLabel('Player label')).not.toBeVisible();
+});
+
 test('snap: centerline + yard grid on placement, row alignment, magnet toggles off', async ({ page }) => {
   await openDesigner(page);
 
   // Q placed slightly off-center snaps to the field centerline (x = 0.5)
-  // and its y quantizes to the 1-yard grid (field is 25 yards tall).
+  // and its y quantizes to the 1-yard grid (field is 30 yards tall).
   await btn(page, 'Player Q').click();
   const spot = await canvasPoint(page, 0.505, 0.652);
   await page.mouse.click(spot.x, spot.y);
 
   let state = await canvasState(page);
   expect(state.playerIcons[0].x).toBe(0.5);
-  const yards = state.playerIcons[0].y * 25;
+  const yards = state.playerIcons[0].y * 30;
   expect(Math.abs(yards - Math.round(yards))).toBeLessThan(1e-9);
 
   // A placed a few px off Q's row snaps to exactly Q's y — icon row
@@ -964,7 +1256,9 @@ test('account settings: free-plan user sees no Founding Member badge', async ({ 
 test('loads a saved defensive play via /designer?play= (mocked backend)', async ({ page }) => {
   // Covers the client half of the save→reload seam without needing an
   // authenticated Supabase session: version-3 canvas_data with icons, a
-  // route, and a zone must all land back on the canvas.
+  // route, and a zone must all land back on the canvas. No textBoxes key at
+  // all (pre-dates the feature) — the loader must fall back to [] rather
+  // than throwing.
   const canvasData = JSON.stringify({
     version: 3,
     paths: [
@@ -1005,11 +1299,174 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   expect(state.paths[0].startIconIndex).toBe(1);
   expect(state.zones).toHaveLength(1);
   expect(state.zones[0].iconIndex).toBe(0);
+  expect(state.textBoxes).toEqual([]);
 
   // Editing mode + defense roster active
   await expect(page.getByText('(editing)')).toBeVisible();
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
+});
+
+test('"Use as Template" (/designer?template=): loads the source play, prefixes the name, and Save does an INSERT not an UPDATE', async ({ page }) => {
+  const userJson = {
+    id: '55555555-5555-5555-5555-555555555555',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }));
+
+  // Source play belongs to a DIFFERENT user and is public — the scenario
+  // this feature exists for (a community play used as a template). Loading
+  // it must still succeed (RLS already permits reading public plays), and
+  // saving afterward must never attempt to touch this row.
+  const sourcePlayId = '00000000-0000-0000-0000-0000000000aa';
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.5, y: 0.6, letter: 'QB', color: '#3B82F6' }],
+    zones: [],
+  });
+
+  const methodsSeen: string[] = [];
+  await page.route('**/rest/v1/plays**', (route) => {
+    const method = route.request().method();
+    methodsSeen.push(method);
+    if (method === 'GET') {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          id: sourcePlayId,
+          name: 'Mesh',
+          type: 'offense',
+          canvas_data: canvasData,
+          description: '',
+          is_public: true,
+          user_id: '99999999-9999-9999-9999-999999999999', // not this test's user
+          metadata: { playName: 'Mesh' },
+        }),
+      });
+    }
+    if (method === 'POST') {
+      return route.fulfill({
+        status: 201, contentType: 'application/json',
+        body: JSON.stringify({ id: '00000000-0000-0000-0000-0000000000bb' }),
+      });
+    }
+    // A PATCH here would mean the client tried to update the source play —
+    // exactly what this feature must never do.
+    return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'unexpected write' }) });
+  });
+
+  await page.goto(`/designer?template=${sourcePlayId}`);
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  // Template mode: never shows "(editing)", header button reads "Save".
+  await expect(page.getByText('(editing)')).toHaveCount(0);
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Copy of Mesh');
+
+  await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();
+  await page.getByRole('button', { name: 'Save Play' }).click();
+  await expect(page.getByText('Play saved!')).toBeVisible();
+
+  expect(methodsSeen).toContain('GET');
+  expect(methodsSeen).toContain('POST');
+  expect(methodsSeen).not.toContain('PATCH');
+});
+
+test('loads a saved play with a legacy mode:"block" path (pre-dates capStyle) without choking', async ({ page }) => {
+  // Regression guard: 'block' used to be a whole draw mode; it's now just
+  // the fallback capStyle for paths saved before capStyle existed (see
+  // renderScene's useBlockCap). Old saved JSON with mode: 'block' and no
+  // capStyle/dashed fields must still load cleanly.
+  const canvasData = JSON.stringify({
+    version: 3,
+    paths: [
+      { points: [{ x: 0.5, y: 0.6 }, { x: 0.5, y: 0.35 }], color: '#14B8A6', startIconIndex: 0, mode: 'block' },
+    ],
+    playerIcons: [
+      { x: 0.5, y: 0.6, letter: 'C', color: '#14B8A6' },
+    ],
+    zones: [],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000002',
+        name: 'Legacy block route',
+        type: 'offense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Legacy block route' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000002');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('block');
+  expect(state.paths[0].capStyle).toBeUndefined();
+});
+
+test('loads a saved play with text boxes via /designer?play= (mocked backend, version 4)', async ({ page }) => {
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.45, y: 0.7, letter: 'S', color: '#E11D48' }],
+    zones: [],
+    textBoxes: [{ x: 0.5, y: 0.2, text: 'COVER 2', color: '#000000', fontSize: 28 }],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000004',
+        name: 'Cover 2 Text',
+        type: 'defense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Cover 2 Text' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000004');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  const state = await canvasState(page);
+  expect(state.textBoxes).toHaveLength(1);
+  expect(state.textBoxes[0].text).toBe('COVER 2');
+  expect(state.textBoxes[0].fontSize).toBe(28);
 });
 
 // B-27 regression: the load path used to collapse any non-'defense' saved
@@ -1195,6 +1652,93 @@ test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ 
   await expect(page.getByText('is a Pro feature')).toHaveCount(0);
 });
 
+test('Community Play Library: type/game-format/formation filters compose correctly', async ({ page }) => {
+  const publicPlays = [
+    { id: 'p1', name: 'Four Verts', description: '', type: 'offense', thumbnail: null, upvotes: 3,
+      metadata: { gameType: '11v11', formation: 'Spread' }, user_id: 'u1' },
+    { id: 'p2', name: 'Mesh', description: '', type: 'offense', thumbnail: null, upvotes: 1,
+      metadata: { gameType: '7v7', formation: 'Twins' }, user_id: 'u1' },
+    { id: 'p3', name: 'Cover 2 Zone', description: '', type: 'defense', thumbnail: null, upvotes: 2,
+      metadata: { gameType: '11v11', formation: '4-3 Cover 2' }, user_id: 'u2' },
+    { id: 'p4', name: '5v5 Blitz', description: '', type: 'defense', thumbnail: null, upvotes: 0,
+      metadata: { gameType: '5v5', formation: 'Blitz' }, user_id: 'u2' },
+    { id: 'p5', name: 'Punt Coverage', description: '', type: 'special_teams', thumbnail: null, upvotes: 0,
+      metadata: { gameType: '11v11', formation: 'Punt' }, user_id: 'u2' },
+  ];
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(publicPlays) }),
+  );
+  await page.route('**/rest/v1/rpc/get_community_authors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  await page.goto('/plays?tab=community');
+  const cards = page.locator('.grid > div.bg-board-light');
+  await expect(cards).toHaveCount(5);
+
+  // Type filter alone
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+  await expect(cards).toHaveCount(2);
+
+  // Compose with game format — only p3 is defense + 11v11
+  await page.getByRole('button', { name: '11v11', exact: true }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(page.getByText('Cover 2 Zone')).toBeVisible();
+
+  // Formation dropdown only offers values actually present in the data
+  const formationOptions = await page.locator('select').first().locator('option').allTextContents();
+  expect(formationOptions).toEqual(
+    expect.arrayContaining(['All formations', 'Spread', 'Twins', '4-3 Cover 2', 'Blitz', 'Punt']),
+  );
+
+  // Clear filters via the empty-state button after narrowing to zero results
+  await page.locator('select').first().selectOption('Spread'); // combined with defense+11v11 => 0 results
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('No plays match those filters')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(cards).toHaveCount(5);
+});
+
+test('Community Play Library: "Use as Template" navigates to /designer?template=<id> (signed in) or /auth (signed out)', async ({ page }) => {
+  const publicPlays = [
+    { id: 'p1', name: 'Four Verts', description: '', type: 'offense', thumbnail: null, upvotes: 3,
+      metadata: { gameType: '11v11', formation: 'Spread' }, user_id: 'u1' },
+  ];
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(publicPlays) }),
+  );
+  await page.route('**/rest/v1/rpc/get_community_authors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  // Signed out: clicking "Use as Template" redirects to sign-in, same gate
+  // as the existing "Copy to My Plays" button, instead of opening the
+  // Designer only to fail on Save.
+  await page.goto('/plays?tab=community');
+  await page.locator('button[title="Sign in to use this play as a template"]').click();
+  await expect(page).toHaveURL(/\/auth/);
+
+  // Signed in: navigates straight to the template load.
+  const userJson = {
+    id: '66666666-6666-6666-6666-666666666666',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+
+  await page.goto('/plays?tab=community');
+  await page.locator('button[title="Open in the Designer to edit and save as a new play"]').click();
+  await expect(page).toHaveURL(/\/designer\?template=p1/);
+});
+
 test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', async ({ page }) => {
   const userJson = {
     id: '33333333-3333-3333-3333-333333333333',
@@ -1239,6 +1783,38 @@ test('PlaysPage (B-22): free user one play from the cap sees a usage nudge', asy
 
   await page.goto('/plays');
   await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
+});
+
+test('My Plays: card shows a "Use as Template" link to /designer?template=<id>', async ({ page }) => {
+  const userJson = {
+    id: '77777777-7777-7777-7777-777777777777',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() === 'HEAD') {
+      return route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'my-play-1', name: 'Trips Right', type: 'offense', thumbnail: null, is_public: false, upvotes: 0 }]),
+    });
+  });
+
+  await page.goto('/plays');
+  await expect(page.locator('a[href="/designer?template=my-play-1"]')).toBeVisible();
 });
 
 test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usage nudge', async ({ page }) => {

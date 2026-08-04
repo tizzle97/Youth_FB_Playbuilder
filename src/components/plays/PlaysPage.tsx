@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Plus, Filter, Trash2, LogIn } from 'lucide-react';
+import { Book, Plus, Filter, Trash2, LogIn, Wand2 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { checkIsAdmin } from '../../lib/admin';
@@ -26,6 +26,172 @@ interface Play {
     username: string;
     avatar_url?: string;
   };
+}
+
+// Fallback thumbnail generator - only used if no stored thumbnail exists
+function generateFallbackThumbnail(play: Play) {
+  try {
+    const canvasData = JSON.parse(play.canvas_data);
+    const tempCanvas = document.createElement('canvas');
+    const ctx = tempCanvas.getContext('2d');
+
+    if (!ctx) return null;
+
+    // Set canvas size with 4:3 aspect ratio
+    tempCanvas.width = 400;
+    tempCanvas.height = 300;
+
+    // Draw white background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Calculate field dimensions
+    const yardSpacing = tempCanvas.height / 30;
+    const losY = 20 * yardSpacing;
+    const leftSidelineX = tempCanvas.width * 0.05;
+    const rightSidelineX = tempCanvas.width * 0.95;
+
+    // Draw field lines
+    ctx.beginPath();
+    ctx.strokeStyle = '#1A1A1A';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.4;
+
+    // Sidelines
+    ctx.moveTo(leftSidelineX, 0);
+    ctx.lineTo(leftSidelineX, tempCanvas.height);
+    ctx.moveTo(rightSidelineX, 0);
+    ctx.lineTo(rightSidelineX, tempCanvas.height);
+    ctx.stroke();
+
+    // Line of scrimmage
+    ctx.beginPath();
+    ctx.strokeStyle = '#60A5FA';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.7;
+    ctx.moveTo(leftSidelineX, losY);
+    ctx.lineTo(rightSidelineX, losY);
+    ctx.stroke();
+
+    // Draw yard lines
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i <= 30; i += 5) {
+      if (i === 20) continue; // Skip LOS
+      const y = i * yardSpacing;
+      ctx.beginPath();
+      ctx.strokeStyle = '#1A1A1A';
+      ctx.lineWidth = 2;
+      ctx.moveTo(leftSidelineX, y);
+      ctx.lineTo(rightSidelineX, y);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+
+    // Draw paths
+    canvasData.paths?.forEach((path: any) => {
+      const p = new Path2D(path.path);
+      ctx.strokeStyle = path.color;
+      ctx.lineWidth = 3;
+      ctx.stroke(p);
+
+      // Draw arrow if exists
+      if (path.arrowFrom && path.arrowTo) {
+        const { x: fromX, y: fromY } = path.arrowFrom;
+        const { x: toX, y: toY } = path.arrowTo;
+
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        const size = 15;
+
+        ctx.save();
+        ctx.translate(toX, toY);
+        ctx.rotate(angle);
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-size, size/2);
+        ctx.lineTo(-size, -size/2);
+        ctx.closePath();
+
+        ctx.fillStyle = path.color;
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+
+    // Draw player icons
+    canvasData.icons?.forEach((icon: any) => {
+      const size = 24;
+      ctx.fillStyle = icon.color;
+
+      if (icon.isSquare) {
+        ctx.fillRect(icon.x - size/2, icon.y - size/2, size, size);
+      } else {
+        ctx.beginPath();
+        ctx.arc(icon.x, icon.y, size/2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 16px Inter';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(icon.letter, icon.x, icon.y);
+    });
+
+    return tempCanvas.toDataURL();
+  } catch (err) {
+    console.error('Error generating fallback thumbnail:', err);
+    return null;
+  }
+}
+
+function getThumbnailSrc(play: Play) {
+  // First, try to use the stored thumbnail
+  if (play.thumbnail && play.thumbnail.startsWith('data:image/')) {
+    return play.thumbnail;
+  }
+
+  // Fallback to generating thumbnail from canvas data
+  return generateFallbackThumbnail(play);
+}
+
+function ThumbnailImage({ play }: { play: Play }) {
+  const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    const src = getThumbnailSrc(play);
+    setThumbnailSrc(src);
+    setImageError(false);
+  }, [play]);
+
+  const handleImageError = () => {
+    setImageError(true);
+    // Try fallback thumbnail if stored thumbnail fails
+    if (play.thumbnail && !imageError) {
+      const fallback = generateFallbackThumbnail(play);
+      setThumbnailSrc(fallback);
+    }
+  };
+
+  if (!thumbnailSrc) {
+    return (
+      <div className="w-full h-full bg-board-light flex items-center justify-center">
+        <div className="text-chalk/30 text-sm">No preview</div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={thumbnailSrc}
+      alt={play.name}
+      className="w-full h-full object-contain"
+      onError={handleImageError}
+      loading="lazy"
+    />
+  );
 }
 
 export function PlaysPage() {
@@ -138,172 +304,6 @@ export function PlaysPage() {
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to delete play'));
     }
-  };
-
-  // Fallback thumbnail generator - only used if no stored thumbnail exists
-  const generateFallbackThumbnail = (play: Play) => {
-    try {
-      const canvasData = JSON.parse(play.canvas_data);
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) return null;
-
-      // Set canvas size with 4:3 aspect ratio
-      tempCanvas.width = 400;
-      tempCanvas.height = 300;
-
-      // Draw white background
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-      // Calculate field dimensions
-      const yardSpacing = tempCanvas.height / 30;
-      const losY = 20 * yardSpacing;
-      const leftSidelineX = tempCanvas.width * 0.05;
-      const rightSidelineX = tempCanvas.width * 0.95;
-
-      // Draw field lines
-      ctx.beginPath();
-      ctx.strokeStyle = '#1A1A1A';
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.4;
-
-      // Sidelines
-      ctx.moveTo(leftSidelineX, 0);
-      ctx.lineTo(leftSidelineX, tempCanvas.height);
-      ctx.moveTo(rightSidelineX, 0);
-      ctx.lineTo(rightSidelineX, tempCanvas.height);
-      ctx.stroke();
-
-      // Line of scrimmage
-      ctx.beginPath();
-      ctx.strokeStyle = '#60A5FA';
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.7;
-      ctx.moveTo(leftSidelineX, losY);
-      ctx.lineTo(rightSidelineX, losY);
-      ctx.stroke();
-
-      // Draw yard lines
-      ctx.globalAlpha = 0.3;
-      for (let i = 0; i <= 30; i += 5) {
-        if (i === 20) continue; // Skip LOS
-        const y = i * yardSpacing;
-        ctx.beginPath();
-        ctx.strokeStyle = '#1A1A1A';
-        ctx.lineWidth = 2;
-        ctx.moveTo(leftSidelineX, y);
-        ctx.lineTo(rightSidelineX, y);
-        ctx.stroke();
-      }
-
-      ctx.globalAlpha = 1;
-
-      // Draw paths
-      canvasData.paths?.forEach((path: any) => {
-        const p = new Path2D(path.path);
-        ctx.strokeStyle = path.color;
-        ctx.lineWidth = 3;
-        ctx.stroke(p);
-
-        // Draw arrow if exists
-        if (path.arrowFrom && path.arrowTo) {
-          const { x: fromX, y: fromY } = path.arrowFrom;
-          const { x: toX, y: toY } = path.arrowTo;
-          
-          const angle = Math.atan2(toY - fromY, toX - fromX);
-          const size = 15;
-
-          ctx.save();
-          ctx.translate(toX, toY);
-          ctx.rotate(angle);
-
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(-size, size/2);
-          ctx.lineTo(-size, -size/2);
-          ctx.closePath();
-
-          ctx.fillStyle = path.color;
-          ctx.fill();
-          ctx.restore();
-        }
-      });
-
-      // Draw player icons
-      canvasData.icons?.forEach((icon: any) => {
-        const size = 24;
-        ctx.fillStyle = icon.color;
-        
-        if (icon.isSquare) {
-          ctx.fillRect(icon.x - size/2, icon.y - size/2, size, size);
-        } else {
-          ctx.beginPath();
-          ctx.arc(icon.x, icon.y, size/2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 16px Inter';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(icon.letter, icon.x, icon.y);
-      });
-
-      return tempCanvas.toDataURL();
-    } catch (err) {
-      console.error('Error generating fallback thumbnail:', err);
-      return null;
-    }
-  };
-
-  const getThumbnailSrc = (play: Play) => {
-    // First, try to use the stored thumbnail
-    if (play.thumbnail && play.thumbnail.startsWith('data:image/')) {
-      return play.thumbnail;
-    }
-    
-    // Fallback to generating thumbnail from canvas data
-    return generateFallbackThumbnail(play);
-  };
-
-  const ThumbnailImage = ({ play }: { play: Play }) => {
-    const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
-    const [imageError, setImageError] = useState(false);
-
-    useEffect(() => {
-      const src = getThumbnailSrc(play);
-      setThumbnailSrc(src);
-      setImageError(false);
-    }, [play]);
-
-    const handleImageError = () => {
-      setImageError(true);
-      // Try fallback thumbnail if stored thumbnail fails
-      if (play.thumbnail && !imageError) {
-        const fallback = generateFallbackThumbnail(play);
-        setThumbnailSrc(fallback);
-      }
-    };
-
-    if (!thumbnailSrc) {
-      return (
-        <div className="w-full h-full bg-board-light flex items-center justify-center">
-          <div className="text-chalk/30 text-sm">No preview</div>
-        </div>
-      );
-    }
-
-    return (
-      <img
-        src={thumbnailSrc}
-        alt={play.name}
-        className="w-full h-full object-contain"
-        onError={handleImageError}
-        loading="lazy"
-      />
-    );
   };
 
   const visiblePlays = plays;
@@ -477,6 +477,17 @@ export function PlaysPage() {
                 console.log(`"${play.name}" added to playbook successfully!`);
               }}
             />
+
+            {/* Opens this play in the Designer without editingPlayId set, so
+                Save creates a new play instead of updating this one — see
+                PlayDesigner.tsx's load effect. */}
+            <Link
+              to={`/designer?template=${play.id}`}
+              title="Use this play as a starting point for a new one"
+              className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
+            >
+              <Wand2 className="h-4 w-4" />
+            </Link>
 
             {play.is_public && (
               <PlayVoteButton

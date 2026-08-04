@@ -31,3 +31,6 @@ playwright-report
 .env
 .env.local
 .env.*.local
+
+# Supabase CLI local cache
+supabase/.temp/

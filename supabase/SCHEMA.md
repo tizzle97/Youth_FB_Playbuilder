@@ -49,7 +49,8 @@ idempotent `.sql` file and update this doc in the same change.
 | `plays` | `id`, `user_id`, `name`, `type play_type`, `formation_id`, `canvas_data text` (JSON `{version,paths,playerIcons}`), `description`, `thumbnail`, `is_public bool`, `metadata jsonb`, `upvotes int` (trigger-cached from `play_votes`), timestamps | Owner full access (`auth.uid()=user_id`); admins manage all; **anyone** (anon+auth) can SELECT where `is_public=true`, or where the play belongs to a public playbook (B-33, `playbook_packs.sql`). `BEFORE INSERT` trigger blocks a 16th row for non-`is_pro()` users (`free_tier_limits.sql`). |
 | `playbooks` | `id`, `user_id`, `name`, `description`, `is_public bool` (B-33), timestamps | Owner full access. `BEFORE INSERT` trigger blocks a 3rd row for non-`is_pro()` users (`free_tier_limits.sql`). **Anyone** (anon+auth) can SELECT where `is_public=true` (`playbook_packs.sql`). |
 | `playbook_plays` | `id`, `playbook_id`, `play_id`, `order_position`; UNIQUE`(playbook_id,play_id)` & `(playbook_id,order_position)` | Access via owning playbook (`playbooks.user_id=auth.uid()`); **anyone** can also SELECT rows whose playbook is public (`playbook_packs.sql`). |
-| `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. |
+| `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. **Unused** — no frontend references; superseded by `custom_formations` below. |
+| `custom_formations` | `id`, `user_id`, `name`, `game_type ('5v5'\|'7v7'\|'11v11')`, `icons jsonb` (offense-only `PlayerIcon[]`, same shape as the curated templates in `formations.ts`), `created_at` | Owner full access. `BEFORE INSERT` trigger blocks all non-`is_pro()` users — Pro-only feature, not just free-tier-capped (`custom_formations.sql`). |
 | `categories` | `id`, `name`, `type`, `parent_id`, `playbook_id`, `order_position` | Access via owning playbook. |
 
 ### Community / social
@@ -86,7 +87,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `delete_user(target_user_id uuid)` | Admin-gated; deletes the auth account (cascades). Blocks self-deletion. |
 | `get_community_authors(target_ids uuid[])` | Returns `id, username, avatar_url` for a batch of authors (Community page; avoids embedding a nonexistent `profiles` table). Granted to anon+authenticated. |
 | `enforce_plays_free_limit()` / `enforce_playbooks_free_limit()` | Trigger fns: raise `PBP01`/`PBP02` (custom SQLSTATE, user-safe message) when a non-`is_pro()` user's insert would exceed `FREE_LIMITS.plays`/`FREE_LIMITS.playbooks`. Client maps these codes to an upgrade prompt in `src/lib/errors.ts`. |
-| `clone_playbook_pack(pack_playbook_id uuid) → uuid` | `SECURITY DEFINER`, pinned `search_path`. B-33: clones a public playbook + its plays (private copies, preserving order) into the caller's own account, returning the new playbook id. Raises `PBP03` if the caller isn't `is_pro()`, `PBP04` if `pack_playbook_id` isn't a public playbook. Granted to `authenticated`. |
+| `clone_playbook_pack(pack_playbook_id uuid) → uuid` | `SECURITY DEFINER`, pinned `search_path`. B-33: clones a public playbook + its plays (private copies, preserving order) into the caller's own account, returning the new playbook id. Raises `PBP04` if the caller isn't `is_pro()`, `PBP05` if `pack_playbook_id` isn't a public playbook. Granted to `authenticated`. |
 | `handle_new_user_signup()` | Trigger fn: on `auth.users` insert, creates a `user_reputation` row with a default avatar. |
 | `update_updated_at_column()` | Generic `updated_at` touch trigger. |
 | `update_user_reputation()` | Trigger fn: bumps poster reputation on new post/comment. |

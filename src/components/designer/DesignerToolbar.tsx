@@ -1,8 +1,8 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight } from 'lucide-react';
 import { PlayerToolbar, players, defensivePlayers, specialTeamsPlayers } from './PlayerToolbar';
 import { FormationMenu } from './FormationMenu';
-import type { DrawMode, IconShape, PlayerIcon } from './Canvas';
+import type { DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
 export type PlayType = 'offense' | 'defense' | 'special_teams';
@@ -14,16 +14,26 @@ interface DesignerToolbarProps {
   gameType: PlayMetadata['gameType'];
   onSetGameType: (gameType: PlayMetadata['gameType']) => void;
   onStampFormation: (icons: PlayerIcon[]) => void;
+  getCurrentIcons: () => PlayerIcon[];
   drawingMode: boolean;
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
   setDrawMode: (mode: DrawMode) => void;
+  /** Terminal decoration for the next route finished in Straight or Route
+   *  mode — sticky until changed, independent of shape. */
+  capStyle: CapStyle;
+  setCapStyle: (style: CapStyle) => void;
+  /** Solid vs dashed stroke for the next route finished — sticky until changed. */
+  dashed: boolean;
+  setDashed: (dashed: boolean) => void;
   deleteRouteMode: boolean;
   setDeleteRouteMode: (mode: boolean) => void;
   zoneMode: boolean;
   setZoneMode: (mode: boolean) => void;
   deleteZoneMode: boolean;
   setDeleteZoneMode: (mode: boolean) => void;
+  textMode: boolean;
+  setTextMode: (mode: boolean) => void;
   snapEnabled: boolean;
   setSnapEnabled: (enabled: boolean) => void;
   selectedPlayer: string | null;
@@ -46,16 +56,23 @@ export function DesignerToolbar({
   gameType,
   onSetGameType,
   onStampFormation,
+  getCurrentIcons,
   drawingMode,
   setDrawingMode,
   drawMode,
   setDrawMode,
+  capStyle,
+  setCapStyle,
+  dashed,
+  setDashed,
   deleteRouteMode,
   setDeleteRouteMode,
   zoneMode,
   setZoneMode,
   deleteZoneMode,
   setDeleteZoneMode,
+  textMode,
+  setTextMode,
   snapEnabled,
   setSnapEnabled,
   selectedPlayer,
@@ -82,6 +99,7 @@ export function DesignerToolbar({
     setDeleteRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
+    setTextMode(false);
     onSelectPlayer(null);
   };
 
@@ -90,6 +108,7 @@ export function DesignerToolbar({
     setDeleteRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
+    setTextMode(false);
     setDrawMode(mode);
     onSelectPlayer(null);
   };
@@ -97,19 +116,25 @@ export function DesignerToolbar({
   const toggleDeleteRouteMode = () => {
     const next = !deleteRouteMode;
     setDeleteRouteMode(next);
-    if (next) { setDrawingMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleZoneMode = () => {
     const next = !zoneMode;
     setZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleDeleteZoneMode = () => {
     const next = !deleteZoneMode;
     setDeleteZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+  };
+
+  const toggleTextMode = () => {
+    const next = !textMode;
+    setTextMode(next);
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
   };
 
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => {
@@ -118,6 +143,7 @@ export function DesignerToolbar({
       setDeleteRouteMode(false);
       setZoneMode(false);
       setDeleteZoneMode(false);
+      setTextMode(false);
       onSelectPlayer({ letter: player.letter, color: player.color, isSquare: Boolean(player.isSquare), shape: player.shape });
     } else {
       onSelectPlayer(null);
@@ -144,10 +170,20 @@ export function DesignerToolbar({
         <button
           onClick={selectMode}
           title="Select / Move"
-          className={`${vertical ? tool : iconOnly} ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode ? active : inactive}`}
+          className={`${vertical ? tool : iconOnly} ${activeDraw === null && !selectedPlayer && !zoneMode && !deleteZoneMode && !textMode ? active : inactive}`}
         >
           <MousePointer className="h-4 w-4" />
           {vertical && <span className="whitespace-nowrap">Select / Move</span>}
+        </button>
+
+        {/* Text box annotation — available for every play type */}
+        <button
+          onClick={toggleTextMode}
+          title="Add a text box (tap the field to place it)"
+          className={`${tool} ${textMode ? active : inactive}`}
+        >
+          <Type className="h-4 w-4" />
+          <span className={label}>Text</span>
         </button>
 
         {/* Snap to alignment (Visio-style guides + yard grid) */}
@@ -175,22 +211,40 @@ export function DesignerToolbar({
         {/* Waypoint / multi-segment */}
         <button
           onClick={() => pickDraw('waypoint')}
-          title="Multi-Segment Route (tap points, double-tap to finish)"
+          title="Multi-Segment Route (drag or tap to place points, double-tap to finish)"
           className={`${tool} ${activeDraw === 'waypoint' ? active : inactive}`}
         >
           <GitBranch className="h-4 w-4" />
           <span className={label}>Route</span>
         </button>
 
-        {/* Block (B-25): same click-to-place-points flow as Straight, but
-            ends in a perpendicular T-cap instead of an arrowhead. */}
+        <div className={divider} />
+
+        {/* Ending style: click to flip between arrowhead and a perpendicular
+            block cap. Independent of shape (Straight/Route above) — a route
+            can now be curved AND end in a block cap, which wasn't possible
+            when Block was its own separate mode. Sticky until changed, like
+            drawMode. A single toggle button (rather than a two-button pill)
+            keeps the mobile toolbar's scrollable width from growing enough
+            to push the Formation trigger out of view — see FormationMenu's
+            close-on-scroll effect. */}
         <button
-          onClick={() => pickDraw('block')}
-          title="Block Assignment (tap points, double-tap to finish)"
-          className={`${tool} ${activeDraw === 'block' ? active : inactive}`}
+          onClick={() => setCapStyle(capStyle === 'arrow' ? 'block' : 'arrow')}
+          title="Ending style: Route (arrow) / Block (perpendicular cap)"
+          className={`${tool} ${capStyle === 'block' ? active : inactive}`}
         >
-          <Shield className="h-4 w-4" />
-          <span className={label}>Block</span>
+          {capStyle === 'block' ? <Shield className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+          <span className={label}>{capStyle === 'block' ? 'Block' : 'Route'}</span>
+        </button>
+
+        {/* Line style: click to flip between solid and dotted stroke. */}
+        <button
+          onClick={() => setDashed(!dashed)}
+          title="Line style: Solid / Dotted"
+          className={`${tool} ${dashed ? active : inactive}`}
+        >
+          <span className={`block h-0 w-4 border-t-2 border-current ${dashed ? 'border-dotted' : ''}`} />
+          <span className={label}>{dashed ? 'Dotted' : 'Solid'}</span>
         </button>
 
         {/* Remove Route for a player */}
@@ -206,7 +260,7 @@ export function DesignerToolbar({
         {playType === 'offense' && (
           <>
             <div className={divider} />
-            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} fullWidth={vertical} />
+            <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} getCurrentIcons={getCurrentIcons} fullWidth={vertical} />
           </>
         )}
 
@@ -295,16 +349,21 @@ export function DesignerToolbar({
       </div>
 
       {/* Active mode label */}
-      {(activeDraw || deleteRouteMode || zoneMode || deleteZoneMode) && (
+      {(activeDraw || deleteRouteMode || zoneMode || deleteZoneMode || textMode) && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className={`font-semibold ${(deleteRouteMode || deleteZoneMode) ? 'text-amber-400' : 'text-primary'}`}>
             {deleteRouteMode && 'Remove route mode'}
             {deleteZoneMode && 'Remove zone mode'}
             {zoneMode && 'Zone mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'straight' && 'Straight line mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'waypoint' && 'Curved route mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && activeDraw === 'block' && 'Block assignment mode'}
+            {textMode && 'Text mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
+            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
           </span>
+          {activeDraw && (
+            <span>
+              — {capStyle === 'block' ? 'block ending' : 'route ending'}, {dashed ? 'dotted' : 'solid'}
+            </span>
+          )}
           <span>· See field for instructions</span>
         </p>
       )}
