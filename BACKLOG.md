@@ -138,14 +138,46 @@ the play in the library (and vice versa via the play description).
 Library grows on autopilot; blog↔library interlinking compounds SEO.
 Requires B-31's generation/thumbnail tooling to exist first.
 
-### B-33 · Starter playbook packs (Pro hook — money-adjacent, human review)
-Bundle official plays into cloneable playbooks ("5v5 Starter — 12
-plays", "11v11 Youth Offense Install"). Free users copy individual plays
-(B-30); cloning a whole pack in one tap is Pro. Gives the $39 a concrete
-day-one deliverable beyond limit removal. Needs: pack = a public playbook
-owned by the official account + a "Clone this playbook" action (bulk play
-copy + playbook + ordering, respecting the free-tier triggers). Pricing
-copy update goes through human review.
+## Done
+
+- **2026-07-23 · B-33: Starter playbook packs (Pro hook)** — a "pack" is a
+  public playbook (`playbooks.is_public`, new column) that any signed-in
+  visitor can browse via a new "Starter Packs" tab on `/playbooks`
+  (`PlaybookPackLibrary.tsx`, mirrors `PlaysPage.tsx`'s `?tab=community`
+  pattern); clicking "Clone this playbook" calls a new `SECURITY DEFINER`
+  Postgres function, `clone_playbook_pack(pack_playbook_id)`
+  (`supabase/playbook_packs.sql`), which creates a new playbook in the
+  caller's own account plus a private copy of every play in the pack,
+  preserving order — one round trip, atomic. Individual plays already clone
+  for free via the Play Library (B-30); bundling a whole curated pack in one
+  tap is the Pro differentiator, so the function raises a new custom
+  SQLSTATE `PBP03` (mapped to a friendly message in `src/lib/errors.ts`,
+  same pattern as B-1's `PBP01`/`PBP02`) if the caller isn't `is_pro()`, and
+  `PBP04` if the target isn't actually a public playbook. Free/signed-out
+  visitors can browse and see the pack contents count, but the clone button
+  shows a Pro lock (signed-out click routes to `/auth` first, matching
+  `PlayLibrary.tsx`'s existing copy-gate UX). New RLS policies let
+  anon+authenticated read public playbooks, their `playbook_plays` rows, and
+  the plays inside them regardless of each play's own `is_public` flag — a
+  pack is a curated bundle, not a promise every play in it is separately
+  public. **Not done, per the item's original scope:** actually seeding any
+  real starter packs (no official-account public playbooks exist yet — this
+  ships the capability, not the content) and the pricing-copy update, both
+  deferred to human review/action. **⚠ requires SQL run:**
+  `supabase/playbook_packs.sql` (adds `playbooks.is_public`, three RLS
+  policies, and the `clone_playbook_pack()` function — idempotent, safe to
+  re-run). **Verification:** `npx tsc --noEmit` and `npm run build` both
+  pass clean; `npm run lint` shows only pre-existing errors (all in
+  `scripts/seed-library/*.mjs`, unrelated to this change) plus warnings, no
+  new errors. Full Playwright smoke suite (33/33) passed against a
+  throwaway placeholder `.env` and a manually pointed browser executable
+  path (this environment's preinstalled Chromium revision predates what the
+  pinned Playwright version expects) — neither the `.env` nor the
+  executable-path override is part of this commit, same workaround noted in
+  B-34. No smoke test added: this feature doesn't touch the Play Designer
+  canvas or its save/load path, which is the smoke suite's scope (existing
+  precedent: B-22's PlaybooksPage usage-nudge banner also shipped without
+  smoke coverage for the same reason).
 
 ## Done
 

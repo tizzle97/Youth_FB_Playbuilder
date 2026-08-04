@@ -1,7 +1,7 @@
 // PlaybooksPage.tsx - Enhanced with PDF Export Feature
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   Plus,
@@ -26,6 +26,7 @@ import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
+import { PlaybookPackLibrary } from './PlaybookPackLibrary';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
 
 interface Playbook {
@@ -51,6 +52,10 @@ interface PlayInPlaybook {
 export function PlaybooksPage() {
   usePageMeta({ title: 'My Playbooks', description: 'Organize plays into playbooks and export game-day PDFs.', path: '/playbooks' });
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?tab=packs shows the public starter playbook packs (B-33); default is your
+  // own playbooks. Mirrors PlaysPage.tsx's ?tab=community pattern.
+  const tab: 'mine' | 'packs' = searchParams.get('tab') === 'packs' ? 'packs' : 'mine';
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
@@ -1041,18 +1046,28 @@ export function PlaybooksPage() {
     playbook.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!user) {
+  // My Playbooks requires sign-in; Starter Packs is public to browse (cloning
+  // still requires sign-in + Pro, handled inside PlaybookPackLibrary).
+  if (!user && tab === 'mine') {
     return (
       <div className="min-h-screen bg-board flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-chalk mb-4">Sign In Required</h2>
           <p className="text-chalk/70 mb-6">Please sign in to view your playbooks.</p>
-          <button
-            onClick={() => navigate('/auth')}
-            className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
-          >
-            Sign In
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => navigate('/auth')}
+              className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setSearchParams({ tab: 'packs' }, { replace: true })}
+              className="px-6 py-3 border border-chalk/20 text-chalk hover:bg-board rounded-lg transition-colors"
+            >
+              Browse Starter Packs
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1063,40 +1078,67 @@ export function PlaybooksPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold text-chalk flex items-center gap-3">
                 <BookOpen className="h-8 w-8 text-primary" />
-                My Playbooks
+                {tab === 'packs' ? 'Starter Playbook Packs' : 'My Playbooks'}
               </h1>
               <p className="text-chalk/70 mt-2">
-                Organize and manage your football plays
+                {tab === 'packs'
+                  ? 'Curated playbooks you can clone into your own account in one tap.'
+                  : 'Organize and manage your football plays'}
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <button
-                onClick={handleNewPlay}
-                className="flex items-center gap-2 px-4 py-2 bg-board-light hover:bg-board text-chalk border border-chalk/20 rounded-lg transition-colors"
-              >
-                <Edit3 className="h-4 w-4" />
-                New Play
-              </button>
-              <button
-                onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
-                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                New Playbook
-              </button>
+              <div className="flex items-center gap-1 border border-chalk/15 rounded-lg p-1">
+                <button
+                  onClick={() => setSearchParams({}, { replace: true })}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === 'mine' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                  }`}
+                >
+                  My Playbooks
+                </button>
+                <button
+                  onClick={() => setSearchParams({ tab: 'packs' }, { replace: true })}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === 'packs' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
+                  }`}
+                >
+                  Starter Packs
+                </button>
+              </div>
+              {tab === 'mine' && (
+                <>
+                  <button
+                    onClick={handleNewPlay}
+                    className="flex items-center gap-2 px-4 py-2 bg-board-light hover:bg-board text-chalk border border-chalk/20 rounded-lg transition-colors"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    New Play
+                  </button>
+                  <button
+                    onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Playbook
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          {!entitlementLoading && !isPro && isNearFreeLimit(playbooks.length, FREE_LIMITS.playbooks) && (
+          {tab === 'mine' && !entitlementLoading && !isPro && isNearFreeLimit(playbooks.length, FREE_LIMITS.playbooks) && (
             <div className="mt-4">
               <UsageWarningBanner used={playbooks.length} limit={FREE_LIMITS.playbooks} label="playbooks" />
             </div>
           )}
         </div>
 
+        {tab === 'packs' ? (
+          <PlaybookPackLibrary user={user} isPro={isPro} />
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Playbooks List */}
           <div className="lg:col-span-1">
@@ -1395,6 +1437,7 @@ export function PlaybooksPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Create Playbook Modal */}
         {showCreateModal && (
