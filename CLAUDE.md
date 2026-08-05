@@ -72,8 +72,13 @@ take the topmost unblocked item there.
   `subscriptions.sql`, `security_hardening.sql`, `community_authors.sql`,
   `free_tier_limits.sql`, `user_preferences.sql`, `play_votes.sql`,
   `custom_formations.sql`, `blog_seo.sql`, `football_avatars.sql`,
-  `founding_member_backfill.sql`. When schema changes are needed, add a new
-  idempotent `.sql` file and tell the user to run it.
+  `founding_member_backfill.sql`, `admin_entitlements.sql`. When schema changes
+  are needed, add a new idempotent `.sql` file and tell the user to run it.
+- **Granting Pro / Founding Member is a UI action, not a SQL file.** Use the
+  Users tab of `/admin` (`admin_set_user_plan`, `admin_entitlements.sql`). Don't
+  write another one-off grant migration. Only `free`/`founding` are settable by
+  hand — `pro` belongs to the Stripe webhook, and rows with a
+  `stripe_subscription_id` are refused outright (`PBP06`).
 - **Admin** is tracked via the `admin_users` table + `is_admin()` function (NOT a
   column on auth.users). Add yourself with an INSERT into `admin_users`.
 - **Pro entitlement** is the `subscriptions` table + `is_pro()` function, same
@@ -83,8 +88,11 @@ take the topmost unblocked item there.
   custom errcode, not RLS `WITH CHECK` (a bare RLS failure surfaces as a generic
   42501 the client can't turn into a useful upgrade prompt). `PBP01` = play cap,
   `PBP02` = playbook cap (`free_tier_limits.sql`), `PBP03` = custom formations
-  are Pro-only (`custom_formations.sql`). `src/lib/errors.ts` passes these
-  through as user-safe messages; mirror that pattern for any new gate.
+  are Pro-only (`custom_formations.sql`), `PBP04`/`PBP05` = playbook pack clone
+  (`playbook_packs.sql`), `PBP06` = admin plan change rejected
+  (`admin_entitlements.sql`). `src/lib/errors.ts` passes these through as
+  user-safe messages; mirror that pattern for any new gate. **`PBP07` is the
+  next free code.**
 - All tables use **Row Level Security**. Mirror existing policy patterns.
 - **Edge Functions** live in `supabase/functions/` (`create-checkout-session`,
   `create-portal-session`, `stripe-webhook`, `sitemap`, `feedback-triage`) and
