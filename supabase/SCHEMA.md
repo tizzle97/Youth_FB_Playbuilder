@@ -27,6 +27,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `football_avatars.sql` | **pending — needs SQL run** | Replaces the seeded Dicebear "bottts" robot avatar icons with 8 self-contained football-themed SVG data URIs (football, helmet, flag, whistle, goalpost, cleat, playbook, trophy). Repoints any user on an old icon to the new default first. |
 | `playbook_packs.sql` | applied (2026-08-03) | B-33 starter playbook packs: adds `playbooks.is_public`; public-read policies for public playbooks, their `playbook_plays` rows, and the plays inside them; `clone_playbook_pack(pack_playbook_id)` (Pro-gated, `SECURITY DEFINER`) clones a public playbook + its plays into the caller's own account. |
 | `feedback_triage.sql` | **pending — needs SQL run** | B-35 automated feedback triage: additive `triage_class`/`triage_state`/`triage_ref`/`triage_notes`/`triaged_at` columns on `feedback` + a partial index on untriaged rows. No RLS or existing-column changes. |
+| `founding_members_2026_08_05.sql` | **pending — needs SQL run** | One-off data grant: Founding Member (`plan='founding'`, `current_period_end=NULL`) for everyone who signed up on 2026-08-05, windowed in **America/New_York** not UTC. Step 1 is a dry-run SELECT to confirm the list before Step 2 writes. Upgrades only `free` rows; never touches an existing `pro`/`founding` row. No schema change. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
