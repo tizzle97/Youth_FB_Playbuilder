@@ -1910,3 +1910,116 @@ test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usag
   await page.goto('/playbooks');
   await expect(page.getByText('1 of 2 free playbooks used.')).toBeVisible();
 });
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Admin Dashboard — entitlement management.
+ *
+ * These are the first tests to touch /admin. The route has no client-side
+ * guard by design: gating is server-side (every RPC raises for non-admins), so
+ * these stub the RPCs directly rather than trying to simulate real admin auth.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const ADMIN_USER = {
+  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  aud: 'authenticated', role: 'authenticated', email: 'admin@example.com',
+  app_metadata: {}, user_metadata: { username: 'TheAdmin' }, created_at: '2025-01-01T00:00:00Z',
+};
+
+/** Signs in as an admin and stubs admin_list_users() with the given rows. */
+async function mockAdmin(page: Page, rows: Record<string, unknown>[]) {
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem('pbp-analytics-consent', 'denied');
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: ADMIN_USER, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_USER) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user_id: ADMIN_USER.id }) }));
+  await page.route('**/rest/v1/rpc/admin_list_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+}
+
+const freeRow = {
+  id: '11111111-1111-1111-1111-111111111111', email: 'freecoach@example.com',
+  username: 'FreeCoach', created_at: '2026-08-05T12:00:00Z', is_admin_user: false,
+  plan: 'free', current_period_end: null, is_stripe_backed: false,
+};
+const stripeRow = {
+  id: '22222222-2222-2222-2222-222222222222', email: 'payingcoach@example.com',
+  username: 'PayingCoach', created_at: '2026-08-05T13:00:00Z', is_admin_user: false,
+  plan: 'pro', current_period_end: '2027-08-05T00:00:00Z', is_stripe_backed: true,
+};
+
+test('admin users tab: a user with no subscription row shows as Free', async ({ page }) => {
+  await mockAdmin(page, [freeRow]);
+  await page.goto('/admin');
+
+  await expect(page.getByRole('cell', { name: 'freecoach@example.com' })).toBeVisible();
+  await expect(page.getByLabel('Plan for freecoach@example.com')).toHaveValue('free');
+});
+
+test('admin users tab: changing the dropdown calls admin_set_user_plan', async ({ page }) => {
+  await mockAdmin(page, [freeRow]);
+
+  let body: Record<string, unknown> | null = null;
+  await page.route('**/rest/v1/rpc/admin_set_user_plan**', (route) => {
+    body = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
+  });
+
+  await page.goto('/admin');
+  await page.getByLabel('Plan for freecoach@example.com').selectOption('founding');
+
+  await expect.poll(() => body).not.toBeNull();
+  expect(body).toEqual({ target_user_id: freeRow.id, new_plan: 'founding' });
+  // Optimistic update sticks when the call succeeds.
+  await expect(page.getByLabel('Plan for freecoach@example.com')).toHaveValue('founding');
+});
+
+test('admin users tab: a Stripe-backed subscriber is read-only, not a dropdown', async ({ page }) => {
+  // The server refuses these (PBP06), so the UI must not offer a control that
+  // can only fail.
+  await mockAdmin(page, [stripeRow]);
+  await page.goto('/admin');
+
+  await expect(page.getByRole('cell', { name: 'payingcoach@example.com' })).toBeVisible();
+  await expect(page.getByText('Pro (Stripe)')).toBeVisible();
+  await expect(page.getByLabel('Plan for payingcoach@example.com')).toHaveCount(0);
+});
+
+test('admin users tab: a PBP06 rejection shows its real message and rolls back', async ({ page }) => {
+  await mockAdmin(page, [freeRow]);
+  await page.route('**/rest/v1/rpc/admin_set_user_plan**', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'PBP06',
+        message: 'This user has an active Stripe subscription. Cancel it in Stripe before changing their plan.',
+        details: null, hint: null,
+      }),
+    }));
+
+  await page.goto('/admin');
+  await page.getByLabel('Plan for freecoach@example.com').selectOption('founding');
+
+  // errors.ts must pass PBP06 through verbatim rather than the generic fallback.
+  await expect(page.getByText('This user has an active Stripe subscription.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Something went wrong')).toHaveCount(0);
+  // Failed write must roll the optimistic change back.
+  await expect(page.getByLabel('Plan for freecoach@example.com')).toHaveValue('free');
+});
+
+test('admin users tab: search filters the list', async ({ page }) => {
+  await mockAdmin(page, [freeRow, stripeRow]);
+  await page.goto('/admin');
+  await expect(page.getByText('2 of 2 users')).toBeVisible();
+
+  await page.getByLabel('Search users').fill('paying');
+  await expect(page.getByText('1 of 2 users')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'freecoach@example.com' })).toHaveCount(0);
+});

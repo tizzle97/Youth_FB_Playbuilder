@@ -5,6 +5,7 @@ import { BlogManagement } from './BlogManagement';
 import { FeedbackManagement } from './FeedbackManagement';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import type { Plan } from '../../lib/entitlements';
 
 interface AdminUserRow {
   id: string;
@@ -12,7 +13,30 @@ interface AdminUserRow {
   username: string | null;
   created_at: string;
   is_admin_user: boolean;
+  plan: Plan;
+  current_period_end: string | null;
+  is_stripe_backed: boolean;
 }
+
+/** Plans an admin may set by hand. 'pro' is owned by the Stripe webhook and is
+ *  deliberately absent — `admin_set_user_plan` rejects it (PBP06). Comping
+ *  someone is what 'founding' is for. */
+const ASSIGNABLE_PLANS: { value: Plan; label: string }[] = [
+  { value: 'free', label: 'Free' },
+  { value: 'founding', label: 'Founding' },
+];
+
+const PLAN_BADGE: Record<Plan, string> = {
+  free: 'bg-chalk/10 text-chalk/70',
+  founding: 'bg-primary/15 text-primary',
+  pro: 'bg-primary/15 text-primary',
+};
+
+const PLAN_LABEL: Record<Plan, string> = {
+  free: 'Free',
+  founding: 'Founding',
+  pro: 'Pro (Stripe)',
+};
 
 export function AdminDashboard() {
   usePageMeta({ title: 'Admin', path: '/admin' });
@@ -20,6 +44,8 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'blog' | 'feedback' | 'moderation'>('users');
+  const [search, setSearch] = useState('');
+  const [savingPlanFor, setSavingPlanFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -57,6 +83,51 @@ export function AdminDashboard() {
       setError(getSafeErrorMessage(err, 'Failed to delete user'));
     }
   };
+
+  const handleSetPlan = async (user: AdminUserRow, newPlan: Plan) => {
+    if (newPlan === user.plan) return;
+
+    // Only confirm on the destructive direction; granting access is cheap to undo.
+    if (
+      newPlan === 'free' &&
+      !confirm(`Remove Pro access from ${user.email}? They'll be dropped to the free plan limits.`)
+    ) {
+      return;
+    }
+
+    // Optimistic, with a snapshot to roll back to — same pattern as
+    // FeedbackManagement.updateStatus(), plus a pending flag so the select
+    // can't be driven again mid-write.
+    const previous = users;
+    setError(null);
+    setSavingPlanFor(user.id);
+    setUsers(prev =>
+      prev.map(u =>
+        u.id === user.id ? { ...u, plan: newPlan, current_period_end: null } : u,
+      ),
+    );
+
+    try {
+      const { error: rpcError } = await supabase.rpc('admin_set_user_plan', {
+        target_user_id: user.id,
+        new_plan: newPlan,
+      });
+      if (rpcError) throw rpcError;
+    } catch (err) {
+      setUsers(previous);
+      setError(getSafeErrorMessage(err, 'Failed to update plan'));
+    } finally {
+      setSavingPlanFor(null);
+    }
+  };
+
+  const visibleUsers = users.filter(u => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      u.email?.toLowerCase().includes(q) || (u.username?.toLowerCase().includes(q) ?? false)
+    );
+  });
 
   return (
     <div className="min-h-screen bg-board py-8">
@@ -125,6 +196,19 @@ export function AdminDashboard() {
 
             {activeTab === 'users' && (
               <div className="overflow-x-auto">
+                <div className="mb-4 flex items-center gap-3">
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by email or username…"
+                    aria-label="Search users"
+                    className="w-72 max-w-full px-3 py-1.5 bg-board border border-chalk/20 rounded-lg text-sm text-chalk placeholder:text-chalk/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <span className="ml-auto text-sm text-chalk/50">
+                    {visibleUsers.length} of {users.length} user{users.length === 1 ? '' : 's'}
+                  </span>
+                </div>
                 {loading ? (
                   <div className="space-y-4">
                     {[1, 2, 3].map((i) => (
@@ -137,12 +221,13 @@ export function AdminDashboard() {
                       <tr className="border-b border-chalk/10">
                         <th className="px-4 py-2 text-left text-chalk">User</th>
                         <th className="px-4 py-2 text-left text-chalk">Email</th>
+                        <th className="px-4 py-2 text-left text-chalk">Plan</th>
                         <th className="px-4 py-2 text-left text-chalk">Joined</th>
                         <th className="px-4 py-2 text-right text-chalk">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {users.map((user) => (
+                      {visibleUsers.map((user) => (
                         <tr key={user.id} className="border-b border-chalk/10">
                           <td className="px-4 py-2 text-chalk">
                             {user.username || 'Anonymous'}
@@ -153,6 +238,30 @@ export function AdminDashboard() {
                             )}
                           </td>
                           <td className="px-4 py-2 text-chalk">{user.email}</td>
+                          <td className="px-4 py-2">
+                            {user.is_stripe_backed ? (
+                              // Paying subscriber — the server refuses to change these
+                              // (PBP06), so don't offer a control that can only fail.
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${PLAN_BADGE[user.plan]}`}
+                                title="Managed by Stripe — cancel the subscription in Stripe to change this"
+                              >
+                                {PLAN_LABEL[user.plan]}
+                              </span>
+                            ) : (
+                              <select
+                                aria-label={`Plan for ${user.email}`}
+                                value={user.plan}
+                                disabled={savingPlanFor === user.id}
+                                onChange={(e) => handleSetPlan(user, e.target.value as Plan)}
+                                className={`px-2 py-1 rounded-lg border border-chalk/20 bg-board text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 ${PLAN_BADGE[user.plan]}`}
+                              >
+                                {ASSIGNABLE_PLANS.map(({ value, label }) => (
+                                  <option key={value} value={value}>{label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
                           <td className="px-4 py-2 text-chalk">
                             {new Date(user.created_at).toLocaleDateString()}
                           </td>
@@ -171,6 +280,13 @@ export function AdminDashboard() {
                       ))}
                     </tbody>
                   </table>
+                )}
+                {!loading && visibleUsers.length === 0 && (
+                  <p className="py-8 text-center text-sm text-chalk/50">
+                    {users.length === 0
+                      ? 'No users yet.'
+                      : `No users match “${search}”.`}
+                  </p>
                 )}
               </div>
             )}

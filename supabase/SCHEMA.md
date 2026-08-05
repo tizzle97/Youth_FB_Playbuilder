@@ -27,6 +27,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `football_avatars.sql` | **pending — needs SQL run** | Replaces the seeded Dicebear "bottts" robot avatar icons with 8 self-contained football-themed SVG data URIs (football, helmet, flag, whistle, goalpost, cleat, playbook, trophy). Repoints any user on an old icon to the new default first. |
 | `playbook_packs.sql` | applied (2026-08-03) | B-33 starter playbook packs: adds `playbooks.is_public`; public-read policies for public playbooks, their `playbook_plays` rows, and the plays inside them; `clone_playbook_pack(pack_playbook_id)` (Pro-gated, `SECURITY DEFINER`) clones a public playbook + its plays into the caller's own account. |
 | `feedback_triage.sql` | **pending — needs SQL run** | B-35 automated feedback triage: additive `triage_class`/`triage_state`/`triage_ref`/`triage_notes`/`triaged_at` columns on `feedback` + a partial index on untriaged rows. No RLS or existing-column changes. |
+| `admin_entitlements.sql` | **pending — needs SQL run** | Admin Dashboard entitlement management, replacing one-off grant SQL. Re-creates `admin_list_users()` with `plan`/`current_period_end`/`is_stripe_backed` (DROP first — return type changed); adds `admin_set_user_plan(uuid, text)`. No schema/RLS change. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -83,9 +84,10 @@ idempotent `.sql` file and update this doc in the same change.
 |---|---|
 | `is_admin() → bool` | True if caller is in `admin_users`. `SECURITY DEFINER`, `search_path` pinned. Use in RLS. |
 | `is_pro(uid uuid = auth.uid()) → bool` | True if caller has an active `founding`/`pro` subscription. `SECURITY DEFINER`, pinned. |
-| `admin_list_users()` | Admin-gated; all users w/ email, username, created_at, is_admin flag. |
+| `admin_list_users()` | Admin-gated; all users w/ email, username, created_at, is_admin flag, plus entitlement columns `plan` (`COALESCE(s.plan,'free')` — no row = free), `current_period_end`, `is_stripe_backed` (`admin_entitlements.sql`). |
 | `admin_list_feedback()` | Admin-gated; feedback rows joined to submitter email. |
 | `delete_user(target_user_id uuid)` | Admin-gated; deletes the auth account (cascades). Blocks self-deletion. |
+| `admin_set_user_plan(target_user_id uuid, new_plan text)` | Admin-gated; sets a user's entitlement from the Admin Dashboard (upsert, `current_period_end` NULL). Only `'free'`/`'founding'` are settable — `'pro'` belongs to the Stripe webhook. Refuses any row with a `stripe_subscription_id`. All rejections raise `PBP06` (`admin_entitlements.sql`). |
 | `get_community_authors(target_ids uuid[])` | Returns `id, username, avatar_url` for a batch of authors (Community page; avoids embedding a nonexistent `profiles` table). Granted to anon+authenticated. |
 | `enforce_plays_free_limit()` / `enforce_playbooks_free_limit()` | Trigger fns: raise `PBP01`/`PBP02` (custom SQLSTATE, user-safe message) when a non-`is_pro()` user's insert would exceed `FREE_LIMITS.plays`/`FREE_LIMITS.playbooks`. Client maps these codes to an upgrade prompt in `src/lib/errors.ts`. |
 | `clone_playbook_pack(pack_playbook_id uuid) → uuid` | `SECURITY DEFINER`, pinned `search_path`. B-33: clones a public playbook + its plays (private copies, preserving order) into the caller's own account, returning the new playbook id. Raises `PBP04` if the caller isn't `is_pro()`, `PBP05` if `pack_playbook_id` isn't a public playbook. Granted to `authenticated`. |
