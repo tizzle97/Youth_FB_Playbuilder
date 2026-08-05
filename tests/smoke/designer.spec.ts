@@ -2023,3 +2023,22 @@ test('admin users tab: search filters the list', async ({ page }) => {
   await expect(page.getByText('1 of 2 users')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'freecoach@example.com' })).toHaveCount(0);
 });
+
+test('nav "Play Designer" opens in the same tab, not a new one', async ({ page, context }) => {
+  // The nav item used to carry newTab:true (target="_blank"), which orphaned
+  // tabs and broke SPA navigation. Guard the desktop nav and the mobile menu.
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Play Designer' }).click();
+
+  await expect(page).toHaveURL(/\/designer/);
+  expect(context.pages()).toHaveLength(1);
+
+  // Mobile menu path.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.locator('nav button').last().click();
+  await page.getByRole('link', { name: 'Play Designer' }).click();
+
+  await expect(page).toHaveURL(/\/designer/);
+  expect(context.pages()).toHaveLength(1);
+});
