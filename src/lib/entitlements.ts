@@ -51,8 +51,9 @@ export function useEntitlement(): Entitlement {
   useEffect(() => {
     let cancelled = false;
 
-    const resolve = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    /** Resolves entitlement from an already-known session — never calls an
+     *  auth method itself, so it is safe to run from an auth callback. */
+    const resolveFrom = async (user: { id: string } | null) => {
       if (!user) {
         if (!cancelled) setState({ loading: false, isPro: false, plan: 'free', isFoundingMember: false });
         return;
@@ -74,8 +75,23 @@ export function useEntitlement(): Entitlement {
       });
     };
 
-    resolve();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => resolve());
+    // Initial read. Safe here: we are not inside an auth callback.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      void resolveFrom(session?.user ?? null);
+    });
+
+    // ⚠ gotrue-js dispatches this callback WHILE HOLDING its session lock.
+    // Calling any Supabase method synchronously from inside it — including
+    // the innocuous-looking `auth.getUser()` this used to do — tries to
+    // re-acquire that same lock and deadlocks it *permanently*: every later
+    // auth call, `signOut()` included, then hangs forever and the Sign Out
+    // button silently does nothing. Use the `session` the callback already
+    // hands us, and defer the follow-up query to a fresh task so the lock is
+    // released first.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null;
+      setTimeout(() => { void resolveFrom(user); }, 0);
+    });
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 

@@ -5,6 +5,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { UserMenu } from './auth/UserMenu';
 import { supabase } from '../lib/supabase';
+import { signOutSafely } from '../lib/auth';
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -132,7 +133,7 @@ export function Navbar() {
                   </button>
                   <button
                     onClick={async () => {
-                      await supabase.auth.signOut();
+                      await signOutSafely();
                       setIsMenuOpen(false);
                       navigate('/');
                     }}
