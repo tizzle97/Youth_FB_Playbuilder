@@ -15,6 +15,18 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
   `public/_redirects`, whose `/* /index.html 200` catch-all must stay **last** —
   the `/sitemap.xml` proxy to the `sitemap` Edge Function sits above it and
   would be swallowed by the catch-all if reordered.
+- **`public/_headers` sets a strict CSP** (no `'unsafe-inline'` in `script-src`).
+  Any new third-party script/stylesheet/font host needs an entry there or it
+  fails **silently** in production — no error banner, just missing behavior.
+  This bit us twice: the Jul 17 "font unblock" commit added an inline
+  `onload="this.media='all'"` to two `<link>` tags to swap them off
+  `media="print"`, which CSP silently blocked, so **every visitor got system
+  fonts instead of Anton/Inter/JetBrains Mono for three weeks** (also missing
+  `fonts.googleapis.com`/`fonts.gstatic.com` from the policy entirely). Fixed
+  by moving the swap into `public/font-loader.js`, loaded via `<script src>`
+  (allowed) instead of an inline handler. When adding a script tag, check the
+  browser console for `Refused to` / `violates the following Content Security
+  Policy` — not just `Refused to`, the exact wording varies by violation type.
 - **Env:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_BILLING_ENABLED`
   (must be lowercase `true` to enable Stripe UI — `TRUE` silently fails the
   `=== 'true'` check). Those three are the *only* env vars `src/` reads; see

@@ -18,7 +18,7 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://rsms.me" crossorigin />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" media="print" onload="this.media='all'" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" media="print" />
     <noscript><link rel="stylesheet" href="https://rsms.me/inter/inter.css" /></noscript>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,7 +26,6 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;600&display=swap"
       media="print"
-      onload="this.media='all'"
     />
     <noscript>
       <link
@@ -34,6 +33,11 @@
         href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;600&display=swap"
       />
     </noscript>
+    <!-- Flips the two stylesheets above from media="print" to media="all" once
+         loaded. Must be an external file — CSP's script-src has no
+         'unsafe-inline', so the inline onload="" this replaced was silently
+         blocked and both stylesheets never applied. See font-loader.js. -->
+    <script src="/font-loader.js"></script>
   </head>
   <body>
     <div id="root"></div>
