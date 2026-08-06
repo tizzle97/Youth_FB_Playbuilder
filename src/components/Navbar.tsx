@@ -35,7 +35,7 @@ export function Navbar() {
 
   const navItems = [
     { path: '/', label: 'Home' },
-    { path: '/designer', label: 'Play Designer', newTab: true },
+    { path: '/designer', label: 'Play Designer' },
     { path: '/plays', label: 'Plays' },
     { path: '/playbooks', label: 'Playbooks' },
     { path: '/community', label: 'Community' },
@@ -56,11 +56,10 @@ export function Navbar() {
               <span className="ml-2"><Wordmark /></span>
             </Link>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {navItems.map(({ path, label, newTab }) => (
+              {navItems.map(({ path, label }) => (
                 <Link
                   key={path}
                   to={path}
-                  {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
                     isActive(path)
                       ? 'border-primary text-chalk'
@@ -99,11 +98,10 @@ export function Navbar() {
       {isMenuOpen && (
         <div className="sm:hidden bg-board-light">
           <div className="pt-2 pb-3 space-y-1">
-            {navItems.map(({ path, label, newTab }) => (
+            {navItems.map(({ path, label }) => (
               <Link
                 key={path}
                 to={path}
-                {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                 className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
                   isActive(path)
                     ? 'bg-board text-primary border-primary'
