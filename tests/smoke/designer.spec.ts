@@ -994,7 +994,10 @@ test('customize a placed icon: new label, new color, route recolors to match', a
   state = await canvasState(page);
   expect(state.playerIcons[0].letter).toBe('Q');
   expect(state.playerIcons[0].color).toBe(originalColor);
-  expect(state.playerIcons[0].shape).toBeUndefined();
+  // Effective shape, not the raw field: toolbar chips now carry an explicit
+  // shape, where before they left it undefined for iconShape() to default.
+  // Either way the icon renders as a circle, which is what this asserts.
+  expect(state.playerIcons[0].shape ?? 'circle').toBe('circle');
   expect(state.paths[0].color).toBe(originalColor);
 });
 
@@ -2169,4 +2172,148 @@ test('feedback submit is not wedged by the auth lock', async ({ page }) => {
 
   await expect.poll(() => insertPosted, { timeout: 10000 }).toBe(true);
   await expect(page.getByText('Thank you for your feedback!')).toBeVisible();
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Saved toolbar rosters. A coach can relabel/recolor/reshape the built-in
+ * chips once and have it stick, instead of re-customizing on every play.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const ROSTER_USER = {
+  id: '55555555-5555-5555-5555-555555555555',
+  aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+  app_metadata: {}, user_metadata: { username: 'Coach' }, created_at: '2025-01-01T00:00:00Z',
+};
+
+/** Signs in and stubs user_preferences with the given custom_roster.
+ *  Returns a getter for whatever the app last wrote back. */
+async function withRoster(page: Page, customRoster: unknown) {
+  const writes: Record<string, unknown>[] = [];
+  await page.addInitScript(({ u, k }) => {
+    localStorage.setItem('pbp-analytics-consent', 'denied');
+    localStorage.setItem(k, JSON.stringify({
+      access_token: 'tok', refresh_token: 'ref',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user: u,
+    }));
+  }, { u: ROSTER_USER, k: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ROSTER_USER) }));
+  await page.route('**/rest/v1/user_preferences**', (route) => {
+    const req = route.request();
+    if (req.method() === 'GET' || req.method() === 'HEAD') {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ custom_roster: customRoster }),
+      });
+    }
+    writes.push(req.postDataJSON());
+    return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+  });
+  return () => writes;
+}
+
+test('saved roster: a customized chip replaces the built-in one', async ({ page }) => {
+  await withRoster(page, {
+    offense: [{ id: 'off-q', letter: '1', color: '#E11D48', shape: 'star' }],
+  });
+  await openDesigner(page);
+
+  // The override wins…
+  await expect(btn(page, 'Player 1')).toBeVisible();
+  await expect(btn(page, 'Player Q')).toHaveCount(0);
+  // …and chips with no override keep their defaults.
+  await expect(btn(page, 'Player R')).toBeVisible();
+});
+
+test('saved roster: a custom shape survives click-to-place AND drag-to-place', async ({ page }) => {
+  // Guards three paths that all used to drop `shape`: the chip render, the
+  // click payload, and the drag payload (Canvas reads data.shape but the
+  // toolbar never sent it).
+  await withRoster(page, {
+    offense: [{ id: 'off-q', letter: '1', color: '#E11D48', shape: 'star' }],
+  });
+  await openDesigner(page);
+
+  await btn(page, 'Player 1').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+
+  const state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(1);
+  expect(state.playerIcons[0].letter).toBe('1');
+  expect(state.playerIcons[0].color).toBe('#E11D48');
+  expect(state.playerIcons[0].shape).toBe('star');
+
+  // Drag-to-place carries the same shape through the dataTransfer payload.
+  const dropped = await page.evaluate(() => {
+    const chip = [...document.querySelectorAll('button[title="Player 1"]')].find(
+      (b) => (b as HTMLElement).offsetParent !== null,
+    )!;
+    const dt = new DataTransfer();
+    chip.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+    return dt.getData('application/json');
+  });
+  expect(JSON.parse(dropped)).toMatchObject({ letter: '1', color: '#E11D48', shape: 'star' });
+});
+
+test('saved roster: editing a chip persists it to user_preferences', async ({ page }) => {
+  const getWrites = await withRoster(page, null);
+  await openDesigner(page);
+
+  await btn(page, 'Edit your players').click();
+  await btn(page, 'Edit player Q').click();
+
+  const labelInput = page.getByLabel('Player label');
+  await expect(labelInput).toBeVisible();
+  await labelInput.fill('QB1');
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Save Player' }).click();
+
+  await expect.poll(() => getWrites().length, { timeout: 10000 }).toBeGreaterThan(0);
+  const body = getWrites()[0] as { custom_roster?: { offense?: { id: string; letter: string; color: string }[] } };
+  const saved = body.custom_roster?.offense?.find((c) => c.id === 'off-q');
+  expect(saved).toMatchObject({ letter: 'QB1', color: '#E11D48' });
+
+  // Applied immediately, without a reload.
+  await expect(btn(page, 'Edit player QB1')).toBeVisible();
+});
+
+test('saved roster: reset drops the override for that play type only', async ({ page }) => {
+  const getWrites = await withRoster(page, {
+    offense: [{ id: 'off-q', letter: '1', color: '#E11D48', shape: 'star' }],
+    defense: [{ id: 'def-d', letter: 'DE', color: '#F97316', shape: 'circle' }],
+  });
+  await openDesigner(page);
+
+  await btn(page, 'Edit your players').click();
+  await btn(page, 'Reset these players to the defaults').click();
+
+  await expect.poll(() => getWrites().length, { timeout: 10000 }).toBeGreaterThan(0);
+  const body = getWrites()[0] as { custom_roster?: Record<string, unknown> };
+  expect(body.custom_roster?.offense).toBeUndefined();
+  // The defensive override is untouched — reset is scoped to what's on screen.
+  expect(body.custom_roster?.defense).toBeDefined();
+});
+
+test('saved roster: a malformed saved chip falls back to its default', async ({ page }) => {
+  // custom_roster is user-controlled JSON that round-trips through the DB, so
+  // a bad entry must not put an empty label or arbitrary string into a style.
+  await withRoster(page, {
+    offense: [
+      { id: 'off-q', letter: '', color: '#E11D48', shape: 'star' },        // empty label
+      { id: 'off-r', letter: 'RB', color: 'javascript:alert(1)' },          // not a hex color
+      { id: 'nonexistent-chip', letter: 'ZZ', color: '#000000' },           // unknown id
+    ],
+  });
+  await openDesigner(page);
+
+  await expect(btn(page, 'Player Q')).toBeVisible(); // fell back
+  await expect(btn(page, 'Player R')).toBeVisible(); // fell back
+  await expect(btn(page, 'Player ZZ')).toHaveCount(0); // ignored
+});
+
+test('saved roster: signed out, roster editing is not offered', async ({ page }) => {
+  await openDesigner(page);
+  await expect(btn(page, 'Player Q')).toBeVisible();
+  await expect(btn(page, 'Edit your players')).toHaveCount(0);
 });

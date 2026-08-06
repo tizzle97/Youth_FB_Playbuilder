@@ -24,7 +24,10 @@ const SHAPE_CLIP: Record<IconShape, string | undefined> = {
 
 const SHAPES: IconShape[] = ['circle', 'square', 'triangle', 'star'];
 
-function shapeStyle(shape: IconShape, color: string): React.CSSProperties {
+/** Inline style that renders `shape` as a solid swatch. Exported so the
+ *  toolbar chips draw the same four shapes this editor offers — otherwise a
+ *  saved triangle or star would show up as a square chip. */
+export function shapeStyle(shape: IconShape, color: string): React.CSSProperties {
   return {
     backgroundColor: color,
     borderRadius: shape === 'circle' ? '50%' : 0,
