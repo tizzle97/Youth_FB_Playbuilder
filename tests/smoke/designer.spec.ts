@@ -2135,3 +2135,38 @@ test('Sign Out still works when the server rejects the logout', async ({ page })
   await expect(page.getByRole('button', { name: 'Coach' })).toHaveCount(0);
   expect(await page.evaluate((k) => localStorage.getItem(k), AUTH_STORAGE_KEY)).toBeNull();
 });
+
+test('feedback submit is not wedged by the auth lock', async ({ page }) => {
+  // Same root cause as the Sign Out bug, different symptom: FeedbackButton
+  // awaits auth.getUser() AFTER setLoading(true), so a wedged session lock left
+  // the button disabled at opacity-50 reading "Submitting..." forever — users
+  // reported "it shades out and nothing happens" — and the insert never fired.
+  let insertPosted = false;
+  await page.addInitScript(({ u, k, jwt }) => {
+    localStorage.setItem('pbp-analytics-consent', 'denied');
+    if (sessionStorage.getItem('pbp-seeded')) return;
+    sessionStorage.setItem('pbp-seeded', '1');
+    localStorage.setItem(k, JSON.stringify({
+      access_token: jwt, refresh_token: 'ref',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user: u,
+    }));
+  }, { u: SIGNED_IN_USER, k: AUTH_STORAGE_KEY, jwt: FAKE_JWT });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SIGNED_IN_USER) }));
+  await page.route('**/rest/v1/**', (route) => {
+    const req = route.request();
+    if (req.url().includes('/feedback') && req.method() === 'POST') {
+      insertPosted = true;
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/');
+  await page.getByTitle('Give Feedback').click();
+  await page.getByLabel('Your Feedback').fill('The kickoff formation is missing.');
+  await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+  await expect.poll(() => insertPosted, { timeout: 10000 }).toBe(true);
+  await expect(page.getByText('Thank you for your feedback!')).toBeVisible();
+});
