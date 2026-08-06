@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { CustomRoster } from '../components/designer/rosters';
 
 // Per-user settings from the `user_preferences` table (B-14 team identity,
 // B-15 save/export defaults). One row per user; absent row = all defaults.
@@ -22,6 +23,9 @@ export interface UserPreferences {
   default_play_type: DefaultPlayType;
   paper_size: PaperSize;
   default_export_style: ExportStyle;
+  /** Saved toolbar rosters, keyed by play type. null = built-in defaults.
+   *  Structure validated on read — see designer/rosters.ts. */
+  custom_roster: CustomRoster | null;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -32,17 +36,35 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   default_play_type: 'pass',
   paper_size: 'letter',
   default_export_style: 'detailed',
+  custom_roster: null,
 };
 
+const BASE_COLUMNS =
+  'team_name, team_logo_url, default_game_format, default_visibility, default_play_type, paper_size, default_export_style';
+
 /** Load the user's preferences, falling back to defaults for a missing row —
- *  and for the whole table if `user_preferences.sql` hasn't been run yet. */
+ *  and for the whole table if `user_preferences.sql` hasn't been run yet.
+ *
+ *  `custom_roster` is selected separately-tolerantly: naming a column that
+ *  doesn't exist fails the ENTIRE select with 42703, so listing it before
+ *  `custom_roster.sql` has been run would silently revert every *other*
+ *  preference to its default for the whole window between deploy and SQL run.
+ *  On that error we retry without it. */
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_preferences')
-    .select('team_name, team_logo_url, default_game_format, default_visibility, default_play_type, paper_size, default_export_style')
+    .select(`${BASE_COLUMNS}, custom_roster`)
     .eq('user_id', userId)
     .maybeSingle();
-  return { ...DEFAULT_PREFERENCES, ...(data ?? {}) };
+
+  if (!error) return { ...DEFAULT_PREFERENCES, ...(data ?? {}) };
+
+  const { data: legacy } = await supabase
+    .from('user_preferences')
+    .select(BASE_COLUMNS)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return { ...DEFAULT_PREFERENCES, ...(legacy ?? {}) };
 }
 
 /** Upsert a partial set of preference fields for the user. */

@@ -1,0 +1,26 @@
+-- Saved player-icon rosters for the designer toolbar.
+-- Run once in the Supabase SQL Editor. Idempotent — safe to re-run.
+--
+-- Needs its own file rather than an edit to user_preferences.sql: that file
+-- creates the table with CREATE TABLE IF NOT EXISTS, which is a no-op now the
+-- table exists and would therefore never add this column.
+--
+-- Shape (validated in TypeScript, see src/components/designer/rosters.ts):
+--   {
+--     "offense":        [{ "id": "off-q", "letter": "1", "color": "#3B82F6", "shape": "circle" }, ...],
+--     "defense":        [...],
+--     "special_teams":  [...]
+--   }
+--
+-- Deliberately jsonb with no CHECK constraint: this is structured, evolving
+-- data rather than one of an enumerable set, so it is validated on read in the
+-- client (unknown chip ids ignored, malformed entries fall back to that chip's
+-- built-in default). NULL — the default — means "use the built-in rosters",
+-- and a missing play-type key means the same for just that play type, so a
+-- coach who only customizes offense doesn't freeze the defensive roster at
+-- whatever the built-ins happened to be that day.
+--
+-- No Pro gate: every other column on user_preferences is available on the free
+-- plan, and this is basic usability rather than a premium capability.
+
+ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS custom_roster jsonb;

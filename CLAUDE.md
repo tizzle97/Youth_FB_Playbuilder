@@ -72,8 +72,11 @@ take the topmost unblocked item there.
   `subscriptions.sql`, `security_hardening.sql`, `community_authors.sql`,
   `free_tier_limits.sql`, `user_preferences.sql`, `play_votes.sql`,
   `custom_formations.sql`, `blog_seo.sql`, `football_avatars.sql`,
-  `founding_member_backfill.sql`, `admin_entitlements.sql`. When schema changes
-  are needed, add a new idempotent `.sql` file and tell the user to run it.
+  `founding_member_backfill.sql`, `admin_entitlements.sql`, `custom_roster.sql`.
+  When schema changes are needed, add a new idempotent `.sql` file and tell the
+  user to run it. ⚠ Adding a **column** always needs a new file —
+  `user_preferences.sql` and friends use `CREATE TABLE IF NOT EXISTS`, which is
+  a no-op once the table exists.
 - **Granting Pro / Founding Member is a UI action, not a SQL file.** Use the
   Users tab of `/admin` (`admin_set_user_plan`, `admin_entitlements.sql`). Don't
   write another one-off grant migration. Only `free`/`founding` are settable by
@@ -130,6 +133,15 @@ billing/auth/RLS/legal/SQL from a feedback report.
   universal field used by every game format. Every saved play's normalized
   coordinates encode that window — changing it silently corrupts existing plays
   (see `scripts/migrate-field-depth-2026-07.mjs` for the 25→30-yard remap).
+- **Toolbar rosters** live in `src/components/designer/rosters.ts`
+  (`DEFAULT_ROSTERS` per play type, each chip carrying a **stable id**), not in
+  `PlayerToolbar.tsx`. A coach's saved overrides are merged over the defaults
+  **by id** in `resolveRoster()` and persisted to `user_preferences.custom_roster`
+  — so renaming a chip keeps its override, and adding a new built-in chip needs
+  no data migration. Anything that hands a chip to the canvas must carry
+  `shape` (chip render, click payload *and* drag payload) — all three silently
+  dropped it before, which only stayed invisible while every built-in chip was
+  a circle or square.
 - **Icon sizing auto-scales** with roster count (`iconScaleForCount()`), so
   11v11 doesn't look crowded. Anything deriving from `PLAYER_SIZE` in
   `Canvas.tsx` (hit-test radius, hover rings, popover anchors) must apply the

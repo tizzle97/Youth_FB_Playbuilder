@@ -1,6 +1,7 @@
 import React from 'react';
 import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight } from 'lucide-react';
-import { PlayerToolbar, players, defensivePlayers, specialTeamsPlayers } from './PlayerToolbar';
+import { PlayerToolbar } from './PlayerToolbar';
+import { resolveRoster, type CustomRoster } from './rosters';
 import { FormationMenu } from './FormationMenu';
 import type { DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
@@ -38,6 +39,11 @@ interface DesignerToolbarProps {
   setSnapEnabled: (enabled: boolean) => void;
   selectedPlayer: string | null;
   onSelectPlayer: (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => void;
+  /** The signed-in user's saved toolbar rosters; null = built-in defaults. */
+  customRoster?: CustomRoster | null;
+  /** Persist an edited roster. Omitted when signed out, which also hides the
+   *  roster-editing controls rather than offering an edit that can't be kept. */
+  onRosterChange?: (next: CustomRoster) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -77,6 +83,8 @@ export function DesignerToolbar({
   setSnapEnabled,
   selectedPlayer,
   onSelectPlayer,
+  customRoster = null,
+  onRosterChange,
   onUndo,
   onRedo,
   onClear,
@@ -91,7 +99,7 @@ export function DesignerToolbar({
   // Zone of responsibility applies to defense and special teams (coverage
   // lanes, containment) — only offense gets the Formation menu.
   const showZoneTools = isDefense || isSpecialTeams;
-  const roster = isDefense ? defensivePlayers : isSpecialTeams ? specialTeamsPlayers : players;
+  const roster = resolveRoster(playType, customRoster);
   const vertical = orientation === 'vertical';
 
   const selectMode = () => {
@@ -344,6 +352,9 @@ export function DesignerToolbar({
           selectedPlayer={selectedPlayer}
           onSelectPlayer={handlePlayerSelect}
           roster={roster}
+          playType={playType}
+          customRoster={customRoster}
+          onRosterChange={onRosterChange}
           wrap={vertical}
         />
       </div>

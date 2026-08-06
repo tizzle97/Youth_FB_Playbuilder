@@ -11,7 +11,8 @@ import type { CanvasHandle, DrawMode, CapStyle, IconShape, PlayerIcon } from './
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
-import { getUserPreferences, type UserPreferences } from '../../lib/userPreferences';
+import { getUserPreferences, saveUserPreferences, type UserPreferences } from '../../lib/userPreferences';
+import type { CustomRoster } from './rosters';
 import { usePageMeta } from '../../lib/seo';
 
 // Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
@@ -110,6 +111,22 @@ export function PlayDesigner() {
     getUserPreferences(user.id).then((p) => { if (!cancelled) setPreferences(p); });
     return () => { cancelled = true; };
   }, [user]);
+
+  /**
+   * Persist an edited toolbar roster. Applied optimistically so the chips
+   * update instantly, then rolled back if the write fails — the toolbar is a
+   * leaf and deliberately has no `user` of its own, since resolving auth down
+   * there is what deadlocked gotrue's session lock (see userPreferences.ts).
+   */
+  const handleRosterChange = useCallback((next: CustomRoster) => {
+    if (!user) return;
+    const previous = preferences;
+    setPreferences((p) => (p ? { ...p, custom_roster: next } : p));
+    saveUserPreferences(user.id, { custom_roster: next }).catch((err) => {
+      console.error('Could not save your player roster:', err);
+      setPreferences(previous);
+    });
+  }, [user, preferences]);
 
   // Fetch an existing play when opened via /designer?play=<id> (edit in
   // place) or /designer?template=<id> (start a new play from this one —
@@ -529,6 +546,8 @@ export function PlayDesigner() {
             setSnapEnabled={setSnapEnabled}
             selectedPlayer={selectedPlayer?.letter || null}
             onSelectPlayer={setSelectedPlayer}
+            customRoster={preferences?.custom_roster ?? null}
+            onRosterChange={user ? handleRosterChange : undefined}
             onUndo={() => canvasRef.current?.undo()}
             onRedo={() => canvasRef.current?.redo()}
             onClear={() => canvasRef.current?.clear()}
@@ -631,6 +650,8 @@ export function PlayDesigner() {
           setSnapEnabled={setSnapEnabled}
           selectedPlayer={selectedPlayer?.letter || null}
           onSelectPlayer={setSelectedPlayer}
+          customRoster={preferences?.custom_roster ?? null}
+          onRosterChange={user ? handleRosterChange : undefined}
           onUndo={() => canvasRef.current?.undo()}
           onRedo={() => canvasRef.current?.redo()}
           onClear={() => canvasRef.current?.clear()}
