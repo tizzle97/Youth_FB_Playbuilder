@@ -7,6 +7,7 @@ import { ImageCropModal } from './ImageCropModal';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { assertReasonableUpload, downscaleImage } from '../../lib/imageResize';
 import { checkIsAdmin } from '../../lib/admin';
+import { signOutSafely } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { FREE_LIMITS, rowIsPro, type Plan } from '../../lib/entitlements';
 import {
@@ -311,7 +312,11 @@ export default function AccountSettings() {
     try {
       const { error } = await supabase.rpc('delete_user');
       if (error) throw error;
-      await supabase.auth.signOut();
+      // The account no longer exists, so the server rejects the logout call.
+      // signOutSafely() swallows that and clears the local session anyway —
+      // a bare signOut() here threw, so a *successful* deletion still showed
+      // "Failed to delete account" and never navigated away.
+      await signOutSafely();
       navigate('/');
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to delete account'));

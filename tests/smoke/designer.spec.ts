@@ -2042,3 +2042,96 @@ test('nav "Play Designer" opens in the same tab, not a new one', async ({ page, 
   await expect(page).toHaveURL(/\/designer/);
   expect(context.pages()).toHaveLength(1);
 });
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Sign out. useEntitlement() used to call auth.getUser() from inside an
+ * onAuthStateChange callback; gotrue dispatches those while holding its
+ * session lock, so that re-entrant call deadlocked the lock permanently and
+ * every later auth call — signOut() included — hung forever. The Sign Out
+ * button silently did nothing.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const SIGNED_IN_USER = {
+  id: '77777777-7777-7777-7777-777777777777',
+  aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+  app_metadata: {}, user_metadata: { username: 'Coach' }, created_at: '2025-01-01T00:00:00Z',
+};
+
+/** gotrue decodes the access token, so the fixture must be a structurally
+ *  valid JWT — a placeholder string makes it report "Auth session missing"
+ *  before any network call and the test stops exercising the real path. */
+const b64url = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const FAKE_JWT = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({
+  sub: SIGNED_IN_USER.id, aud: 'authenticated', role: 'authenticated',
+  session_id: 'sess-1', email: SIGNED_IN_USER.email,
+  exp: Math.floor(Date.now() / 1000) + 3600,
+})}.sig`;
+
+async function signedInHome(page: Page, logout: (route: never) => unknown) {
+  await page.addInitScript(({ u, k, jwt }) => {
+    localStorage.setItem('pbp-analytics-consent', 'denied');
+    // Seed ONCE. addInitScript re-runs on every navigation, and a failed
+    // sign-out deliberately hard-reloads — re-seeding would silently undo the
+    // very thing under test.
+    if (sessionStorage.getItem('pbp-seeded')) return;
+    sessionStorage.setItem('pbp-seeded', '1');
+    localStorage.setItem(k, JSON.stringify({
+      access_token: jwt, refresh_token: 'ref',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user: u,
+    }));
+  }, { u: SIGNED_IN_USER, k: AUTH_STORAGE_KEY, jwt: FAKE_JWT });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SIGNED_IN_USER) }));
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/auth/v1/logout**', logout as never);
+  await page.goto('/');
+}
+
+test('auth calls do not deadlock the gotrue session lock on the homepage', async ({ page }) => {
+  // The root cause, asserted directly: if the lock is stuck, these never settle.
+  await signedInHome(page, ((route: { fulfill: (o: unknown) => unknown }) =>
+    route.fulfill({ status: 204, body: '' })) as never);
+  await page.waitForTimeout(1200);
+
+  const settled = await page.evaluate(async () => {
+    const mod = await import('/src/lib/supabase.ts');
+    const sb = (mod as { supabase: { auth: { getSession: () => Promise<unknown> } } }).supabase;
+    return Promise.race([
+      sb.auth.getSession().then(() => true),
+      new Promise((res) => setTimeout(() => res(false), 5000)),
+    ]);
+  });
+  expect(settled).toBe(true);
+});
+
+test('Sign Out signs the user out and returns them home', async ({ page }) => {
+  let logoutCalled = false;
+  await signedInHome(page, ((route: { fulfill: (o: unknown) => unknown }) => {
+    logoutCalled = true;
+    return route.fulfill({ status: 204, body: '' });
+  }) as never);
+
+  await page.getByRole('button', { name: 'Coach' }).click();
+  await page.getByRole('button', { name: 'Sign Out' }).click();
+
+  await expect.poll(() => logoutCalled, { timeout: 10000 }).toBe(true);
+  await expect(page.getByRole('button', { name: 'Coach' })).toHaveCount(0);
+  expect(await page.evaluate((k) => localStorage.getItem(k), AUTH_STORAGE_KEY)).toBeNull();
+});
+
+test('Sign Out still works when the server rejects the logout', async ({ page }) => {
+  // Very common: the session is already gone server-side, so /logout 403s. The
+  // user must still end up signed out locally rather than stuck.
+  await signedInHome(page, ((route: { fulfill: (o: unknown) => unknown }) =>
+    route.fulfill({
+      status: 403, contentType: 'application/json',
+      body: JSON.stringify({ code: 403, error_code: 'session_not_found', msg: 'Session not found' }),
+    })) as never);
+
+  await page.getByRole('button', { name: 'Coach' }).click();
+  await page.getByRole('button', { name: 'Sign Out' }).click();
+
+  await expect(page.getByRole('button', { name: 'Coach' })).toHaveCount(0);
+  expect(await page.evaluate((k) => localStorage.getItem(k), AUTH_STORAGE_KEY)).toBeNull();
+});

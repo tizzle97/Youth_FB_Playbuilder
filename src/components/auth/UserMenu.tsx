@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { checkIsAdmin } from '../../lib/admin';
+import { signOutSafely } from '../../lib/auth';
 
 interface UserMenuProps {
   user: SupabaseUser;
@@ -84,7 +85,7 @@ export function UserMenu({ user, showName = true }: UserMenuProps) {
   }, [user.id]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOutSafely();
     navigate('/');
   };
 
