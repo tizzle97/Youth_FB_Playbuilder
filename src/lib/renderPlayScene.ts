@@ -81,7 +81,30 @@ export type PathItem = {
   capStyle?: CapStyle;
   /** Dashed vs solid stroke. Omitted/undefined means solid. */
   dashed?: boolean;
+  /** Per-segment dash override for a 'straight' mode path — index i is the
+   *  style of the segment from points[i] to points[i+1], so length must equal
+   *  points.length-1 when present. Omitted means every segment uses `dashed`
+   *  above, which covers every pre-existing saved play and any route that was
+   *  never toggled mid-draw — no migration, no version bump, same pattern as
+   *  `dashed`/`capStyle` themselves. Never set for 'waypoint' mode: splitting
+   *  a curved route's quadratic-smoothed stroke at an interior point changes
+   *  the curve's shape, not just its dash pattern (the curve is drawn through
+   *  the midpoints between points, never touching an interior point itself —
+   *  forcing a split to land exactly on one distorts the silhouette). See
+   *  resolveSegmentDash(). */
+  segmentDashed?: boolean[];
 };
+
+/** The per-segment dash style to actually render/edit, honoring the
+ *  whole-path `dashed` fallback. Falls back even if `segmentDashed` is
+ *  present but the wrong length (e.g. a hand-edited or corrupted save),
+ *  rather than let a misaligned array silently attach the wrong style to the
+ *  wrong segment. */
+export function resolveSegmentDash(path: Pick<PathItem, 'points' | 'dashed' | 'segmentDashed'>): boolean[] {
+  const segmentCount = Math.max(0, path.points.length - 1);
+  if (path.segmentDashed && path.segmentDashed.length === segmentCount) return path.segmentDashed;
+  return new Array(segmentCount).fill(!!path.dashed);
+}
 
 export type IconShape = 'circle' | 'square' | 'triangle' | 'star';
 
@@ -174,6 +197,41 @@ export function strokeStraight(ctx: CanvasRenderingContext2D, pts: Pt[], color: 
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * Strokes contiguous same-style runs of a polyline separately, so a route can
+ * mix solid and dashed segments. `segDash[i]` is the style of the segment
+ * from `pts[i]` to `pts[i+1]`, so `segDash.length === pts.length - 1`.
+ *
+ * Only used for 'straight' mode (plain `lineTo` between points), where
+ * splitting is exact — each run is a literal sub-polyline of the original,
+ * so this is pixel-identical to a single stroke() call when every entry in
+ * `segDash` is the same (the common case: nobody toggled mid-route). Do NOT
+ * use this for the quadratic-smoothed 'waypoint' mode — see the PathItem
+ * comment on `segmentDashed`.
+ */
+export function strokeRuns(
+  ctx: CanvasRenderingContext2D,
+  pts: Pt[],
+  segDash: boolean[],
+  color: string,
+  lw: number,
+) {
+  if (pts.length < 2 || segDash.length !== pts.length - 1) {
+    strokeStraight(ctx, pts, color, lw);
+    return;
+  }
+  let runStart = 0;
+  for (let i = 0; i <= segDash.length; i++) {
+    if (i === segDash.length || segDash[i] !== segDash[runStart]) {
+      ctx.save();
+      ctx.setLineDash(segDash[runStart] ? [lw * 2.5, lw * 2] : []);
+      strokeStraight(ctx, pts.slice(runStart, i + 1), color, lw);
+      ctx.restore();
+      runStart = i;
+    }
+  }
 }
 
 /**
@@ -584,14 +642,24 @@ export function renderScene(
     // arrowhead. Skipped for the block cap, which sits on the endpoint
     // rather than tapering to it.
     const stroked = isLast && !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
-    ctx.save();
-    ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
     if (p.mode === 'waypoint') {
+      ctx.save();
+      ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
       strokeRoute(ctx, stroked, p.color, lineWidth);
+      ctx.restore();
+    } else if (p.segmentDashed) {
+      // trimEnd only ever removes/rewrites points from the tail, so the
+      // first `stroked.length - 1` entries of the original per-segment
+      // array still line up with the segments still visually present —
+      // resolve against the untrimmed points, then slice to match.
+      const segDash = resolveSegmentDash(p).slice(0, stroked.length - 1);
+      strokeRuns(ctx, stroked, segDash, p.color, lineWidth);
     } else {
+      ctx.save();
+      ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
       strokeStraight(ctx, stroked, p.color, lineWidth);
+      ctx.restore();
     }
-    ctx.restore();
     if (isLast) {
       if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
       else drawArrowhead(ctx, pts, p.color, arrowSize);
