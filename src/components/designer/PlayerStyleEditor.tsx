@@ -6,8 +6,9 @@ import type { IconShape } from './Canvas';
 export const MAX_PLAYER_LABEL_LENGTH = 5;
 
 /** Every color used across the offense + defense preset rosters, offered as
- *  one-tap swatches. The native color input below covers everything else. */
-const SWATCH_COLORS = [
+ *  one-tap swatches. The native color input below covers everything else.
+ *  Exported so RouteColorEditor's swatch grid matches this one exactly. */
+export const SWATCH_COLORS = [
   '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
   '#8B5CF6', '#EC4899', '#6366F1', '#000000',
   '#F97316', '#14B8A6', '#84CC16', '#E11D48',
