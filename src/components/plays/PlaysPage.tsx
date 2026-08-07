@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Book, Plus, Filter, Trash2, LogIn, Wand2 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { checkIsAdmin } from '../../lib/admin';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
 import { PlayVoteButton } from './PlayVoteButton';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -208,7 +207,6 @@ export function PlaysPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'offense' | 'defense' | 'special_teams' | 'all'>('all');
   const [votedPlayIds, setVotedPlayIds] = useState<Set<string>>(new Set());
-  const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
   const [totalPlayCount, setTotalPlayCount] = useState(0);
   const [isPro, setIsPro] = useState(false);
@@ -225,7 +223,6 @@ export function PlaysPage() {
 
         if (currentUser) {
           // User is authenticated - show their plays
-          checkIsAdmin(currentUser.id).then(setIsAdmin);
 
           // Total play count + Pro status for the free-tier usage nudge (B-22).
           // Queried directly (not via useEntitlement()) since that hook's own
@@ -499,15 +496,18 @@ export function PlaysPage() {
               />
             )}
 
-            {isAdmin && (
-              <button
-                onClick={() => handleDeletePlay(play.id)}
-                className="flex items-center gap-1 px-3 py-2 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-                title="Delete Play"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
+            {/* This whole list is already scoped to the signed-in user's own
+                plays (fetchPlays queries .eq('user_id', currentUser.id)) —
+                Community plays render via the separate PlayLibrary component,
+                never here. So every play card reaching this point is already
+                owned by `user`; no admin/ownership gate is needed. */}
+            <button
+              onClick={() => handleDeletePlay(play.id)}
+              className="flex items-center gap-1 px-3 py-2 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+              title="Delete Play"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         </>
       ) : (

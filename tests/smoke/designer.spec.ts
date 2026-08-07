@@ -2045,6 +2045,59 @@ test('My Plays: card shows a "Use as Template" link to /designer?template=<id>',
   await expect(page.locator('a[href="/designer?template=my-play-1"]')).toBeVisible();
 });
 
+test('My Plays: a non-admin owner can delete their own play', async ({ page }) => {
+  // Regression test: "Delete Play" used to be gated on isAdmin instead of
+  // ownership, so a regular coach had no way to delete a play they made —
+  // even though the DB's RLS policy ("Users can manage their own plays")
+  // already permitted it. This page's query is always scoped to the
+  // signed-in user's own plays (see fetchPlays' .eq('user_id', ...)), so
+  // ownership needs no separate check — the button just needs to render.
+  const userJson = {
+    id: '88888888-8888-8888-8888-888888888888',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  // Explicitly non-admin.
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+
+  let deleteRequestUrl: string | null = null;
+  await page.route('**/rest/v1/plays**', (route) => {
+    const req = route.request();
+    if (req.method() === 'HEAD') {
+      return route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    if (req.method() === 'DELETE') {
+      deleteRequestUrl = req.url();
+      return route.fulfill({ status: 204, body: '' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'my-play-1', name: 'Trips Right', type: 'offense', thumbnail: null, is_public: false, upvotes: 0, user_id: userJson.id }]),
+    });
+  });
+
+  await page.goto('/plays');
+  const deleteButton = page.getByTitle('Delete Play');
+  await expect(deleteButton).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await deleteButton.click();
+
+  await expect.poll(() => deleteRequestUrl).not.toBeNull();
+  expect(deleteRequestUrl).toContain('id=eq.my-play-1');
+});
+
 test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usage nudge', async ({ page }) => {
   // Regression test for B-23: PlaybooksPage used to resolve its user via
   // getSession() + onAuthStateChange *and* a separate useEntitlement() call
