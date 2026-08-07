@@ -22,7 +22,7 @@ const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-aut
 const TAP_GAP = 450;
 
 type CanvasState = {
-  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean }>;
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean; segmentDashed?: boolean[] }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
   textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
@@ -465,6 +465,188 @@ test('offense: curved route with block ending and dotted line — new combinatio
   expect(state.paths[0].mode).toBe('waypoint');
   expect(state.paths[0].capStyle).toBe('block');
   expect(state.paths[0].dashed).toBe(true);
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Mixed solid/dashed segments within one straight-line route (feedback: a
+ * coach draws a solid hitch, then breaks into a dashed in/out cut, as one
+ * continuous route). Deliberately straight-mode only — see the segmentDashed
+ * comment in renderPlayScene.ts for why curved routes don't get this.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('straight route: toggling dash mid-draw produces mixed segments', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Segment 1 (solid hitch): commit it BEFORE toggling.
+  const mid = await canvasPoint(page, 0.4, 0.45);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Toggle to dashed, then commit segment 2 (the in/out cut).
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const end = await canvasPoint(page, 0.55, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('straight');
+  expect(state.paths[0].points).toHaveLength(3);
+  expect(state.paths[0].segmentDashed).toEqual([false, true]);
+});
+
+test('straight route: toggling dash but ending up uniform omits segmentDashed', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Toggle to dashed BEFORE placing anything, so every segment is dashed —
+  // net uniform, even though the button was clicked mid-route-session.
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const mid = await canvasPoint(page, 0.4, 0.45);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.55, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].dashed).toBe(true);
+  expect(state.paths[0].segmentDashed).toBeUndefined();
+});
+
+test('straight route: undo mid-route after toggling pops the right segment style', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Segment 1: dashed.
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const p1 = await canvasPoint(page, 0.4, 0.45);
+  await page.mouse.click(p1.x, p1.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Segment 2: solid — then place a THIRD point we're about to undo away.
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const p2 = await canvasPoint(page, 0.5, 0.35);
+  await page.mouse.click(p2.x, p2.y);
+  await page.waitForTimeout(TAP_GAP);
+  const p3 = await canvasPoint(page, 0.6, 0.25);
+  await page.mouse.click(p3.x, p3.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  // Undo pops the last committed point (p3) and its segment style, leaving
+  // origin -> p1 (dashed) -> p2 (solid) in progress.
+  await btn(page, 'Undo').click();
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points).toHaveLength(3);
+  expect(state.paths[0].segmentDashed).toEqual([true, false]);
+});
+
+test('straight route: canceling mid-route leaves no stale segment styles for the next route', async ({ page }) => {
+  await openDesigner(page);
+
+  // First icon: start a route, toggle to dashed, then cancel via the Cancel button.
+  await btn(page, 'Player Q').click();
+  const spotQ = await canvasPoint(page, 0.3, 0.65);
+  await page.mouse.click(spotQ.x, spotQ.y);
+  await btn(page, 'Player R').click();
+  const spotR = await canvasPoint(page, 0.6, 0.65);
+  await page.mouse.click(spotR.x, spotR.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const iconQ = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(iconQ.x, iconQ.y);
+  await page.waitForTimeout(TAP_GAP);
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const midQ = await canvasPoint(page, 0.35, 0.45);
+  await page.mouse.click(midQ.x, midQ.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  // Second icon: a fresh, never-toggled route must come out fully solid —
+  // no leftover per-segment state from the canceled route.
+  const iconR = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+  await page.mouse.click(iconR.x, iconR.y);
+  await page.waitForTimeout(TAP_GAP);
+  const midR = await canvasPoint(page, 0.65, 0.45);
+  await page.mouse.click(midR.x, midR.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  // The global dash toggle is deliberately sticky across routes (unrelated
+  // to this feature — unchanged pre-existing behavior), so the second route
+  // legitimately inherits "dashed" from the first toggle click. What must
+  // NOT happen is a leaked per-segment array from the canceled route.
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points).toHaveLength(2);
+  expect(state.paths[0].segmentDashed).toBeUndefined();
+});
+
+test('curved route: toggling dash mid-draw never sets segmentDashed (straight-only feature)', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  const mid = await canvasPoint(page, 0.4, 0.45);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  await btn(page, 'Line style: Solid / Dotted').click();
+  const end = await canvasPoint(page, 0.55, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('waypoint');
+  // Whole-path `dashed` still reflects the toggle at commit time (unchanged
+  // legacy behavior for curved routes) — it's the per-segment field that
+  // must never appear here.
+  expect(state.paths[0].dashed).toBe(true);
+  expect(state.paths[0].segmentDashed).toBeUndefined();
 });
 
 test('custom formations: signed-out/free user sees a locked upsell instead of the save flow', async ({ page }) => {

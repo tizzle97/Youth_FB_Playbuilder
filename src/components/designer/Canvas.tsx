@@ -25,7 +25,7 @@ import {
   iconShape,
   iconScaleForCount,
   strokeRoute,
-  strokeStraight,
+  strokeRuns,
   trimEnd,
   drawArrowhead,
   drawBlockCap,
@@ -154,6 +154,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // Waypoint mode state (normalized coords)
     const [waypointPoints, setWaypointPoints] = useState<Pt[]>([]);
+    // Per-segment dash style, index i = style of the segment from
+    // waypointPoints[i] to waypointPoints[i+1] — length tracks
+    // waypointPoints.length-1. Tracked unconditionally (cheap either way) but
+    // only acted on for 'straight' mode at commit/render time; every reset,
+    // pop, and append site for waypointPoints has a matching call here, kept
+    // in lockstep by convention — re-grep both on any future change to this
+    // flow, since one site (stampFormation) was missed on the first pass here.
+    const [waypointSegmentDashed, setWaypointSegmentDashed] = useState<boolean[]>([]);
     const [waypointColor, setWaypointColor] = useState('#e05a1e');
     const [waypointIconIndex, setWaypointIconIndex] = useState<number | null>(null);
     const lastTapRef = useRef<number>(0);
@@ -561,10 +569,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const pts = previewPts.map(toPx);
         const isBlock = capStyle === 'block';
         const stroked = pts.length >= 2 && !isBlock ? trimEnd(pts, ARROWHEAD_SIZE * scale * 0.8) : pts;
-        ctx.save();
-        ctx.setLineDash(dashed ? [ROUTE_LINE_WIDTH * scale * 2.5, ROUTE_LINE_WIDTH * scale * 2] : []);
         if (drawMode === 'straight' || drawMode === 'block') {
-          strokeStraight(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
+          // Per-segment style, including the live pending segment: it always
+          // previews in the CURRENT toggle value, while already-committed
+          // segments keep whatever was active when each was placed. Same
+          // trimEnd realignment as renderScene's committed-path loop — resolve
+          // against the untrimmed points, then slice to match `stroked`.
+          const fullSegDash = pendingPoint ? [...waypointSegmentDashed, dashed] : waypointSegmentDashed;
+          const segDash = fullSegDash.slice(0, stroked.length - 1);
+          strokeRuns(ctx, stroked, segDash, waypointColor, ROUTE_LINE_WIDTH * scale);
           pts.slice(1).forEach((pt) => {
             ctx.save();
             ctx.fillStyle = waypointColor;
@@ -574,9 +587,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             ctx.restore();
           });
         } else {
+          ctx.save();
+          ctx.setLineDash(dashed ? [ROUTE_LINE_WIDTH * scale * 2.5, ROUTE_LINE_WIDTH * scale * 2] : []);
           strokeRoute(ctx, stroked, waypointColor, ROUTE_LINE_WIDTH * scale);
+          ctx.restore();
         }
-        ctx.restore();
         if (pts.length >= 2) {
           if (isBlock) drawBlockCap(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
           else drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
@@ -639,7 +654,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, capStyle, dashed, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentDashed, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, capStyle, dashed, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -668,6 +683,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Clear in-progress segments when switching draw modes
     useEffect(() => {
       setWaypointPoints([]);
+      setWaypointSegmentDashed([]);
       setWaypointIconIndex(null);
       setHoveredIconIndex(null);
     }, [drawMode]);
@@ -677,6 +693,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     useEffect(() => {
       if (!drawingMode) {
         setWaypointPoints([]);
+        setWaypointSegmentDashed([]);
         setWaypointIconIndex(null);
         setHoveredIconIndex(null);
       }
@@ -734,10 +751,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           if (waypointPoints.length === 1) {
             // Only the locked origin remains — cancel the route entirely.
             setWaypointPoints([]);
+            setWaypointSegmentDashed([]);
             setWaypointIconIndex(null);
             setHoveredIconIndex(null);
           } else {
             setWaypointPoints((prev) => prev.slice(0, -1));
+            setWaypointSegmentDashed((prev) => prev.slice(0, -1));
           }
           return;
         }
@@ -778,7 +797,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setEditingIconIndex(null);
         setEditingTextIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointSegmentDashed([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
       loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); },
@@ -797,6 +816,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setZoneDraft(null);
         setEditingIconIndex(null);
         setWaypointPoints([]);
+        setWaypointSegmentDashed([]);
         setWaypointIconIndex(null);
         setHoveredIconIndex(null);
       },
@@ -832,9 +852,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ------------------------------------------
     // Finish route helper
     // ------------------------------------------
-    const finishRoute = useCallback((pts: Pt[], color: string, iconIdx: number | null, mode: DrawMode) => {
+    const finishRoute = useCallback((pts: Pt[], color: string, iconIdx: number | null, mode: DrawMode, segDash: boolean[]) => {
       if (pts.length < 2) return;
       pushSnapshot();
+      // Only 'straight' mode gets per-segment styling (see the PathItem
+      // comment on segmentDashed for why curved routes don't), and only when
+      // it's not just a uniform value the plain `dashed` field already covers
+      // — keeps a route that was never toggled mid-draw exactly as small as
+      // it was before this feature existed.
+      const mixed = mode === 'straight' && segDash.length > 0 && segDash.some((d) => d !== segDash[0]);
       const newPath: PathItem = {
         points: pts,
         color,
@@ -842,6 +868,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         mode,
         capStyle,
         dashed,
+        segmentDashed: mixed ? segDash : undefined,
       };
       setPaths((prev) => [...prev, newPath]);
       if (onDrawingComplete) onDrawingComplete(pts);
@@ -853,16 +880,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const finishWaypoint = useCallback(() => {
       if (waypointPoints.length >= 2) {
         // Use the active drawMode so straight segments are stored as 'straight'
-        finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode);
+        finishRoute(waypointPoints, waypointColor, waypointIconIndex, drawMode, waypointSegmentDashed);
         // Flash "Route saved!" confirmation — setSavedFlash is stable, safe to call here
         if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
         setSavedFlash(true);
         savedFlashTimerRef.current = setTimeout(() => setSavedFlash(false), 1500);
       }
       setWaypointPoints([]);
+      setWaypointSegmentDashed([]);
       setWaypointIconIndex(null);
       setHoveredIconIndex(null);
-    }, [waypointPoints, waypointColor, waypointIconIndex, drawMode, finishRoute]);
+    }, [waypointPoints, waypointColor, waypointIconIndex, drawMode, waypointSegmentDashed, finishRoute]);
 
     // ------------------------------------------
     // Pointer events
@@ -999,6 +1027,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             setWaypointColor(icon.color);
             setWaypointIconIndex(clicked);
             setWaypointPoints([{ x: icon.x, y: icon.y }]);
+            setWaypointSegmentDashed([]);
             setHoveredIconIndex(null);
             routeDragRef.current = true;
             setPendingPoint({ x: icon.x, y: icon.y });
@@ -1010,6 +1039,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           if (clicked >= 0 && clicked === waypointIconIndex) {
             // Tapped the SAME origin icon → cancel the in-progress route and deselect
             setWaypointPoints([]);
+            setWaypointSegmentDashed([]);
             setWaypointIconIndex(null);
             setHoveredIconIndex(null);
           } else if (clicked >= 0) {
@@ -1242,6 +1272,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             : 0;
           if (traveled >= DRAG_THRESHOLD_PX) {
             setWaypointPoints((prev) => [...prev, pendingPoint]);
+            // Whatever the toggle reads right now is this segment's style —
+            // already-committed segments before it are untouched.
+            setWaypointSegmentDashed((prev) => [...prev, dashed]);
           }
         }
         setPendingPoint(null);
@@ -1477,6 +1510,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setWaypointPoints([]);
+                setWaypointSegmentDashed([]);
                 setWaypointIconIndex(null);
                 setHoveredIconIndex(null);
               }}
