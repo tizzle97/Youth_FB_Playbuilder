@@ -2149,6 +2149,48 @@ test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usag
   await expect(page.getByText('1 of 2 free playbooks used.')).toBeVisible();
 });
 
+test('PlaybooksPage: play count reflects the actual number of plays, not always 1', async ({ page }) => {
+  // Regression test: `playbook_plays(count)` is PostgREST's aggregate-embed
+  // syntax — it always returns a ONE-element array wrapping the aggregate
+  // object (e.g. [{ count: 7 }]), never one element per play. Reading
+  // `.length` off that array was therefore always 1 for any playbook with at
+  // least one play, no matter how many it actually had. The fixture below
+  // uses the REAL shape — [{ count: N }] — unlike the usage-nudge test above,
+  // whose `playbook_plays: []` fixture happens to read as 0 under the old
+  // buggy code too, which is exactly how this slipped through unnoticed.
+  const userJson = {
+    id: '55555555-5555-5555-5555-555555555555',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'pro' }) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'pb-1', name: 'Game Plan', description: '', created_at: '2025-09-01T00:00:00Z', user_id: userJson.id, playbook_plays: [{ count: 7 }] },
+        { id: 'pb-2', name: 'Empty Playbook', description: '', created_at: '2025-09-02T00:00:00Z', user_id: userJson.id, playbook_plays: [{ count: 0 }] },
+      ]),
+    }),
+  );
+
+  await page.goto('/playbooks');
+  await expect(page.getByText('7 plays')).toBeVisible();
+  await expect(page.getByText('0 plays')).toBeVisible();
+  await expect(page.getByText('1 plays')).toHaveCount(0);
+});
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Admin Dashboard — entitlement management.
  *
