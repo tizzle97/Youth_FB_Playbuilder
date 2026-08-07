@@ -1,8 +1,9 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight, Palette } from 'lucide-react';
 import { PlayerToolbar } from './PlayerToolbar';
 import { resolveRoster, type CustomRoster } from './rosters';
 import { FormationMenu } from './FormationMenu';
+import { RouteColorButton } from './RouteColorButton';
 import type { DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
@@ -27,8 +28,17 @@ interface DesignerToolbarProps {
   /** Solid vs dashed stroke for the next route finished — sticky until changed. */
   dashed: boolean;
   setDashed: (dashed: boolean) => void;
+  /** Color for the next route finished — 'auto' matches the origin player
+   *  (today's only behavior); a hex value draws every new route in that
+   *  fixed color instead, independent of player color. Sticky until changed. */
+  routeColorMode: 'auto' | string;
+  setRouteColorMode: (mode: 'auto' | string) => void;
   deleteRouteMode: boolean;
   setDeleteRouteMode: (mode: boolean) => void;
+  /** Tap a player's icon to recolor just their route, independent of the
+   *  sticky default above and any other route. */
+  recolorRouteMode: boolean;
+  setRecolorRouteMode: (mode: boolean) => void;
   zoneMode: boolean;
   setZoneMode: (mode: boolean) => void;
   deleteZoneMode: boolean;
@@ -71,8 +81,12 @@ export function DesignerToolbar({
   setCapStyle,
   dashed,
   setDashed,
+  routeColorMode,
+  setRouteColorMode,
   deleteRouteMode,
   setDeleteRouteMode,
+  recolorRouteMode,
+  setRecolorRouteMode,
   zoneMode,
   setZoneMode,
   deleteZoneMode,
@@ -105,6 +119,7 @@ export function DesignerToolbar({
   const selectMode = () => {
     setDrawingMode(false);
     setDeleteRouteMode(false);
+    setRecolorRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
     setTextMode(false);
@@ -114,6 +129,7 @@ export function DesignerToolbar({
   const pickDraw = (mode: DrawMode) => {
     setDrawingMode(true);
     setDeleteRouteMode(false);
+    setRecolorRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
     setTextMode(false);
@@ -124,31 +140,38 @@ export function DesignerToolbar({
   const toggleDeleteRouteMode = () => {
     const next = !deleteRouteMode;
     setDeleteRouteMode(next);
-    if (next) { setDrawingMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setRecolorRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+  };
+
+  const toggleRecolorRouteMode = () => {
+    const next = !recolorRouteMode;
+    setRecolorRouteMode(next);
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleZoneMode = () => {
     const next = !zoneMode;
     setZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleDeleteZoneMode = () => {
     const next = !deleteZoneMode;
     setDeleteZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleTextMode = () => {
     const next = !textMode;
     setTextMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
   };
 
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => {
     if (player) {
       setDrawingMode(false);
       setDeleteRouteMode(false);
+      setRecolorRouteMode(false);
       setZoneMode(false);
       setDeleteZoneMode(false);
       setTextMode(false);
@@ -255,6 +278,11 @@ export function DesignerToolbar({
           <span className={label}>{dashed ? 'Dotted' : 'Solid'}</span>
         </button>
 
+        {/* Route color: Auto (match player, today's only past behavior) or a
+            fixed color for every new route — e.g. black routes with
+            color-coded positions. Sticky until changed, like capStyle/dashed. */}
+        <RouteColorButton value={routeColorMode} onChange={setRouteColorMode} fullWidth={vertical} />
+
         {/* Remove Route for a player */}
         <button
           onClick={toggleDeleteRouteMode}
@@ -263,6 +291,19 @@ export function DesignerToolbar({
         >
           <RouteOff className="h-4 w-4" />
           <span className={label}>Remove Route</span>
+        </button>
+
+        {/* Recolor Route for a player: tap their icon to set just that route's
+            color, independent of the sticky default above. Not destructive,
+            so it uses the standard active (primary) styling, not Remove
+            Route's amber warning color. */}
+        <button
+          onClick={toggleRecolorRouteMode}
+          title="Recolor a player's route (tap the player)"
+          className={`${tool} ${recolorRouteMode ? active : inactive}`}
+        >
+          <Palette className="h-4 w-4" />
+          <span className={label}>Recolor Route</span>
         </button>
 
         {playType === 'offense' && (
@@ -360,15 +401,16 @@ export function DesignerToolbar({
       </div>
 
       {/* Active mode label */}
-      {(activeDraw || deleteRouteMode || zoneMode || deleteZoneMode || textMode) && (
+      {(activeDraw || deleteRouteMode || recolorRouteMode || zoneMode || deleteZoneMode || textMode) && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className={`font-semibold ${(deleteRouteMode || deleteZoneMode) ? 'text-amber-400' : 'text-primary'}`}>
             {deleteRouteMode && 'Remove route mode'}
+            {recolorRouteMode && 'Recolor route mode'}
             {deleteZoneMode && 'Remove zone mode'}
             {zoneMode && 'Zone mode'}
             {textMode && 'Text mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
-            {!deleteRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
+            {!deleteRouteMode && !recolorRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
+            {!deleteRouteMode && !recolorRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
           </span>
           {activeDraw && (
             <span>

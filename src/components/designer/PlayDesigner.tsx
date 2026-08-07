@@ -39,7 +39,13 @@ export function PlayDesigner() {
   // can end in a block T-cap and be dashed at the same time.
   const [capStyle, setCapStyle] = useState<CapStyle>('arrow');
   const [dashed, setDashed] = useState(false);
+  // Route color for the next route finished — 'auto' matches the origin
+  // icon (today's only behavior); a hex value draws every new route in that
+  // fixed color instead, independent of player color. Session-only, same as
+  // capStyle/dashed above.
+  const [routeColorMode, setRouteColorMode] = useState<'auto' | string>('auto');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
+  const [recolorRouteMode, setRecolorRouteMode] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
   const [textMode, setTextMode] = useState(false);
@@ -534,8 +540,12 @@ export function PlayDesigner() {
             setCapStyle={setCapStyle}
             dashed={dashed}
             setDashed={setDashed}
+            routeColorMode={routeColorMode}
+            setRouteColorMode={setRouteColorMode}
             deleteRouteMode={deleteRouteMode}
             setDeleteRouteMode={setDeleteRouteMode}
+            recolorRouteMode={recolorRouteMode}
+            setRecolorRouteMode={setRecolorRouteMode}
             zoneMode={zoneMode}
             setZoneMode={setZoneMode}
             deleteZoneMode={deleteZoneMode}
@@ -574,7 +584,9 @@ export function PlayDesigner() {
               drawMode={drawMode}
               capStyle={capStyle}
               dashed={dashed}
+              routeColorMode={routeColorMode}
               deleteRouteMode={deleteRouteMode}
+              recolorRouteMode={recolorRouteMode}
               zoneMode={zoneMode}
               deleteZoneMode={deleteZoneMode}
               textMode={textMode}
@@ -638,8 +650,12 @@ export function PlayDesigner() {
           setCapStyle={setCapStyle}
           dashed={dashed}
           setDashed={setDashed}
+          routeColorMode={routeColorMode}
+          setRouteColorMode={setRouteColorMode}
           deleteRouteMode={deleteRouteMode}
           setDeleteRouteMode={setDeleteRouteMode}
+          recolorRouteMode={recolorRouteMode}
+          setRecolorRouteMode={setRecolorRouteMode}
           zoneMode={zoneMode}
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}

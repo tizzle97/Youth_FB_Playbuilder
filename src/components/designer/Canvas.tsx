@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
+import { RouteColorEditor } from './RouteColorEditor';
 import { TextBoxEditor } from './TextBoxEditor';
 import {
   renderScene,
@@ -92,7 +93,12 @@ type CanvasProps = {
   capStyle: CapStyle;
   /** Solid vs dashed stroke for the next route finished — sticky until changed. */
   dashed: boolean;
+  /** Color for the next route finished — 'auto' matches the origin player;
+   *  a hex value draws every new route in that fixed color instead. */
+  routeColorMode: 'auto' | string;
   deleteRouteMode: boolean;
+  /** Tap a player's icon to recolor just their route. */
+  recolorRouteMode: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
   textMode: boolean;
@@ -141,7 +147,7 @@ export type CanvasHandle = {
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, capStyle, dashed, deleteRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, capStyle, dashed, routeColorMode, deleteRouteMode, recolorRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -221,6 +227,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // Icon being edited via the tap-to-customize popover (Select mode only).
     const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
+    // Icon whose route is being recolored via the Recolor Route popover.
+    const [editingRouteColorIconIndex, setEditingRouteColorIconIndex] = useState<number | null>(null);
     // Text box being edited via its popover (Select mode, or immediately
     // after placing a new one in Text mode).
     const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null);
@@ -277,9 +285,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const applyIconStyle = useCallback((idx: number, letter: string, color: string, shape: IconShape) => {
       pushSnapshot();
       setPlayerIcons((prev) => { const c = [...prev]; c[idx] = { ...c[idx], letter, color, shape, isSquare: shape === 'square' }; return c; });
-      setPaths((prev) => prev.map((p) => (p.startIconIndex === idx ? { ...p, color } : p)));
+      // A route whose color was explicitly set (independentColor) must not
+      // snap back to the icon's new color — that's the whole point of the
+      // Recolor Route / non-Auto route-color feature. Zones have no such
+      // override, so they keep following the icon unconditionally.
+      setPaths((prev) => prev.map((p) => (p.startIconIndex === idx && !p.independentColor ? { ...p, color } : p)));
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
+
+    /** Recolor every path belonging to one icon's route (mirrors delete
+     *  route's own `startIconIndex === idx` filter, so a route made of
+     *  multiple legs — not reachable via the current UI, but the data model
+     *  allows it — recolors as one unit rather than partially). Picking
+     *  "Auto" reverts to the icon's current color and clears the override,
+     *  which is what lets applyIconStyle resume following it. */
+    const applyRouteColor = useCallback((idx: number, color: string, auto: boolean) => {
+      pushSnapshot();
+      const resolvedColor = auto ? playerIcons[idx]?.color ?? color : color;
+      setPaths((prev) => prev.map((p) => (p.startIconIndex === idx
+        ? { ...p, color: resolvedColor, independentColor: auto ? undefined : true }
+        : p)));
+    }, [pushSnapshot, playerIcons]);
 
     /** Update a text box's content/color/size, or remove it if left blank —
      *  an empty annotation is never worth persisting as clutter. Snapshotting
@@ -711,11 +737,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // its own popover right after placement, so it's excluded from closing
     // itself here — see the textMode branch in handlePointerDown).
     useEffect(() => {
-      if (drawingMode || zoneMode || deleteRouteMode || deleteZoneMode || selectedPlayer) {
+      if (drawingMode || zoneMode || deleteRouteMode || recolorRouteMode || deleteZoneMode || selectedPlayer) {
         setEditingIconIndex(null);
         setEditingTextIndex(null);
       }
-    }, [drawingMode, zoneMode, deleteRouteMode, deleteZoneMode, selectedPlayer]);
+    }, [drawingMode, zoneMode, deleteRouteMode, recolorRouteMode, deleteZoneMode, selectedPlayer]);
 
     // Switching into text mode dismisses the icon popover (they're mutually
     // exclusive tools); leaving text mode dismisses the text popover.
@@ -723,6 +749,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (textMode) setEditingIconIndex(null);
       else setEditingTextIndex(null);
     }, [textMode]);
+
+    // The Recolor Route popover only makes sense while that mode is active —
+    // toggling it off directly, or switching to any other exclusive mode
+    // (which already resets recolorRouteMode false via DesignerToolbar's
+    // toggle handlers), must close it.
+    useEffect(() => {
+      if (!recolorRouteMode) setEditingRouteColorIconIndex(null);
+    }, [recolorRouteMode]);
 
     // ------------------------------------------
     // Imperative handle
@@ -776,6 +810,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setTextBoxes(prevState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
+        setEditingRouteColorIconIndex(null);
         setEditingTextIndex(null);
       },
       redo: () => {
@@ -795,12 +830,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setTextBoxes(nextState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
+        setEditingRouteColorIconIndex(null);
         setEditingTextIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointSegmentDashed([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointSegmentDashed([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
-      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingTextIndex(null); },
+      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorIconIndex(null); setEditingTextIndex(null); },
       // Replaces the whole scene with the template (routes/zones would
       // otherwise reference icon indices that no longer line up once a
       // different formation is stamped over the old one) — same shape as
@@ -815,6 +851,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setSelectedZoneIndex(null);
         setZoneDraft(null);
         setEditingIconIndex(null);
+        setEditingRouteColorIconIndex(null);
         setWaypointPoints([]);
         setWaypointSegmentDashed([]);
         setWaypointIconIndex(null);
@@ -869,10 +906,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         capStyle,
         dashed,
         segmentDashed: mixed ? segDash : undefined,
+        // A non-Auto sticky route color was an explicit choice, not just
+        // "whatever the icon happened to be" — it must survive that icon
+        // being recolored later (see applyIconStyle).
+        independentColor: routeColorMode !== 'auto' ? true : undefined,
       };
       setPaths((prev) => [...prev, newPath]);
       if (onDrawingComplete) onDrawingComplete(pts);
-    }, [pushSnapshot, onDrawingComplete, capStyle, dashed]);
+    }, [pushSnapshot, onDrawingComplete, capStyle, dashed, routeColorMode]);
 
     // ------------------------------------------
     // Waypoint: finish
@@ -973,6 +1014,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Recolor-route mode — tap any icon with a route to open its
+      // color popover (mirrors delete-route mode above exactly).
+      if (recolorRouteMode) {
+        if (clicked >= 0) {
+          if (iconHasRoute(clicked)) setEditingRouteColorIconIndex(clicked);
+          setHoveredIconIndex(null);
+        }
+        return;
+      }
+
       // Delete-zone mode — tap a zone (or its player) to remove it
       if (deleteZoneMode) {
         let zoneIdx = clicked >= 0 ? findZoneByIcon(clicked) : -1;
@@ -1024,7 +1075,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             // and dragging out draws the first segment in one motion. A
             // plain tap discards the zero-length pending point on release.
             const icon = playerIcons[clicked];
-            setWaypointColor(icon.color);
+            setWaypointColor(routeColorMode === 'auto' ? icon.color : routeColorMode);
             setWaypointIconIndex(clicked);
             setWaypointPoints([{ x: icon.x, y: icon.y }]);
             setWaypointSegmentDashed([]);
@@ -1352,6 +1403,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
     }
 
+    // ── Route-color popover placement ─────────────────────────────
+    // Same clamp/flip mechanism as the icon editor above, anchored to the
+    // icon whose route is being recolored.
+    const editingRouteColorIcon = editingRouteColorIconIndex !== null ? playerIcons[editingRouteColorIconIndex] : null;
+    let routeColorEditorLeft = 0;
+    let routeColorEditorTop = 0;
+    if (editingRouteColorIcon) {
+      const POPOVER_W = 230;
+      const POPOVER_H = 190;
+      routeColorEditorLeft = Math.min(Math.max(editingRouteColorIcon.x * width - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
+      routeColorEditorTop = editingRouteColorIcon.y * height + iconRadiusPx + 10;
+      if (routeColorEditorTop + POPOVER_H > height - 8) {
+        routeColorEditorTop = Math.max(8, editingRouteColorIcon.y * height - iconRadiusPx - POPOVER_H - 10);
+      }
+    }
+
     // ── Text-box popover placement ────────────────────────────────
     // Anchored under the text box's bounding box, same clamp/flip logic as
     // the icon editor above.
@@ -1473,6 +1540,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 setEditingIconIndex(null);
               }}
               onCancel={() => setEditingIconIndex(null)}
+            />
+          </div>
+        )}
+
+        {/* ── Recolor Route popover (tap an icon in Recolor Route mode) ── */}
+        {editingRouteColorIcon && editingRouteColorIconIndex !== null && (
+          <div className="absolute z-20" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
+            <RouteColorEditor
+              key={editingRouteColorIconIndex}
+              initialColor={paths.find((p) => p.startIconIndex === editingRouteColorIconIndex)?.color ?? editingRouteColorIcon.color}
+              initialAuto={!paths.find((p) => p.startIconIndex === editingRouteColorIconIndex)?.independentColor}
+              applyLabel="Apply"
+              onApply={(color, auto) => {
+                applyRouteColor(editingRouteColorIconIndex, color, auto);
+                setEditingRouteColorIconIndex(null);
+              }}
+              onCancel={() => setEditingRouteColorIconIndex(null)}
             />
           </div>
         )}

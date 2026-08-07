@@ -93,6 +93,13 @@ export type PathItem = {
    *  forcing a split to land exactly on one distorts the silhouette). See
    *  resolveSegmentDash(). */
   segmentDashed?: boolean[];
+  /** True once this path's color was explicitly set — via a non-Auto sticky
+   *  route-color default at draw time, or the Recolor Route popover — and
+   *  must survive the origin icon being recolored later. Omitted/false =
+   *  today's only behavior: the path's color always follows its icon (see
+   *  applyIconStyle in Canvas.tsx). No migration needed — every existing
+   *  saved play has this omitted and keeps auto-syncing exactly as before. */
+  independentColor?: boolean;
 };
 
 /** The per-segment dash style to actually render/edit, honoring the

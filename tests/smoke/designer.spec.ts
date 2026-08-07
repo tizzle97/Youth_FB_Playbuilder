@@ -22,7 +22,7 @@ const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-aut
 const TAP_GAP = 450;
 
 type CanvasState = {
-  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean; segmentDashed?: boolean[] }>;
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean; segmentDashed?: boolean[]; independentColor?: boolean }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
   textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
@@ -2498,4 +2498,271 @@ test('saved roster: signed out, roster editing is not offered', async ({ page })
   await openDesigner(page);
   await expect(btn(page, 'Player Q')).toBeVisible();
   await expect(btn(page, 'Edit your players')).toHaveCount(0);
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Route color independent of player-icon color. A route's color used to have
+ * exactly one source — the origin icon's color at draw time — and got
+ * silently re-baked forever: recoloring the icon later always overwrote the
+ * route's color too. Feedback: rec leagues want routes to keep matching the
+ * player (leave this alone); travel/NFL flag teams want positions
+ * color-coded but every route black, with one "hot route" in red.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const ROUTE_COLOR_TRIGGER = 'Route color: Auto (match player) or a fixed color for every new route';
+
+test('route color: sticky non-Auto default survives the icon being recolored later', async ({ page }) => {
+  await openDesigner(page);
+
+  // Set the sticky default to a fixed color (black) before drawing.
+  await btn(page, ROUTE_COLOR_TRIGGER).click();
+  await page.getByLabel('Color #000000').click();
+  await page.getByRole('button', { name: 'Set' }).click();
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].color).toBe('#000000');
+  expect(state.paths[0].independentColor).toBe(true);
+  // The icon itself is untouched — only the sticky route default changed.
+  expect(state.playerIcons[0].color).not.toBe('#000000');
+
+  // Recoloring the icon afterward must NOT drag the route's color with it —
+  // this is the actual regression guard for the applyIconStyle fix.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[0].color).toBe('#E11D48');
+  expect(state.paths[0].color).toBe('#000000');
+});
+
+test('route color: Auto (default) still follows the icon, including after a later recolor', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe(state.playerIcons[0].color);
+  expect(state.paths[0].independentColor).toBeFalsy();
+
+  // Pins down the "still syncs when not overridden" baseline explicitly —
+  // nothing previously asserted this for routes, only for zones.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByLabel('Color #10B981').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[0].color).toBe('#10B981');
+  expect(state.paths[0].color).toBe('#10B981');
+});
+
+test('route color: Recolor Route mode changes only the tapped player\'s route', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spotQ = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spotQ.x, spotQ.y);
+  await btn(page, 'Player R').click();
+  const spotR = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(spotR.x, spotR.y);
+
+  let state = await canvasState(page);
+  await btn(page, 'Straight Line Route').click();
+  const iconQ = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(iconQ.x, iconQ.y);
+  await page.waitForTimeout(TAP_GAP);
+  const endQ = await canvasPoint(page, 0.3, 0.4);
+  await page.mouse.click(endQ.x, endQ.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  const iconR = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(iconR.x, iconR.y);
+  await page.waitForTimeout(TAP_GAP);
+  const endR = await canvasPoint(page, 0.6, 0.4);
+  await page.mouse.click(endR.x, endR.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  const rOriginalColor = state.paths[1].color;
+
+  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await page.mouse.click(iconQ.x, iconQ.y);
+  await expect(page.getByLabel('Custom route color')).toBeVisible();
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe('#E11D48');
+  expect(state.paths[0].independentColor).toBe(true);
+  // R's route, drawn from a different icon, is untouched.
+  expect(state.paths[1].color).toBe(rOriginalColor);
+  expect(state.paths[1].independentColor).toBeFalsy();
+});
+
+test('route color: picking Auto in the popover reverts the override and resumes syncing', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  // Override to red via Recolor Route mode.
+  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await page.mouse.click(icon.x, icon.y);
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+  state = await canvasState(page);
+  expect(state.paths[0].independentColor).toBe(true);
+
+  // Still in Recolor Route mode from above (Apply doesn't exit the mode) —
+  // tapping the icon again reopens the popover; re-clicking the toggle
+  // button here would instead turn the mode OFF.
+  await page.mouse.click(icon.x, icon.y);
+  await page.getByRole('button', { name: 'Auto (match player)' }).click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe(state.playerIcons[0].color);
+  expect(state.paths[0].independentColor).toBeFalsy();
+
+  // And recoloring the icon now propagates again — proves the flag was
+  // genuinely cleared, not just visually reset once.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByLabel('Color #F59E0B').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe('#F59E0B');
+});
+
+test('route color: Recolor Route mode is mutually exclusive with other tools', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  const state = await canvasState(page);
+
+  await btn(page, 'Straight Line Route').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  // Enter Recolor Route mode and confirm tapping the icon opens the ROUTE
+  // color popover, not the icon-style popover.
+  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Custom route color')).toBeVisible();
+  await expect(page.getByLabel('Player label')).toHaveCount(0);
+
+  // Switching to Select mode must close that popover AND leave recolor mode,
+  // so the SAME tap now opens the icon-style popover instead.
+  await btn(page, 'Select / Move').click();
+  await expect(page.getByLabel('Custom route color')).toHaveCount(0);
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await expect(page.getByLabel('Custom route color')).toHaveCount(0);
+});
+
+test('route color: overriding a route leaves the icon\'s zone color unaffected', async ({ page }) => {
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+
+  await btn(page, 'Player S').click();
+  const spot = await canvasPoint(page, 0.5, 0.55);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  // A route AND a zone from the same defender.
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.5, 0.35);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  await btn(page, 'Draw a zone of responsibility (drag from a player)').click();
+  await page.mouse.move(icon.x, icon.y);
+  await page.mouse.down();
+  await page.mouse.move(icon.x + 90, icon.y + 60, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  const originalIconColor = state.playerIcons[0].color;
+  expect(state.zones[0].color).toBe(originalIconColor);
+
+  // Override just the route to black.
+  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await page.mouse.click(icon.x, icon.y);
+  await page.getByLabel('Color #000000').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe('#000000');
+  expect(state.zones[0].color).toBe(originalIconColor);
+
+  // Recoloring the icon: zone follows (as always), route keeps its override.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByLabel('Color #6366F1').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons[0].color).toBe('#6366F1');
+  expect(state.zones[0].color).toBe('#6366F1');
+  expect(state.paths[0].color).toBe('#000000');
 });
