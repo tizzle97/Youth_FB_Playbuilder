@@ -2192,6 +2192,162 @@ test('PlaybooksPage: play count reflects the actual number of plays, not always 
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * PlaybooksPage — drag-to-reorder plays within a playbook (List view).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+type PlayFixture = { id: string; name: string; order_position: number };
+
+function playbookPlaysRow({ id, name, order_position }: PlayFixture) {
+  return {
+    order_position,
+    plays: {
+      id,
+      name,
+      description: '',
+      thumbnail: '',
+      created_at: '2025-09-01T00:00:00Z',
+      type: 'offense',
+      metadata: {},
+    },
+  };
+}
+
+type PatchCall = { playId: string; position: number };
+
+/** Signs in, stubs the playbooks list (one playbook) and its plays, and
+ * records every playbook_plays PATCH (the reorder mutation) into `patchCalls`. */
+async function mockPlaybookWithPlays(page: Page, plays: PlayFixture[]): Promise<PatchCall[]> {
+  const userJson = {
+    id: '66666666-6666-6666-6666-666666666666',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'pb-1', name: 'Game Plan', description: '', created_at: '2025-09-01T00:00:00Z', user_id: userJson.id, playbook_plays: [{ count: plays.length }] },
+      ]),
+    }));
+
+  const patchCalls: PatchCall[] = [];
+  await page.route('**/rest/v1/playbook_plays**', (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(plays.map(playbookPlaysRow)),
+      });
+    }
+    if (req.method() === 'PATCH') {
+      const url = new URL(req.url());
+      const playId = (url.searchParams.get('play_id') ?? '').replace(/^eq\./, '');
+      const body = req.postDataJSON() as { order_position: number };
+      patchCalls.push({ playId, position: body.order_position });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/playbooks');
+  await page.getByText('Game Plan').click();
+  return patchCalls;
+}
+
+/** Drags a row (via its grip handle) onto another row's position. */
+async function dragPlayRow(page: Page, fromPlayName: string, ontoPlayName: string) {
+  const fromHandle = page.getByLabel(`Drag to reorder ${fromPlayName}`);
+  const toRow = page.getByText(ontoPlayName, { exact: true });
+  const fromBox = await fromHandle.boundingBox();
+  const toBox = await toRow.boundingBox();
+  if (!fromBox || !toBox) throw new Error('row not found');
+
+  const startX = fromBox.x + fromBox.width / 2;
+  const startY = fromBox.y + fromBox.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // Small initial move to clear PointerSensor's activation distance, then
+  // step toward the target so dnd-kit's collision detection tracks it.
+  await page.mouse.move(startX, startY + 10, { steps: 5 });
+  await page.mouse.move(toBox.x + toBox.width / 2, toBox.y + toBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+}
+
+const rowNames = (page: Page) => page.locator('h3.truncate').allTextContents();
+
+test('PlaybooksPage: Grid view is the default and unaffected by the List view feature', async ({ page }) => {
+  await mockPlaybookWithPlays(page, [
+    { id: 'play-a', name: 'Play A', order_position: 10 },
+    { id: 'play-b', name: 'Play B', order_position: 20 },
+  ]);
+
+  await expect(page.getByText('Play A')).toBeVisible();
+  await expect(page.getByText('Play B')).toBeVisible();
+  await expect(page.getByLabel(/Drag to reorder/)).toHaveCount(0);
+  await expect(page.locator('button[title="Grid view"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('PlaybooksPage: dragging a play in List view reorders it and writes a two-phase PATCH', async ({ page }) => {
+  const patchCalls = await mockPlaybookWithPlays(page, [
+    { id: 'play-a', name: 'Play A', order_position: 10 },
+    { id: 'play-b', name: 'Play B', order_position: 20 },
+    { id: 'play-c', name: 'Play C', order_position: 30 },
+    { id: 'play-d', name: 'Play D', order_position: 40 },
+  ]);
+
+  await page.locator('button[title="List view — drag to reorder"]').click();
+  await expect(rowNames(page)).resolves.toEqual(['Play A', 'Play B', 'Play C', 'Play D']);
+
+  await dragPlayRow(page, 'Play A', 'Play B');
+
+  // Optimistic update: the visible order flips immediately.
+  await expect(rowNames(page)).resolves.toEqual(['Play B', 'Play A', 'Play C', 'Play D']);
+
+  await expect.poll(() => patchCalls.length).toBe(4);
+  // Phase A: both affected rows bumped to temporary negative positions first.
+  expect(patchCalls[0].position).toBeLessThan(0);
+  expect(patchCalls[1].position).toBeLessThan(0);
+  // Phase B: final real positions — a straight swap of A and B's original values.
+  expect(patchCalls[2]).toEqual({ playId: 'play-b', position: 10 });
+  expect(patchCalls[3]).toEqual({ playId: 'play-a', position: 20 });
+  // Untouched rows never appear in any reorder write.
+  expect(patchCalls.some((c) => c.playId === 'play-c' || c.playId === 'play-d')).toBe(false);
+});
+
+test('PlaybooksPage: a failed reorder write rolls the visible order back', async ({ page }) => {
+  await mockPlaybookWithPlays(page, [
+    { id: 'play-a', name: 'Play A', order_position: 10 },
+    { id: 'play-b', name: 'Play B', order_position: 20 },
+  ]);
+  // Override the PATCH leg only — GET (initial load) must keep succeeding.
+  await page.route('**/rest/v1/playbook_plays**', (route) => {
+    if (route.request().method() === 'PATCH') {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom' }) });
+    }
+    return route.continue();
+  });
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('button[title="List view — drag to reorder"]').click();
+  await dragPlayRow(page, 'Play A', 'Play B');
+
+  await expect.poll(() => rowNames(page)).toEqual(['Play A', 'Play B']);
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Admin Dashboard — entitlement management.
  *
  * These are the first tests to touch /admin. The route has no client-side

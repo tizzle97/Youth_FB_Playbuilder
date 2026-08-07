@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   BookOpen,
   Plus,
@@ -17,7 +20,8 @@ import {
   FileText,
   LayoutGrid,
   Lock,
-  Watch
+  Watch,
+  GripVertical
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -63,6 +67,11 @@ export function PlaybooksPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  // Layout for the plays-inside-a-playbook panel specifically — separate
+  // from the unrelated `viewMode` toggle above, which only affects the
+  // left playbooks-list panel.
+  const [playsLayout, setPlaysLayout] = useState<'grid' | 'list'>('grid');
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
@@ -271,6 +280,50 @@ export function PlaybooksPage() {
     } catch (error) {
       console.error('Error removing play from playbook:', error);
       alert('Failed to remove play from playbook. Please try again.');
+    }
+  };
+
+  // Reorder plays within the selected playbook (List view drag-and-drop).
+  // playbook_plays has UNIQUE (playbook_id, order_position), so the affected
+  // rows are bumped to temporary negative positions first (phase A) before
+  // being written to their final positions (phase B) — otherwise a direct
+  // write can collide with another affected row's current position.
+  const handleReorderPlays = async (oldIndex: number, newIndex: number) => {
+    if (!selectedPlaybook || oldIndex === newIndex) return;
+
+    const previous = playsInPlaybook;
+    const reordered = arrayMove(previous, oldIndex, newIndex);
+    setPlaysInPlaybook(reordered);
+
+    const lo = Math.min(oldIndex, newIndex);
+    const hi = Math.max(oldIndex, newIndex);
+    // Reuse the same set of order_position values the affected slice already
+    // held (just permuted onto different rows) so unaffected rows are never
+    // touched and never collide with this write.
+    const targetPositions = previous.slice(lo, hi + 1).map((p) => p.order_position);
+    const affected = reordered.slice(lo, hi + 1).map((play, i) => ({ play, position: targetPositions[i] }));
+
+    try {
+      for (let i = 0; i < affected.length; i++) {
+        const { error } = await supabase
+          .from('playbook_plays')
+          .update({ order_position: -(i + 1) })
+          .eq('playbook_id', selectedPlaybook.id)
+          .eq('play_id', affected[i].play.id);
+        if (error) throw error;
+      }
+      for (const { play, position } of affected) {
+        const { error } = await supabase
+          .from('playbook_plays')
+          .update({ order_position: position })
+          .eq('playbook_id', selectedPlaybook.id)
+          .eq('play_id', play.id);
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error('Error reordering plays:', error);
+      setPlaysInPlaybook(previous);
+      alert('Failed to reorder plays. Please try again.');
     }
   };
 
@@ -1259,6 +1312,30 @@ export function PlaybooksPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
+                      {playsInPlaybook.length > 0 && (
+                        <div className="flex items-center bg-board rounded-lg border border-chalk/10 p-0.5">
+                          <button
+                            onClick={() => setPlaysLayout('grid')}
+                            title="Grid view"
+                            aria-pressed={playsLayout === 'grid'}
+                            className={`p-1.5 rounded-md transition-colors ${
+                              playsLayout === 'grid' ? 'bg-primary/20 text-primary' : 'text-chalk/50 hover:text-chalk'
+                            }`}
+                          >
+                            <Grid className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setPlaysLayout('list')}
+                            title="List view — drag to reorder"
+                            aria-pressed={playsLayout === 'list'}
+                            className={`p-1.5 rounded-md transition-colors ${
+                              playsLayout === 'list' ? 'bg-primary/20 text-primary' : 'text-chalk/50 hover:text-chalk'
+                            }`}
+                          >
+                            <List className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
                       {/* Export Dropdown */}
                       {playsInPlaybook.length > 0 && (
                         <div className="relative">
@@ -1370,7 +1447,7 @@ export function PlaybooksPage() {
                         Create First Play
                       </button>
                     </div>
-                  ) : (
+                  ) : playsLayout === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {playsInPlaybook.map((play) => (
                         <div
@@ -1427,6 +1504,32 @@ export function PlaybooksPage() {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <DndContext
+                      sensors={dndSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event: DragEndEvent) => {
+                        const { active, over } = event;
+                        if (!over || active.id === over.id) return;
+                        const oldIndex = playsInPlaybook.findIndex((p) => p.id === active.id);
+                        const newIndex = playsInPlaybook.findIndex((p) => p.id === over.id);
+                        if (oldIndex === -1 || newIndex === -1) return;
+                        handleReorderPlays(oldIndex, newIndex);
+                      }}
+                    >
+                      <SortableContext items={playsInPlaybook.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-2">
+                          {playsInPlaybook.map((play) => (
+                            <SortablePlayRow
+                              key={play.id}
+                              play={play}
+                              onEdit={handleEditPlay}
+                              onRemove={removePlayFromPlaybook}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                 </>
               ) : (
@@ -1525,6 +1628,80 @@ export function PlaybooksPage() {
         feature="Playbook PDF export"
         description="Exporting a full playbook to PDF is part of Playbuilder Pro ($39/yr). You can still export any single play for free from the Play Designer."
       />
+    </div>
+  );
+}
+
+// One draggable row in the plays-in-playbook List view. Only the grip handle
+// carries the drag listeners, so the Edit/Remove buttons never fight the
+// drag sensor for a click. `touch-none` on the handle stops a touch-drag
+// from also scrolling the page (same reason Canvas.tsx uses it).
+function SortablePlayRow({
+  play,
+  onEdit,
+  onRemove
+}: {
+  play: PlayInPlaybook;
+  onEdit: (playId: string) => void;
+  onRemove: (play: PlayInPlaybook) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: play.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 bg-board rounded-lg border border-chalk/10 p-3"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="shrink-0 p-1 text-chalk/40 hover:text-chalk cursor-grab active:cursor-grabbing touch-none"
+        title="Drag to reorder"
+        aria-label={`Drag to reorder ${play.name}`}
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+
+      <div className="w-16 h-12 shrink-0 bg-white rounded border border-chalk/10 overflow-hidden">
+        {play.thumbnail ? (
+          <img
+            src={play.thumbnail}
+            alt={play.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-chalk/30">
+            <Play className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <h3 className="font-medium text-chalk truncate">{play.name}</h3>
+        <p className="text-xs text-chalk/50 capitalize">{play.type.replace('_', ' ')}</p>
+      </div>
+
+      <button
+        onClick={() => onEdit(play.id)}
+        className="shrink-0 px-3 py-1.5 text-sm font-medium bg-board-light hover:bg-white/10 text-chalk border border-chalk/20 rounded-lg transition-colors"
+      >
+        Edit
+      </button>
+      <button
+        onClick={() => onRemove(play)}
+        title="Remove from this playbook"
+        className="shrink-0 p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
     </div>
   );
 }
