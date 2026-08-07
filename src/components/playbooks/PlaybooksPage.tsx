@@ -130,9 +130,15 @@ export function PlaybooksPage() {
 
       if (error) throw error;
 
+      // playbook_plays(count) is PostgREST's aggregate-embed syntax: it always
+      // returns a ONE-element array wrapping the aggregate object — e.g.
+      // [{ count: 7 }] — never one element per play. `.length` was therefore
+      // always 1 for any playbook with at least one play, regardless of how
+      // many it actually had. See PlaybookPackLibrary.tsx for the same
+      // pattern read correctly.
       const playbooksWithCount = playbooks.map(playbook => ({
         ...playbook,
-        play_count: playbook.playbook_plays.length || 0
+        play_count: playbook.playbook_plays?.[0]?.count ?? 0
       }));
 
       setPlaybooks(playbooksWithCount);
