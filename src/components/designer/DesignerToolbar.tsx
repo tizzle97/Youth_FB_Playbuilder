@@ -283,23 +283,25 @@ export function DesignerToolbar({
             color-coded positions. Sticky until changed, like capStyle/dashed. */}
         <RouteColorButton value={routeColorMode} onChange={setRouteColorMode} fullWidth={vertical} />
 
-        {/* Remove Route for a player */}
+        {/* Remove Route: tap the route's own line, not the player icon — a
+            player can have 2 routes (a short option and a deep option), so
+            targeting has to be by line, not by icon. */}
         <button
           onClick={toggleDeleteRouteMode}
-          title="Remove a player's route (tap the player)"
+          title="Remove a route (tap the route)"
           className={`${tool} ${deleteRouteMode ? 'bg-amber-500/20 text-amber-400' : inactive}`}
         >
           <RouteOff className="h-4 w-4" />
           <span className={label}>Remove Route</span>
         </button>
 
-        {/* Recolor Route for a player: tap their icon to set just that route's
-            color, independent of the sticky default above. Not destructive,
-            so it uses the standard active (primary) styling, not Remove
-            Route's amber warning color. */}
+        {/* Recolor Route: tap the route's own line to set just that route's
+            color, independent of the sticky default above and of a player's
+            other route. Not destructive, so it uses the standard active
+            (primary) styling, not Remove Route's amber warning color. */}
         <button
           onClick={toggleRecolorRouteMode}
-          title="Recolor a player's route (tap the player)"
+          title="Recolor a route (tap the route)"
           className={`${tool} ${recolorRouteMode ? active : inactive}`}
         >
           <Palette className="h-4 w-4" />

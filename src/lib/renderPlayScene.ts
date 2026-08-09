@@ -635,20 +635,18 @@ export function renderScene(
   // underneath routes/icons, which should stay crisp.
   drawZones(ctx, W, H, zones, playerIcons, scale, selectedZoneIndex);
 
-  // Routes — arrowhead only on the last path of each icon's chain
-  const lastByIcon = new Map<number, number>();
-  paths.forEach((p, i) => { if (p.startIconIndex !== undefined) lastByIcon.set(p.startIconIndex, i); });
-
-  paths.forEach((p, i) => {
+  // Routes — every path is a complete, independent route (a player may have
+  // up to 2, e.g. a short option and a deep option), so every one gets its
+  // own arrowhead at its own end.
+  paths.forEach((p) => {
     const pts = p.points.map(toPx);
-    const isLast = p.startIconIndex !== undefined ? lastByIcon.get(p.startIconIndex) === i : true;
     // p.mode === 'block' is the back-compat fallback for plays saved before
     // capStyle existed, when 'block' was a whole mode rather than an ending.
     const useBlockCap = p.capStyle === 'block' || p.mode === 'block';
     // Stop the stroked line short of the tip so it tucks behind the
     // arrowhead. Skipped for the block cap, which sits on the endpoint
     // rather than tapering to it.
-    const stroked = isLast && !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
+    const stroked = !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
     if (p.mode === 'waypoint') {
       ctx.save();
       ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
@@ -667,10 +665,8 @@ export function renderScene(
       strokeStraight(ctx, stroked, p.color, lineWidth);
       ctx.restore();
     }
-    if (isLast) {
-      if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
-      else drawArrowhead(ctx, pts, p.color, arrowSize);
-    }
+    if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
+    else drawArrowhead(ctx, pts, p.color, arrowSize);
   });
 
   // Player icons
