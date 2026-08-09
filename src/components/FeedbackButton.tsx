@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MessageSquare, X, LogIn } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { getSafeErrorMessage } from '../lib/errors';
 
@@ -156,10 +156,9 @@ export function FeedbackButton() {
       clearDraft();
       setSuccess('Thank you for your feedback!');
       setContent('');
-      setTimeout(() => {
-        setIsOpen(false);
-        setSuccess('');
-      }, 2000);
+      // Deliberately no auto-close timer any more. The panel now offers a way
+      // to follow the submission, and a two-second dismissal would hide it
+      // before most people finish reading the thank-you.
     } catch (err) {
       setError(getSafeErrorMessage(err, 'Failed to submit feedback'));
     } finally {
@@ -269,7 +268,16 @@ export function FeedbackButton() {
 
             {success && (
               <div className="text-green-500 text-sm bg-green-500/10 p-3 rounded-lg">
-                {success}
+                <p>{success}</p>
+                {/* The only signpost to the fact that feedback now has a
+                    status and can get a reply at all. */}
+                <Link
+                  to="/account"
+                  onClick={closePanel}
+                  className="mt-1 inline-block underline hover:no-underline"
+                >
+                  View your feedback
+                </Link>
               </div>
             )}
 
