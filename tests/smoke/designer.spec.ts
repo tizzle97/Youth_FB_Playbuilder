@@ -3295,3 +3295,160 @@ test('routes: Remove Route mode deletes one of a player\'s two routes independen
   // deep route's y=0.15.
   expect(state.paths[0].points[state.paths[0].points.length - 1].y).toBeCloseTo(0.6, 1);
 });
+
+// Moving a player carries their route(s) with them. The route is the player's
+// assignment, so a receiver dragged two yards wider should take their whole
+// route along — rigidly translated, not left stranded and not rubber-banded
+// from its first point (which would deform the shape the coach drew).
+test('routes: dragging a player translates their route with them, preserving its shape', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  const state = await canvasState(page);
+  const iconPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  // A dog-leg so the assertion below would catch a shape change, not just a
+  // translation: out to the right, then straight upfield.
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(iconPx.x, iconPx.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.45, 0.6);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.45, 0.25);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  const before = await canvasState(page);
+  expect(before.paths).toHaveLength(1);
+  const iconBefore = before.playerIcons[0];
+  const ptsBefore = before.paths[0].points;
+
+  // Drag the player. Magnet snapping is on by default and there's only one
+  // icon on the field, so nothing can pull the drop point off the pointer.
+  await btn(page, 'Select / Move').click();
+  const from = await canvasPoint(page, iconBefore.x, iconBefore.y);
+  const to = await canvasPoint(page, iconBefore.x + 0.2, iconBefore.y - 0.1);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  const after = await canvasState(page);
+  const iconAfter = after.playerIcons[0];
+  const ptsAfter = after.paths[0].points;
+
+  // The icon actually moved.
+  const dx = iconAfter.x - iconBefore.x;
+  const dy = iconAfter.y - iconBefore.y;
+  expect(Math.abs(dx)).toBeGreaterThan(0.1);
+  expect(Math.abs(dy)).toBeGreaterThan(0.05);
+
+  // Every route point moved by that same delta — so the route followed AND
+  // kept its exact geometry.
+  expect(ptsAfter).toHaveLength(ptsBefore.length);
+  ptsAfter.forEach((pt, i) => {
+    expect(pt.x).toBeCloseTo(ptsBefore[i].x + dx, 5);
+    expect(pt.y).toBeCloseTo(ptsBefore[i].y + dy, 5);
+  });
+
+  // The route's origin still sits on the player it belongs to.
+  expect(ptsAfter[0].x).toBeCloseTo(iconAfter.x, 5);
+  expect(ptsAfter[0].y).toBeCloseTo(iconAfter.y, 5);
+
+  // One undo reverts the whole drag — icon and route together, not the icon
+  // alone leaving the route displaced.
+  await btn(page, 'Undo').click();
+  const undone = await canvasState(page);
+  expect(undone.playerIcons[0].x).toBeCloseTo(iconBefore.x, 5);
+  expect(undone.playerIcons[0].y).toBeCloseTo(iconBefore.y, 5);
+  undone.paths[0].points.forEach((pt, i) => {
+    expect(pt.x).toBeCloseTo(ptsBefore[i].x, 5);
+    expect(pt.y).toBeCloseTo(ptsBefore[i].y, 5);
+  });
+});
+
+// A player may carry two routes (short + deep option) — dragging them must
+// move both, not just the first one found.
+test('routes: dragging a player with two routes moves both', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  const state = await canvasState(page);
+  const iconPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  await drawStraightRoute(page, iconPx, await canvasPoint(page, 0.5, 0.6));
+  await drawStraightRoute(page, iconPx, await canvasPoint(page, 0.3, 0.2));
+
+  const before = await canvasState(page);
+  expect(before.paths).toHaveLength(2);
+  const iconBefore = before.playerIcons[0];
+
+  await btn(page, 'Select / Move').click();
+  const from = await canvasPoint(page, iconBefore.x, iconBefore.y);
+  const to = await canvasPoint(page, iconBefore.x + 0.15, iconBefore.y);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  const after = await canvasState(page);
+  const dx = after.playerIcons[0].x - iconBefore.x;
+  expect(Math.abs(dx)).toBeGreaterThan(0.1);
+
+  after.paths.forEach((path, pi) => {
+    path.points.forEach((pt, i) => {
+      expect(pt.x).toBeCloseTo(before.paths[pi].points[i].x + dx, 5);
+      expect(pt.y).toBeCloseTo(before.paths[pi].points[i].y, 5);
+    });
+  });
+});
+
+// Only the dragged player's routes move — a teammate's route must stay put.
+test('routes: dragging a player leaves another player\'s route untouched', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.7, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  const state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(2);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+
+  await drawStraightRoute(page, qPx, await canvasPoint(page, 0.3, 0.25));
+  await drawStraightRoute(page, xPx, await canvasPoint(page, 0.7, 0.25));
+
+  const before = await canvasState(page);
+  expect(before.paths).toHaveLength(2);
+  const qRouteIdx = before.paths.findIndex((p) => p.startIconIndex === 0);
+  const xRouteIdx = before.paths.findIndex((p) => p.startIconIndex === 1);
+  const xPtsBefore = before.paths[xRouteIdx].points;
+
+  // Drag Q straight down; X and X's route must not budge.
+  await btn(page, 'Select / Move').click();
+  const from = await canvasPoint(page, before.playerIcons[0].x, before.playerIcons[0].y);
+  const to = await canvasPoint(page, before.playerIcons[0].x, before.playerIcons[0].y + 0.12);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  const after = await canvasState(page);
+  expect(after.playerIcons[1].x).toBeCloseTo(before.playerIcons[1].x, 5);
+  expect(after.playerIcons[1].y).toBeCloseTo(before.playerIcons[1].y, 5);
+  after.paths[xRouteIdx].points.forEach((pt, i) => {
+    expect(pt.x).toBeCloseTo(xPtsBefore[i].x, 5);
+    expect(pt.y).toBeCloseTo(xPtsBefore[i].y, 5);
+  });
+  // …while Q's route did move.
+  expect(after.paths[qRouteIdx].points[0].y).toBeGreaterThan(before.paths[qRouteIdx].points[0].y + 0.05);
+});
