@@ -181,6 +181,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // Hover highlight (shows which icon will be used as route origin)
     const [hoveredIconIndex, setHoveredIconIndex] = useState<number | null>(null);
+    /** Which route (index into `paths`) is under the pointer in Delete/Recolor
+     *  Route mode — those two modes target a specific route line, not an icon. */
+    const [hoveredPathIndex, setHoveredPathIndex] = useState<number | null>(null);
 
     // Route-saved flash
     const [savedFlash, setSavedFlash] = useState(false);
@@ -228,7 +231,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // Icon being edited via the tap-to-customize popover (Select mode only).
     const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
     // Icon whose route is being recolored via the Recolor Route popover.
-    const [editingRouteColorIconIndex, setEditingRouteColorIconIndex] = useState<number | null>(null);
+    /** Which route (index into `paths`) the Recolor Route popover is editing
+     *  — path-indexed, not icon-indexed, so it targets one specific route
+     *  when a player has 2. */
+    const [editingRouteColorPathIndex, setEditingRouteColorPathIndex] = useState<number | null>(null);
     // Text box being edited via its popover (Select mode, or immediately
     // after placing a new one in Text mode).
     const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null);
@@ -293,18 +299,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
 
-    /** Recolor every path belonging to one icon's route (mirrors delete
-     *  route's own `startIconIndex === idx` filter, so a route made of
-     *  multiple legs — not reachable via the current UI, but the data model
-     *  allows it — recolors as one unit rather than partially). Picking
-     *  "Auto" reverts to the icon's current color and clears the override,
-     *  which is what lets applyIconStyle resume following it. */
-    const applyRouteColor = useCallback((idx: number, color: string, auto: boolean) => {
+    /** Recolor one specific route by its index into `paths` — a player can
+     *  have 2 independent routes, each recolored on its own. Picking "Auto"
+     *  reverts to the icon's current color and clears the override, which is
+     *  what lets applyIconStyle resume following it. */
+    const applyRouteColor = useCallback((pathIndex: number, color: string, auto: boolean) => {
       pushSnapshot();
-      const resolvedColor = auto ? playerIcons[idx]?.color ?? color : color;
-      setPaths((prev) => prev.map((p) => (p.startIconIndex === idx
-        ? { ...p, color: resolvedColor, independentColor: auto ? undefined : true }
-        : p)));
+      setPaths((prev) => prev.map((p, i) => {
+        if (i !== pathIndex) return p;
+        const resolvedColor = auto ? (p.startIconIndex !== undefined ? playerIcons[p.startIconIndex]?.color : undefined) ?? color : color;
+        return { ...p, color: resolvedColor, independentColor: auto ? undefined : true };
+      }));
     }, [pushSnapshot, playerIcons]);
 
     /** Update a text box's content/color/size, or remove it if left blank —
@@ -436,11 +441,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const screenScale = Math.min(width, height) / REF_SIZE;
     const iconRadiusPx = (PLAYER_SIZE * screenScale * iconScaleForCount(playerIcons.length)) / 2;
 
-    /** True if the given icon index already has at least one saved route. */
-    const iconHasRoute = useCallback(
-      (idx: number) => paths.some((p) => p.startIconIndex === idx),
+    /** Number of saved routes already starting at the given icon index — a
+     *  player may have up to 2 (e.g. a short option and a deep option). */
+    const iconRouteCount = useCallback(
+      (idx: number) => paths.filter((p) => p.startIconIndex === idx).length,
       [paths],
     );
+    const MAX_ROUTES_PER_ICON = 2;
 
     /** True if the given icon index already has a zone. */
     const iconHasZone = useCallback(
@@ -647,17 +654,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.restore();
       }
 
-      // Hover highlight ring — only when no origin is locked yet
+      // Hover highlight ring — only when no origin is locked yet. Delete/
+      // Recolor Route highlight the specific route LINE instead (see the
+      // path-hover block below) since an icon can have 2 routes and a
+      // ring around the icon can't tell them apart; this ring is only for
+      // drawing-mode (icon color, or red once the 2-route cap is hit) and
+      // zone tools.
       if (waypointPoints.length === 0 && hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const hi = toPx(playerIcons[hoveredIconIndex]);
-        const hasRoute = iconHasRoute(hoveredIconIndex);
         const hasZone = iconHasZone(hoveredIconIndex);
-        // Color depends on context:
-        //   delete mode (route or zone) → amber (will delete)
-        //   drawing/zone mode + icon already has that thing → red (blocked)
-        //   normal drawing mode → icon color
-        const blocked = (drawingMode && hasRoute) || (zoneMode && hasZone);
-        const ringColor = (deleteRouteMode || deleteZoneMode)
+        const blocked = (drawingMode && iconRouteCount(hoveredIconIndex) >= MAX_ROUTES_PER_ICON) || (zoneMode && hasZone);
+        const ringColor = deleteZoneMode
           ? '#f59e0b'
           : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
@@ -680,7 +687,31 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.setLineDash([]);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentDashed, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, drawMode, capStyle, dashed, deleteRouteMode, drawingMode, zoneMode, deleteZoneMode, iconHasRoute, iconHasZone]);
+
+      // Delete/Recolor Route highlight — an overlay stroke along the
+      // specific targeted route's own points, not a ring around the icon,
+      // so a coach can tell which of a player's up-to-2 routes is under the
+      // pointer (or currently open in the recolor popover).
+      const targetPathIndex = (deleteRouteMode || recolorRouteMode)
+        ? (editingRouteColorPathIndex ?? hoveredPathIndex)
+        : null;
+      if (targetPathIndex !== null && paths[targetPathIndex]) {
+        const highlightColor = deleteRouteMode ? '#f59e0b' : '#ffffff';
+        const pts = paths[targetPathIndex].points.map(toPx);
+        ctx.save();
+        ctx.shadowColor = highlightColor;
+        ctx.shadowBlur = 16 * scale;
+        ctx.strokeStyle = highlightColor;
+        ctx.lineWidth = ROUTE_LINE_WIDTH * scale + 6 * scale;
+        ctx.globalAlpha = 0.55;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        pts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+        ctx.stroke();
+        ctx.restore();
+      }
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentDashed, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, drawMode, capStyle, dashed, deleteRouteMode, recolorRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -755,7 +786,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // (which already resets recolorRouteMode false via DesignerToolbar's
     // toggle handlers), must close it.
     useEffect(() => {
-      if (!recolorRouteMode) setEditingRouteColorIconIndex(null);
+      if (!recolorRouteMode) setEditingRouteColorPathIndex(null);
     }, [recolorRouteMode]);
 
     // ------------------------------------------
@@ -810,7 +841,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setTextBoxes(prevState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
-        setEditingRouteColorIconIndex(null);
+        setEditingRouteColorPathIndex(null);
         setEditingTextIndex(null);
       },
       redo: () => {
@@ -830,13 +861,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setTextBoxes(nextState.textBoxes);
         setSelectedZoneIndex(null);
         setEditingIconIndex(null);
-        setEditingRouteColorIconIndex(null);
+        setEditingRouteColorPathIndex(null);
         setEditingTextIndex(null);
       },
-      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorIconIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointSegmentDashed([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
+      clear: () => { pushSnapshot(); setPaths([]); setPlayerIcons([]); setZones([]); setTextBoxes([]); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorPathIndex(null); setEditingTextIndex(null); setWaypointPoints([]); setWaypointSegmentDashed([]); setWaypointIconIndex(null); setHoveredIconIndex(null); },
       clearRoutes: () => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex === undefined && p.points.length === 0)); },
       removeRouteForIcon: (iconIndex: number) => { pushSnapshot(); setPaths((prev) => prev.filter((p) => p.startIconIndex !== iconIndex)); },
-      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorIconIndex(null); setEditingTextIndex(null); },
+      loadState: (data) => { pushSnapshot(); setPaths(data.paths || []); setPlayerIcons(data.playerIcons || []); setZones(data.zones || []); setTextBoxes(data.textBoxes || []); setSelectedZoneIndex(null); setZoneDraft(null); setEditingIconIndex(null); setEditingRouteColorPathIndex(null); setEditingTextIndex(null); },
       // Replaces the whole scene with the template (routes/zones would
       // otherwise reference icon indices that no longer line up once a
       // different formation is stamped over the old one) — same shape as
@@ -851,7 +882,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         setSelectedZoneIndex(null);
         setZoneDraft(null);
         setEditingIconIndex(null);
-        setEditingRouteColorIconIndex(null);
+        setEditingRouteColorPathIndex(null);
         setWaypointPoints([]);
         setWaypointSegmentDashed([]);
         setWaypointIconIndex(null);
@@ -885,6 +916,37 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const dy = (icon.y - p.y) * height;
         return Math.sqrt(dx * dx + dy * dy) <= iconRadiusPx + 10;
       });
+
+    /** Shortest on-screen pixel distance from `p` to a polyline. */
+    const distanceToPolylinePx = (p: Pt, points: Pt[]): number => {
+      const px = p.x * width;
+      const py = p.y * height;
+      let min = Infinity;
+      for (let i = 0; i < points.length - 1; i++) {
+        const ax = points[i].x * width, ay = points[i].y * height;
+        const bx = points[i + 1].x * width, by = points[i + 1].y * height;
+        const dx = bx - ax, dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+        const cx = ax + t * dx, cy = ay + t * dy;
+        min = Math.min(min, Math.hypot(px - cx, py - cy));
+      }
+      return min;
+    };
+
+    /** Hit-test routes by proximity to their drawn line, not the icon — an
+     *  icon can have 2 routes (see MAX_ROUTES_PER_ICON), so Delete/Recolor
+     *  Route target the specific line under the pointer instead of the icon
+     *  it starts from. Works identically when a player has only 1 route. */
+    const findPathAt = (p: Pt): number => {
+      let best = -1;
+      let bestDist = 14; // hit radius, px — matches the icon hit-test's +10 feel with some slack for thin lines
+      paths.forEach((path, i) => {
+        const d = distanceToPolylinePx(p, path.points);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+      return best;
+    };
 
     // ------------------------------------------
     // Finish route helper
@@ -999,28 +1061,28 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Delete-route mode — tap any icon to remove its route
+      // Delete-route mode — tap a route's line to remove just that one (an
+      // icon can have 2 routes, so this targets the specific line under the
+      // pointer rather than the icon it starts from).
       if (deleteRouteMode) {
-        if (clicked >= 0) {
-          if (iconHasRoute(clicked)) {
-            pushSnapshot();
-            setPaths((prev) => prev.filter((p) => p.startIconIndex !== clicked));
-            if (deletedFlashTimerRef.current) clearTimeout(deletedFlashTimerRef.current);
-            setDeletedFlash(true);
-            deletedFlashTimerRef.current = setTimeout(() => setDeletedFlash(false), 1500);
-          }
-          setHoveredIconIndex(null);
+        const pathHit = findPathAt(p);
+        if (pathHit >= 0) {
+          pushSnapshot();
+          setPaths((prev) => prev.filter((_, i) => i !== pathHit));
+          if (deletedFlashTimerRef.current) clearTimeout(deletedFlashTimerRef.current);
+          setDeletedFlash(true);
+          deletedFlashTimerRef.current = setTimeout(() => setDeletedFlash(false), 1500);
         }
+        setHoveredPathIndex(null);
         return;
       }
 
-      // Recolor-route mode — tap any icon with a route to open its
-      // color popover (mirrors delete-route mode above exactly).
+      // Recolor-route mode — tap a route's line to open its color popover
+      // (mirrors delete-route mode above exactly).
       if (recolorRouteMode) {
-        if (clicked >= 0) {
-          if (iconHasRoute(clicked)) setEditingRouteColorIconIndex(clicked);
-          setHoveredIconIndex(null);
-        }
+        const pathHit = findPathAt(p);
+        if (pathHit >= 0) setEditingRouteColorPathIndex(pathHit);
+        setHoveredPathIndex(null);
         return;
       }
 
@@ -1063,8 +1125,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         if (waypointPoints.length === 0) {
           if (clicked >= 0) {
-            // Block starting a second route on an icon that already has one
-            if (iconHasRoute(clicked)) {
+            // A player can have up to 2 routes (e.g. a short option and a
+            // deep option) — block a 3rd.
+            if (iconRouteCount(clicked) >= MAX_ROUTES_PER_ICON) {
               if (conflictFlashTimerRef.current) clearTimeout(conflictFlashTimerRef.current);
               setConflictFlash(true);
               conflictFlashTimerRef.current = setTimeout(() => setConflictFlash(false), 2500);
@@ -1287,12 +1350,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
-      // Hover highlight: show which icon will be the route origin (or deletion target)
-      if ((drawingMode && waypointPoints.length === 0) || deleteRouteMode || zoneMode || deleteZoneMode) {
+      // Hover highlight: show which icon will be the route origin, or which
+      // zone will be affected.
+      if ((drawingMode && waypointPoints.length === 0) || zoneMode || deleteZoneMode) {
         const idx = findIcon(p);
         setHoveredIconIndex(idx >= 0 ? idx : null);
       } else if (hoveredIconIndex !== null) {
         setHoveredIconIndex(null);
+      }
+
+      // Delete/Recolor Route hover which specific route LINE is under the
+      // pointer (an icon can have 2 routes, so icon-based hover can't tell
+      // them apart — see findPathAt).
+      if (deleteRouteMode || recolorRouteMode) {
+        const idx = findPathAt(p);
+        setHoveredPathIndex(idx >= 0 ? idx : null);
+      } else if (hoveredPathIndex !== null) {
+        setHoveredPathIndex(null);
       }
     };
 
@@ -1405,8 +1479,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // ── Route-color popover placement ─────────────────────────────
     // Same clamp/flip mechanism as the icon editor above, anchored to the
-    // icon whose route is being recolored.
-    const editingRouteColorIcon = editingRouteColorIconIndex !== null ? playerIcons[editingRouteColorIconIndex] : null;
+    // icon the targeted route starts from.
+    const editingRouteColorPath = editingRouteColorPathIndex !== null ? paths[editingRouteColorPathIndex] : null;
+    const editingRouteColorIcon = editingRouteColorPath?.startIconIndex !== undefined
+      ? playerIcons[editingRouteColorPath.startIconIndex]
+      : null;
     let routeColorEditorLeft = 0;
     let routeColorEditorTop = 0;
     if (editingRouteColorIcon) {
@@ -1440,18 +1517,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
-    const hoveredHasRoute = hoveredIconIndex !== null && iconHasRoute(hoveredIconIndex);
     const hoveredHasZone = hoveredIconIndex !== null && iconHasZone(hoveredIconIndex);
+    const hoveredPath = hoveredPathIndex !== null ? paths[hoveredPathIndex] : null;
+    const hoveredPathOriginLetter = hoveredPath?.startIconIndex !== undefined
+      ? playerIcons[hoveredPath.startIconIndex]?.letter
+      : undefined;
     let instructionText: string | null = null;
     if (deleteRouteMode) {
-      if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
-        const ltr = playerIcons[hoveredIconIndex].letter;
-        instructionText = hoveredHasRoute
-          ? `Tap to remove "${ltr}"'s route`
-          : `"${ltr}" has no route to remove`;
-      } else {
-        instructionText = 'Tap a player to remove their route';
-      }
+      instructionText = hoveredPath
+        ? `Tap to remove ${hoveredPathOriginLetter ? `"${hoveredPathOriginLetter}"'s` : 'this'} route`
+        : 'Tap a route to remove it';
+    } else if (recolorRouteMode) {
+      instructionText = hoveredPath
+        ? `Tap to recolor ${hoveredPathOriginLetter ? `"${hoveredPathOriginLetter}"'s` : 'this'} route`
+        : 'Tap a route to recolor it';
     } else if (deleteZoneMode) {
       if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const ltr = playerIcons[hoveredIconIndex].letter;
@@ -1474,8 +1553,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       instructionText = 'Tap the field to add a text box';
     } else if (drawingMode) {
       if (waypointPoints.length === 0) {
-        if (hoveredHasRoute) {
-          instructionText = 'This player already has a route · Use Remove Route to clear it first';
+        if (hoveredIconIndex !== null && iconRouteCount(hoveredIconIndex) >= MAX_ROUTES_PER_ICON) {
+          instructionText = 'This player already has 2 routes · Use Remove Route to clear one first';
         } else {
           instructionText = 'Press and drag from a player to draw, or tap them to start a route';
         }
@@ -1520,7 +1599,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 : deletedFlash ? '✓ Route removed'
                 : deletedZoneFlash ? '✓ Zone removed'
                 : finishFirstFlash ? 'Finish or cancel the current route first'
-                : conflictFlash ? 'This player already has a route · Use Remove Route to clear it'
+                : conflictFlash ? 'This player already has 2 routes · Use Remove Route to clear one'
                 : instructionText}
             </div>
           </div>
@@ -1544,19 +1623,19 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           </div>
         )}
 
-        {/* ── Recolor Route popover (tap an icon in Recolor Route mode) ── */}
-        {editingRouteColorIcon && editingRouteColorIconIndex !== null && (
+        {/* ── Recolor Route popover (tap a route line in Recolor Route mode) ── */}
+        {editingRouteColorIcon && editingRouteColorPath && editingRouteColorPathIndex !== null && (
           <div className="absolute z-20" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
             <RouteColorEditor
-              key={editingRouteColorIconIndex}
-              initialColor={paths.find((p) => p.startIconIndex === editingRouteColorIconIndex)?.color ?? editingRouteColorIcon.color}
-              initialAuto={!paths.find((p) => p.startIconIndex === editingRouteColorIconIndex)?.independentColor}
+              key={editingRouteColorPathIndex}
+              initialColor={editingRouteColorPath.color}
+              initialAuto={!editingRouteColorPath.independentColor}
               applyLabel="Apply"
               onApply={(color, auto) => {
-                applyRouteColor(editingRouteColorIconIndex, color, auto);
-                setEditingRouteColorIconIndex(null);
+                applyRouteColor(editingRouteColorPathIndex, color, auto);
+                setEditingRouteColorPathIndex(null);
               }}
-              onCancel={() => setEditingRouteColorIconIndex(null)}
+              onCancel={() => setEditingRouteColorPathIndex(null)}
             />
           </div>
         )}

@@ -2986,7 +2986,7 @@ test('route color: Recolor Route mode changes only the tapped player\'s route', 
   state = await canvasState(page);
   const rOriginalColor = state.paths[1].color;
 
-  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await btn(page, 'Recolor a route (tap the route)').click();
   await page.mouse.click(iconQ.x, iconQ.y);
   await expect(page.getByLabel('Custom route color')).toBeVisible();
   await page.getByLabel('Color #E11D48').click();
@@ -3018,7 +3018,7 @@ test('route color: picking Auto in the popover reverts the override and resumes 
   await page.getByRole('button', { name: 'Finish Route' }).click();
 
   // Override to red via Recolor Route mode.
-  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await btn(page, 'Recolor a route (tap the route)').click();
   await page.mouse.click(icon.x, icon.y);
   await page.getByLabel('Color #E11D48').click();
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -3067,7 +3067,7 @@ test('route color: Recolor Route mode is mutually exclusive with other tools', a
 
   // Enter Recolor Route mode and confirm tapping the icon opens the ROUTE
   // color popover, not the icon-style popover.
-  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await btn(page, 'Recolor a route (tap the route)').click();
   await page.mouse.click(icon.x, icon.y);
   await expect(page.getByLabel('Custom route color')).toBeVisible();
   await expect(page.getByLabel('Player label')).toHaveCount(0);
@@ -3111,7 +3111,7 @@ test('route color: overriding a route leaves the icon\'s zone color unaffected',
   expect(state.zones[0].color).toBe(originalIconColor);
 
   // Override just the route to black.
-  await btn(page, 'Recolor a player\'s route (tap the player)').click();
+  await btn(page, 'Recolor a route (tap the route)').click();
   await page.mouse.click(icon.x, icon.y);
   await page.getByLabel('Color #000000').click();
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -3187,4 +3187,111 @@ test('Community Forum: no fabricated "Trending Topics" section (no real topic/ta
   await expect(page.getByText('Top Contributors')).toBeVisible(); // page loaded correctly
   await expect(page.getByText('Trending Topics')).toHaveCount(0);
   await expect(page.getByText('#defensivestrategies')).toHaveCount(0);
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Two routes per player — a short option and a deep option on one player.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Draws one straight-line route from `origin` to `end` (page coords) and
+ * finishes it — the same click/wait/click/Finish sequence used throughout
+ * this file's existing route-drawing tests. */
+async function drawStraightRoute(page: Page, origin: { x: number; y: number }, end: { x: number; y: number }) {
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(origin.x, origin.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+}
+
+test('routes: a player can have two independent routes (short + deep option); a third is blocked', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  const shortEnd = await canvasPoint(page, 0.5, 0.6);
+  await drawStraightRoute(page, icon, shortEnd);
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+
+  const deepEnd = await canvasPoint(page, 0.3, 0.15);
+  await drawStraightRoute(page, icon, deepEnd);
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  expect(state.paths[0].startIconIndex).toBe(0);
+  expect(state.paths[1].startIconIndex).toBe(0);
+
+  // A third attempt on the same player is blocked (cap is 2).
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByText('This player already has 2 routes', { exact: false })).toBeVisible();
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+});
+
+test('routes: Recolor Route mode targets one of a player\'s two routes independently', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  const shortEnd = await canvasPoint(page, 0.5, 0.6);
+  await drawStraightRoute(page, icon, shortEnd);
+  const deepEnd = await canvasPoint(page, 0.3, 0.15);
+  await drawStraightRoute(page, icon, deepEnd);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  const deepRouteOriginalColor = state.paths[1].color;
+
+  // Recolor only the SHORT route by tapping near ITS end, away from the
+  // shared origin the two routes both start from.
+  await btn(page, 'Recolor a route (tap the route)').click();
+  await page.mouse.click(shortEnd.x, shortEnd.y);
+  await expect(page.getByLabel('Custom route color')).toBeVisible();
+  await page.getByLabel('Color #E11D48').click();
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths[0].color).toBe('#E11D48');
+  expect(state.paths[0].independentColor).toBe(true);
+  // The deep route, drawn from the same icon, is untouched.
+  expect(state.paths[1].color).toBe(deepRouteOriginalColor);
+  expect(state.paths[1].independentColor).toBeFalsy();
+});
+
+test('routes: Remove Route mode deletes one of a player\'s two routes independently', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  const shortEnd = await canvasPoint(page, 0.5, 0.6);
+  await drawStraightRoute(page, icon, shortEnd);
+  const deepEnd = await canvasPoint(page, 0.3, 0.15);
+  await drawStraightRoute(page, icon, deepEnd);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+
+  // Remove only the DEEP route by tapping near its end.
+  await btn(page, 'Remove a route (tap the route)').click();
+  await page.mouse.click(deepEnd.x, deepEnd.y);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  // The survivor is the SHORT route — its last point is near y=0.6, not the
+  // deep route's y=0.15.
+  expect(state.paths[0].points[state.paths[0].points.length - 1].y).toBeCloseTo(0.6, 1);
 });
