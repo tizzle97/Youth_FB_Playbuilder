@@ -95,6 +95,23 @@ test('a coach can see their own submissions and the reply they got', async ({ pa
   expect(queries[0]).toContain(`user_id=eq.${USER.id}`);
 });
 
+test('the widget points at the new section after a successful submit', async ({ page }) => {
+  // Without this the section is undiscoverable: nothing else in the app tells
+  // a coach their feedback now has a status and can get a reply.
+  await accountPage(page, ROWS);
+
+  await page.goto('/plays');
+  await page.getByTitle('Give Feedback').click();
+  await page.getByLabel('Your Feedback').fill('The 6v6 formations are great.');
+  await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+  await expect(page.getByText('Thank you for your feedback!')).toBeVisible();
+  await page.getByRole('link', { name: 'View your feedback' }).click();
+
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.getByRole('heading', { name: 'Your Feedback' })).toBeVisible();
+});
+
 test('coaches who have never sent feedback get no empty panel', async ({ page }) => {
   // Most accounts. An explainer for a feature they've never used is clutter.
   await accountPage(page, []);
