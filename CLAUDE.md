@@ -110,8 +110,13 @@ take the topmost unblocked item there.
   next free code.**
 - All tables use **Row Level Security**. Mirror existing policy patterns.
 - **Edge Functions** live in `supabase/functions/` (`create-checkout-session`,
-  `create-portal-session`, `stripe-webhook`, `sitemap`, `feedback-triage`) and
-  are deployed with the Supabase CLI — see `supabase/STRIPE_SETUP.md`.
+  `create-portal-session`, `stripe-webhook`, `sitemap`, `feedback-triage`,
+  `feedback-notify`) and are deployed with the Supabase CLI — see
+  `supabase/STRIPE_SETUP.md`, and `supabase/EMAIL_SETUP.md` §6 for the digest.
+  ⚠ `feedback-triage` and `feedback-notify` read the same table with opposite
+  privacy rules on purpose: triage **withholds** `user_id` and submitter email
+  (its output lands in public PRs), the digest **includes** the email (it goes
+  to one admin inbox and that's the point). Don't make them match.
 
 ## Automation (two scheduled agents)
 Both open PRs and **never merge or push to `main`** (main auto-deploys).

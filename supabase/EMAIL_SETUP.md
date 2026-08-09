@@ -99,6 +99,44 @@ unless that changes.
 - [ ] Sign up ~5 times in a row (throwaway addresses) to sanity-check
       you're nowhere near Resend's rate limits at expected signup volume.
 
+## 6. Feedback digest (separate from everything above)
+
+Steps 1–5 configure Resend as Supabase **Auth's** SMTP provider — signup
+confirmations and password resets, sent by Supabase itself. The feedback digest
+is a different path: the `feedback-notify` Edge Function calls **Resend's HTTP
+API** directly, because app code can't reach Supabase's SMTP config.
+
+That means it needs an **API key**, not the SMTP credential. Same Resend
+account, same verified `playbuilderpro.com` domain, same
+`noreply@playbuilderpro.com` sender — just a second key.
+
+1. **Resend → API Keys → Create API Key.** Sending permission is enough.
+2. Set the three secrets and deploy:
+   ```sh
+   openssl rand -hex 32                       # → FEEDBACK_NOTIFY_SECRET
+   supabase secrets set FEEDBACK_NOTIFY_SECRET=<that value>
+   supabase secrets set RESEND_API_KEY=<re_...>
+   supabase secrets set FEEDBACK_DIGEST_TO=<your admin address>
+   supabase functions deploy feedback-notify --no-verify-jwt
+   ```
+3. Run [`feedback_notify.sql`](feedback_notify.sql) — it adds
+   `feedback.notified_at` and schedules the daily `pg_cron` job. Read the
+   prerequisites at the top of that file first; `pg_cron` and `pg_net` have to
+   be enabled in the dashboard, and two placeholders need filling in.
+4. Smoke-test it by hand before trusting the schedule:
+   ```sh
+   curl -s -X POST -H "x-notify-secret: $FEEDBACK_NOTIFY_SECRET" \
+     "https://<project-ref>.supabase.co/functions/v1/feedback-notify"
+   # → {"sent":true,"count":N,"marked":true}   email should arrive
+   # → run it again immediately: {"sent":false,"count":0}, no second email
+   # → with a wrong/absent secret: 401
+   ```
+
+The digest **does** include the submitter's email address. That's the opposite
+of the `feedback-triage` function, which withholds it deliberately — triage
+output lands in public PRs, this goes to one admin inbox and the whole point is
+knowing who to follow up with.
+
 ## Notes / design decisions
 
 - Supabase's built-in email sender is explicitly documented as
