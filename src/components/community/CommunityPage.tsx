@@ -68,7 +68,32 @@ export function CommunityPage() {
         }
       }
 
-      setPosts(postsData.map((p: any) => ({ ...p, author: authorsById[p.user_id] })));
+      // Real comment counts, one batched query — not a per-post count (would
+      // be N+1) and not a fabricated placeholder. `posts` has no cached
+      // counter for this, so it's computed client-side from the raw rows;
+      // cheap at this scale (comments has no separate count column to trust
+      // instead).
+      const postIds = postsData.map((p: any) => p.id);
+      const commentCounts: Record<string, number> = {};
+      if (postIds.length > 0) {
+        const { data: commentRows, error: commentCountError } = await supabase
+          .from('comments')
+          .select('post_id')
+          .in('post_id', postIds);
+        if (commentCountError) {
+          console.error('Error fetching comment counts:', commentCountError);
+        } else {
+          for (const row of commentRows || []) {
+            commentCounts[row.post_id] = (commentCounts[row.post_id] || 0) + 1;
+          }
+        }
+      }
+
+      setPosts(postsData.map((p: any) => ({
+        ...p,
+        author: authorsById[p.user_id],
+        comment_count: commentCounts[p.id] || 0,
+      })));
     } catch (err) {
       console.error('Error fetching posts:', err);
       setError(getSafeErrorMessage(err, 'Failed to fetch posts. Please try again later.'));

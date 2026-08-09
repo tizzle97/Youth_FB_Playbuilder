@@ -3691,6 +3691,156 @@ test('Community Forum: pasting a Word-style bulleted list produces a real bullet
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Community Forum — comments. `comments` RLS (auth.uid() = user_id on
+ * INSERT, no ownership-of-post check at all) already allows any signed-in
+ * user to comment on any post, including their own — this was purely a
+ * missing UI: the "N Comments" button had no click handler and the count was
+ * a stub (`post.comment_count || 0` off a field the posts query never
+ * selected, so it always read 0 regardless of real comment count).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Stateful mock for `comments`: GET (both the per-post detail fetch and the
+ *  batched post_id-in-list count fetch CommunityPage does), POST, DELETE —
+ *  enough to drive the real create/read/delete flow, not just canned
+ *  responses. */
+function mockComments(page: Page, seed: Array<{ id: string; post_id: string; user_id: string; content: string; created_at: string }>) {
+  let rows = [...seed];
+  let nextId = seed.length + 1;
+  return page.route('**/rest/v1/comments**', (route) => {
+    const req = route.request();
+    const method = req.method();
+    const url = req.url();
+    if (method === 'GET') {
+      const eqMatch = url.match(/post_id=eq\.([^&]+)/);
+      const filtered = eqMatch ? rows.filter((c) => c.post_id === decodeURIComponent(eqMatch[1])) : rows;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(filtered) });
+    }
+    if (method === 'POST') {
+      const body = req.postDataJSON()[0];
+      const row = { id: `c${nextId++}`, created_at: new Date().toISOString(), ...body };
+      rows.push(row);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify([row]) });
+    }
+    if (method === 'DELETE') {
+      const idMatch = url.match(/id=eq\.([^&]+)/);
+      const id = idMatch ? decodeURIComponent(idMatch[1]) : null;
+      rows = rows.filter((c) => c.id !== id);
+      return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+}
+
+function mockSinglePost(page: Page, overrides: Partial<{ id: string; title: string; content: string; user_id: string }> = {}) {
+  const post = {
+    id: 'post-1', title: 'Season opener thoughts', content: 'Excited for week one.',
+    user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0,
+    created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+    ...overrides,
+  };
+  return page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([post]) }));
+}
+
+test('Community Forum: comment count reflects real comments, not a stale "0 Comments" stub', async ({ page }) => {
+  await mockCommunityAuthors(page);
+  await mockSinglePost(page);
+  await mockComments(page, [
+    { id: 'c1', post_id: 'post-1', user_id: OTHER_USER_ID, content: 'Good luck this season!', created_at: '2026-08-01T01:00:00Z' },
+    { id: 'c2', post_id: 'post-1', user_id: OTHER_USER_ID, content: 'What formation are you running?', created_at: '2026-08-01T02:00:00Z' },
+  ]);
+
+  await page.goto('/community');
+  await expect(page.getByText('2 Comments')).toBeVisible();
+  await expect(page.getByText('0 Comments')).toHaveCount(0);
+});
+
+test('Community Forum: a signed-in user CAN comment on their own post (regression for the reported bug)', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  // Post owned by the signed-in user themselves — the exact case reported.
+  await mockSinglePost(page, { user_id: COMMUNITY_USER.id });
+  await mockComments(page, []);
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: '0 Comments' }).click();
+  await expect(page.getByText('No comments yet', { exact: false })).toBeVisible();
+
+  await page.getByPlaceholder('Write a comment…').fill('Following up on my own post');
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+
+  await expect(page.getByText('Following up on my own post')).toBeVisible();
+  await expect(page.getByText('1 Comments')).toBeVisible();
+});
+
+test('Community Forum: a signed-in user can comment on another user\'s post', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  await mockSinglePost(page, { user_id: OTHER_USER_ID });
+  await mockComments(page, []);
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: '0 Comments' }).click();
+  await page.getByPlaceholder('Write a comment…').fill('Great write-up, thanks for sharing');
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+
+  await expect(page.getByText('Great write-up, thanks for sharing')).toBeVisible();
+  await expect(page.getByText('1 Comments')).toBeVisible();
+});
+
+test('Community Forum: deleting your own comment removes it; another user\'s comment shows no delete button', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  await mockSinglePost(page, { user_id: OTHER_USER_ID });
+  await mockComments(page, [
+    { id: 'mine', post_id: 'post-1', user_id: COMMUNITY_USER.id, content: 'My own comment', created_at: '2026-08-01T01:00:00Z' },
+    { id: 'theirs', post_id: 'post-1', user_id: OTHER_USER_ID, content: 'Their comment', created_at: '2026-08-01T02:00:00Z' },
+  ]);
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: '2 Comments' }).click();
+  await expect(page.getByText('My own comment')).toBeVisible();
+  await expect(page.getByText('Their comment')).toBeVisible();
+
+  const mineRow = page.locator('li', { hasText: 'My own comment' });
+  const theirsRow = page.locator('li', { hasText: 'Their comment' });
+  await expect(mineRow.locator('button[title="Delete Comment"]')).toBeVisible();
+  await expect(theirsRow.locator('button[title="Delete Comment"]')).toHaveCount(0);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await mineRow.locator('button[title="Delete Comment"]').click();
+
+  await expect(page.getByText('My own comment')).toHaveCount(0);
+  await expect(page.getByText('Their comment')).toBeVisible();
+  await expect(page.getByText('1 Comments')).toBeVisible();
+});
+
+test('Community Forum: signed out, submitting a comment redirects to sign in instead of posting', async ({ page }) => {
+  await mockCommunityAuthors(page);
+  await mockSinglePost(page, { user_id: OTHER_USER_ID });
+  const postDataSeen: string[] = [];
+  await page.route('**/rest/v1/comments**', (route) => {
+    postDataSeen.push(route.request().method());
+    if (route.request().method() === 'POST') return route.fulfill({ status: 401, body: '' });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: '0 Comments' }).click();
+  await page.getByPlaceholder('Write a comment…').fill('Trying to comment while signed out');
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+
+  await expect(page).toHaveURL(/\/auth$/);
+  expect(postDataSeen).not.toContain('POST');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Two routes per player — a short option and a deep option on one player.
  * ──────────────────────────────────────────────────────────────────────────── */
 
