@@ -9,7 +9,7 @@ import type { CustomRoster } from '../components/designer/rosters';
 // gotrue-js's session lock (see the B-4 note in BACKLOG.md), so the caller
 // passes the user it already has.
 
-export type GameFormat = '5v5' | '7v7' | '11v11';
+export type GameFormat = '5v5' | '6v6' | '7v7' | '11v11';
 export type PlayVisibility = 'private' | 'public';
 export type DefaultPlayType = 'pass' | 'run' | 'option' | 'reverse' | 'screen' | 'trick';
 export type PaperSize = 'letter' | 'a4';

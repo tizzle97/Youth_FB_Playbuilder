@@ -1,5 +1,5 @@
 export interface PlayMetadata {
-  gameType: '5v5' | '7v7' | '11v11';
+  gameType: '5v5' | '6v6' | '7v7' | '11v11';
   playType: 'pass' | 'run' | 'option' | 'reverse' | 'screen' | 'trick';
   formation: string;
   difficulty: 'beginner' | 'intermediate' | 'advanced';
