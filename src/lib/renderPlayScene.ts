@@ -505,6 +505,33 @@ function drawZoneHandles(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
   ctx.restore();
 }
 
+/**
+ * Whether a zone's dashed connector line to its icon should be drawn — true
+ * once the icon sits meaningfully outside the zone's ellipse.
+ *
+ * Deliberately ellipse-relative (each axis normalized by its own radius)
+ * rather than a raw distance compared against a threshold scaled by
+ * max(rx, ry): the latter meant *resizing* the zone changed the very
+ * threshold used to decide whether to show the connector, so stretching a
+ * zone wide (growing rx) could make the line disappear even though the icon
+ * was still visibly outside the ellipse in the y direction. Normalizing per
+ * axis makes the check correct for non-circular zones and stable under
+ * resize — only actually moving the icon relative to the zone changes the
+ * result. Coordinates just need to share a unit (normalized 0–1 or pixel);
+ * only their ratios matter.
+ */
+export function zoneConnectorVisible(
+  zone: Pick<Zone, 'cx' | 'cy' | 'rx' | 'ry'>,
+  icon: Pick<Pt, 'x' | 'y'> | undefined,
+): boolean {
+  if (!icon) return false;
+  if (zone.rx <= 0 || zone.ry <= 0) return true;
+  const normDist = Math.sqrt(
+    ((icon.x - zone.cx) / zone.rx) ** 2 + ((icon.y - zone.cy) / zone.ry) ** 2,
+  );
+  return normDist > 0.6;
+}
+
 /** Draws committed zones — translucent fill (field grid shows through),
  *  a connector line back to the icon once the zone has been moved away
  *  from it, and resize handles on the selected zone. */
@@ -527,8 +554,7 @@ function drawZones(
     if (icon) {
       const ix = icon.x * W;
       const iy = icon.y * H;
-      const dist = Math.sqrt((ix - cx) ** 2 + (iy - cy) ** 2);
-      if (dist > Math.max(rx, ry) * 0.6) {
+      if (zoneConnectorVisible(zone, icon)) {
         ctx.save();
         ctx.strokeStyle = zone.color;
         ctx.globalAlpha = 0.7;
