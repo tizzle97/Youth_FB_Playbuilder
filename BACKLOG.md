@@ -166,6 +166,16 @@ cycling only (deliberately lean). Deferred, in rough priority order:
    defensive plays only, so a coach with none gets an empty state pointing at
    the designer. Offering public defenses would seed it.
 
+### B-37 · [from feedback] Duplicate a playbook
+A coach wants to reuse a playbook as the starting point for a new one (e.g.
+a "Week 2" game plan) without manually re-adding every play one at a time.
+Proposal at `docs/proposals/duplicate-playbook.md` — a new
+`duplicate_playbook()` SQL function modeled closely on the already-shipped
+`clone_playbook_pack()` (owner check instead of public-playbook check, new
+`PBP07` error code, no Pro gate by default) plus a small UI affordance on
+`/playbooks`. Needs a human decision on the two open questions in the
+proposal (free vs. Pro, naming-collision handling) before implementation.
+
 ## Done
 
 - **2026-08-09 · B-36: Daily feedback digest email** — closes the last gap in
