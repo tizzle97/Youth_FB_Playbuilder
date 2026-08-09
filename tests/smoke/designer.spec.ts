@@ -2335,8 +2335,13 @@ test('PlaybooksPage: dragging a play in List view reorders it and writes a two-p
 
   await expect.poll(() => patchCalls.length).toBe(4);
   // Phase A: both affected rows bumped to temporary negative positions first.
+  // order_position is a Postgres `integer` (32-bit) — a temp value generated
+  // from Date.now() (epoch milliseconds, ~1.8e12 today) overflows it and
+  // fails with 22003 before any write succeeds. Must stay within int32.
   expect(patchCalls[0].position).toBeLessThan(0);
+  expect(patchCalls[0].position).toBeGreaterThanOrEqual(-2147483648);
   expect(patchCalls[1].position).toBeLessThan(0);
+  expect(patchCalls[1].position).toBeGreaterThanOrEqual(-2147483648);
   // Phase B: final real positions — a straight swap of A and B's original values.
   expect(patchCalls[2]).toEqual({ playId: 'play-b', position: 10 });
   expect(patchCalls[3]).toEqual({ playId: 'play-a', position: 20 });
