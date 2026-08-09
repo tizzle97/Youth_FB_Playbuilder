@@ -2215,8 +2215,20 @@ function playbookPlaysRow({ id, name, order_position }: PlayFixture) {
 type PatchCall = { playId: string; position: number };
 
 /** Signs in, stubs the playbooks list (one playbook) and its plays, and
- * records every playbook_plays PATCH (the reorder mutation) into `patchCalls`. */
-async function mockPlaybookWithPlays(page: Page, plays: PlayFixture[]): Promise<PatchCall[]> {
+ * records every playbook_plays PATCH (the reorder mutation) into `patchCalls`.
+ * `shouldFailPatch(attempt)`, if given, is checked against each PATCH's
+ * 1-indexed attempt number across the whole test; a `true` fails that PATCH
+ * with a 500 instead of succeeding (and it's not recorded into `patchCalls`).
+ * Deliberately does NOT layer a second `page.route` on top of this one to
+ * inject the failure: `route.continue()` sends the request straight to the
+ * live network rather than falling through to an earlier-registered handler
+ * for the same pattern, so a second route here would silently bypass this
+ * mock instead of chaining with it. */
+async function mockPlaybookWithPlays(
+  page: Page,
+  plays: PlayFixture[],
+  shouldFailPatch?: (attempt: number) => boolean
+): Promise<PatchCall[]> {
   const userJson = {
     id: '66666666-6666-6666-6666-666666666666',
     aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
@@ -2244,6 +2256,7 @@ async function mockPlaybookWithPlays(page: Page, plays: PlayFixture[]): Promise<
     }));
 
   const patchCalls: PatchCall[] = [];
+  let patchAttempt = 0;
   await page.route('**/rest/v1/playbook_plays**', (route) => {
     const req = route.request();
     if (req.method() === 'GET') {
@@ -2253,6 +2266,10 @@ async function mockPlaybookWithPlays(page: Page, plays: PlayFixture[]): Promise<
       });
     }
     if (req.method() === 'PATCH') {
+      patchAttempt++;
+      if (shouldFailPatch?.(patchAttempt)) {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom' }) });
+      }
       const url = new URL(req.url());
       const playId = (url.searchParams.get('play_id') ?? '').replace(/^eq\./, '');
       const body = req.postDataJSON() as { order_position: number };
@@ -2328,23 +2345,58 @@ test('PlaybooksPage: dragging a play in List view reorders it and writes a two-p
 });
 
 test('PlaybooksPage: a failed reorder write rolls the visible order back', async ({ page }) => {
-  await mockPlaybookWithPlays(page, [
-    { id: 'play-a', name: 'Play A', order_position: 10 },
-    { id: 'play-b', name: 'Play B', order_position: 20 },
-  ]);
-  // Override the PATCH leg only — GET (initial load) must keep succeeding.
-  await page.route('**/rest/v1/playbook_plays**', (route) => {
-    if (route.request().method() === 'PATCH') {
-      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom' }) });
-    }
-    return route.continue();
-  });
+  // Every PATCH fails, including the compensating revert's own writes — the
+  // screen must still recover to the pre-drag order from client state alone.
+  await mockPlaybookWithPlays(
+    page,
+    [
+      { id: 'play-a', name: 'Play A', order_position: 10 },
+      { id: 'play-b', name: 'Play B', order_position: 20 },
+    ],
+    () => true
+  );
 
   page.once('dialog', (d) => d.accept());
   await page.locator('button[title="List view — drag to reorder"]').click();
   await dragPlayRow(page, 'Play A', 'Play B');
 
   await expect.poll(() => rowNames(page)).toEqual(['Play A', 'Play B']);
+});
+
+test('PlaybooksPage: a failed reorder reverts the DATABASE, not just the screen', async ({ page }) => {
+  // Regression test: a reorder that fails partway used to only roll back the
+  // on-screen order — the temp-negative writes already committed by phase A
+  // were never undone. That stranded a row on a negative order_position
+  // forever, so every later reorder in that playbook collided with it and
+  // failed immediately (23505 on playbook_plays_playbook_id_order_position_key).
+  //
+  // Fail only the 3rd PATCH attempt — phase A (2 calls) succeeds, then the
+  // first phase B write fails, forcing the compensating revert to run.
+  const patchCalls = await mockPlaybookWithPlays(
+    page,
+    [
+      { id: 'play-a', name: 'Play A', order_position: 10 },
+      { id: 'play-b', name: 'Play B', order_position: 20 },
+    ],
+    (attempt) => attempt === 3
+  );
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('button[title="List view — drag to reorder"]').click();
+  await dragPlayRow(page, 'Play A', 'Play B');
+  await expect.poll(() => rowNames(page)).toEqual(['Play A', 'Play B']);
+
+  // 2 (phase A) + 2 (revert phase A) + 2 (revert phase B) = 6 successful
+  // writes recorded; the failed 3rd attempt isn't among them.
+  await expect.poll(() => patchCalls.length).toBe(6);
+  expect(patchCalls[0].position).toBeLessThan(0); // original phase A
+  expect(patchCalls[1].position).toBeLessThan(0);
+  expect(patchCalls[2].position).toBeLessThan(0); // revert's own phase A
+  expect(patchCalls[3].position).toBeLessThan(0);
+  // The revert's final phase must write each row back to its OWN original
+  // position — not leave anything on a temporary negative value.
+  expect(patchCalls[4]).toEqual({ playId: 'play-b', position: 20 });
+  expect(patchCalls[5]).toEqual({ playId: 'play-a', position: 10 });
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
