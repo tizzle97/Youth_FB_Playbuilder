@@ -337,6 +337,19 @@ export function PlaybooksPage() {
 
     try {
       await writeOrderPositions(affected, selectedPlaybook.id, (item) => item.position);
+      // Sync each affected play's own order_position field to what's now in
+      // the database. `reordered`/`previous` share object references (arrayMove
+      // doesn't clone), so without this, every row's field stays frozen at its
+      // pre-drag value forever — the NEXT reorder would then compute target
+      // positions off stale data that no longer matches the database, easily
+      // colliding with whatever row actually holds that value now.
+      const newPositionByPlayId = new Map(affected.map((item) => [item.play.id, item.position]));
+      setPlaysInPlaybook((current) =>
+        current.map((play) => {
+          const newPosition = newPositionByPlayId.get(play.id);
+          return newPosition === undefined ? play : { ...play, order_position: newPosition };
+        })
+      );
     } catch (error) {
       console.error('Error reordering plays:', error);
       setPlaysInPlaybook(previous);
