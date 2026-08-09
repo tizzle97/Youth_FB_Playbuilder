@@ -168,6 +168,31 @@ cycling only (deliberately lean). Deferred, in rough priority order:
 
 ## Done
 
+- **2026-08-09 · B-36: Daily feedback digest email** — closes the last gap in
+  the feedback loop: nothing told anyone a submission had arrived. The admin
+  found out by remembering to open `/admin`, and the triage routine only ever
+  routes what it can act on, so feedback could sit unseen indefinitely.
+  `supabase/functions/feedback-notify/` emails a digest of everything with
+  `notified_at IS NULL` via Resend's HTTP API, then marks those rows — **only
+  after** Resend accepts the send, so an outage retries tomorrow instead of
+  silently swallowing a day of feedback. Same shared-secret auth as
+  `feedback-triage` (constant-time compare, fails closed when the secret is
+  unset, `--no-verify-jwt`, no CORS). Unlike triage it **does** include the
+  submitter's email — triage output reaches public PRs, this reaches one admin
+  inbox and knowing who to follow up with is the point; the header comment
+  says so, so nobody "fixes" it later. Scheduled by `pg_cron` + `pg_net`.
+  **⚠ requires SQL run:** `supabase/feedback_notify.sql` (read its header —
+  `pg_cron`/`pg_net` must be enabled in the dashboard and two placeholders
+  filled in). **Also required first:** a Resend **API key** (not the SMTP
+  credential auth emails use), `FEEDBACK_NOTIFY_SECRET`, `FEEDBACK_DIGEST_TO`,
+  and `supabase functions deploy feedback-notify --no-verify-jwt` — see
+  `supabase/EMAIL_SETUP.md` §6. **Verification:** typecheck and build clean,
+  smoke 111/111 (unchanged — no `src/` code in this change), and the pure
+  digest helpers checked by `supabase/functions/feedback-notify/digest.check.mjs`
+  (18 assertions: constant-time compare incl. fail-closed-when-unset, HTML
+  escaping of hostile feedback text, excerpt truncation, submitter-email
+  inclusion). The end-to-end send is a manual curl — see EMAIL_SETUP.md §6.
+
 - **2026-08-04 · B-35: Automated feedback triage** — a scheduled agent now
   reads user-submitted feedback and routes it by kind instead of letting it
   sit in the admin tab: **bugs** → fix on a `feedback/bug-*` branch → PR you
