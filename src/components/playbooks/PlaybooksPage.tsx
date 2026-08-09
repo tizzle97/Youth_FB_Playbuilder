@@ -283,11 +283,36 @@ export function PlaybooksPage() {
     }
   };
 
+  // Writes `finalPositionOf(item)` to every item in `affected`, going through
+  // a temporary-negative phase first so mid-permutation writes never collide
+  // with another affected row's current order_position (UNIQUE(playbook_id,
+  // order_position)). The temp values are unique per call (Date.now()-based),
+  // not small fixed numbers — see handleReorderPlays for why that matters.
+  const writeOrderPositions = async (
+    affected: { play: PlayInPlaybook; position: number }[],
+    playbookId: string,
+    finalPositionOf: (item: { play: PlayInPlaybook; position: number }) => number
+  ) => {
+    const tempBase = -(Date.now());
+    for (let i = 0; i < affected.length; i++) {
+      const { error } = await supabase
+        .from('playbook_plays')
+        .update({ order_position: tempBase - i })
+        .eq('playbook_id', playbookId)
+        .eq('play_id', affected[i].play.id);
+      if (error) throw error;
+    }
+    for (const item of affected) {
+      const { error } = await supabase
+        .from('playbook_plays')
+        .update({ order_position: finalPositionOf(item) })
+        .eq('playbook_id', playbookId)
+        .eq('play_id', item.play.id);
+      if (error) throw error;
+    }
+  };
+
   // Reorder plays within the selected playbook (List view drag-and-drop).
-  // playbook_plays has UNIQUE (playbook_id, order_position), so the affected
-  // rows are bumped to temporary negative positions first (phase A) before
-  // being written to their final positions (phase B) — otherwise a direct
-  // write can collide with another affected row's current position.
   const handleReorderPlays = async (oldIndex: number, newIndex: number) => {
     if (!selectedPlaybook || oldIndex === newIndex) return;
 
@@ -299,30 +324,33 @@ export function PlaybooksPage() {
     const hi = Math.max(oldIndex, newIndex);
     // Reuse the same set of order_position values the affected slice already
     // held (just permuted onto different rows) so unaffected rows are never
-    // touched and never collide with this write.
+    // touched and never collide with this write. `play` objects are shared
+    // references with `previous`, so `play.order_position` still reads as
+    // each row's own pre-drag value even after arrayMove — used below to
+    // revert if the write fails partway.
     const targetPositions = previous.slice(lo, hi + 1).map((p) => p.order_position);
     const affected = reordered.slice(lo, hi + 1).map((play, i) => ({ play, position: targetPositions[i] }));
 
     try {
-      for (let i = 0; i < affected.length; i++) {
-        const { error } = await supabase
-          .from('playbook_plays')
-          .update({ order_position: -(i + 1) })
-          .eq('playbook_id', selectedPlaybook.id)
-          .eq('play_id', affected[i].play.id);
-        if (error) throw error;
-      }
-      for (const { play, position } of affected) {
-        const { error } = await supabase
-          .from('playbook_plays')
-          .update({ order_position: position })
-          .eq('playbook_id', selectedPlaybook.id)
-          .eq('play_id', play.id);
-        if (error) throw error;
-      }
+      await writeOrderPositions(affected, selectedPlaybook.id, (item) => item.position);
     } catch (error) {
       console.error('Error reordering plays:', error);
       setPlaysInPlaybook(previous);
+      // A failure here can leave rows sitting on their temporary negative
+      // position (e.g. the final-position write is what failed) — every
+      // later reorder attempt in this playbook would then collide with that
+      // stranded row and fail immediately, even though its Phase A used a
+      // fresh Date.now()-based temp value. Best-effort compensate by writing
+      // each affected row back to its own original position.
+      try {
+        await writeOrderPositions(affected, selectedPlaybook.id, (item) => item.play.order_position);
+      } catch (revertError) {
+        console.error(
+          'Failed to roll back playbook_plays after a failed reorder — a play may be stuck at an invalid ' +
+            'position. Run supabase/fix_playbook_plays_positions.sql to repair it.',
+          revertError
+        );
+      }
       alert('Failed to reorder plays. Please try again.');
     }
   };
