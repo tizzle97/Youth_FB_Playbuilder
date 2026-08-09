@@ -2404,6 +2404,53 @@ test('PlaybooksPage: a failed reorder reverts the DATABASE, not just the screen'
   expect(patchCalls[5]).toEqual({ playId: 'play-a', position: 10 });
 });
 
+test('PlaybooksPage: a second reorder after a successful first one does not collide', async ({ page }) => {
+  // Regression test: arrayMove repositions the play objects in state but
+  // never updated each one's own order_position field — it stayed frozen at
+  // its pre-drag value forever. The next reorder computed its target
+  // positions off that stale data, which no longer matched the database
+  // (the first reorder had already changed it), and could try to write a
+  // value some other row already held — 23505 on every reorder after the
+  // first one, exactly as reported.
+  const patchCalls = await mockPlaybookWithPlays(page, [
+    { id: 'play-a', name: 'Play A', order_position: 10 },
+    { id: 'play-b', name: 'Play B', order_position: 20 },
+    { id: 'play-c', name: 'Play C', order_position: 30 },
+  ]);
+
+  let dialogSeen = false;
+  page.on('dialog', (d) => { dialogSeen = true; d.accept(); });
+
+  await page.locator('button[title="List view — drag to reorder"]').click();
+  await expect(rowNames(page)).resolves.toEqual(['Play A', 'Play B', 'Play C']);
+
+  // First reorder: rotate A from the front to the back.
+  await dragPlayRow(page, 'Play A', 'Play C');
+  await expect(rowNames(page)).resolves.toEqual(['Play B', 'Play C', 'Play A']);
+  await expect.poll(() => patchCalls.length).toBe(6); // 3 temp + 3 final
+  expect(patchCalls.slice(3, 6)).toEqual([
+    { playId: 'play-b', position: 10 },
+    { playId: 'play-c', position: 20 },
+    { playId: 'play-a', position: 30 },
+  ]);
+
+  // Second reorder: drag A (now last) back to the front — undoes the rotation.
+  await dragPlayRow(page, 'Play A', 'Play B');
+  await expect.poll(() => rowNames(page)).toEqual(['Play A', 'Play B', 'Play C']);
+
+  expect(dialogSeen).toBe(false); // no "Failed to reorder plays" alert
+  await expect.poll(() => patchCalls.length).toBe(12); // + 3 temp + 3 final
+  // The second operation's final writes must reflect what the first one
+  // actually left in the database (B=10, C=20, A=30) — not each play's
+  // stale pre-drag field (which would instead try B=20, C=30, A=10, and
+  // collide with whichever row already holds that value).
+  expect(patchCalls.slice(9, 12)).toEqual([
+    { playId: 'play-a', position: 10 },
+    { playId: 'play-b', position: 20 },
+    { playId: 'play-c', position: 30 },
+  ]);
+});
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Admin Dashboard — entitlement management.
  *
