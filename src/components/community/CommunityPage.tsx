@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, TrendingUp, Award, Search } from 'lucide-react';
+import { MessageSquare, Award, Search } from 'lucide-react';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import { PostList } from './PostList';
 import { TopContributors } from './TopContributors';
@@ -119,23 +119,6 @@ export function CommunityPage() {
 
           {/* Sidebar */}
           <div className="md:w-80 space-y-8">
-            <div className="bg-board-light rounded-lg p-6 border border-chalk/10">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                <h2 className="text-xl font-chalk font-bold text-chalk">Trending Topics</h2>
-              </div>
-              <div className="space-y-2">
-                {['Defensive Strategies', 'QB Development', 'Practice Drills', 'Game Planning'].map((topic) => (
-                  <button
-                    key={topic}
-                    className="w-full text-left px-3 py-2 text-chalk/70 hover:text-chalk hover:bg-board rounded-md transition-colors"
-                  >
-                    #{topic.toLowerCase().replace(/\s+/g, '')}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="bg-board-light rounded-lg p-6 border border-chalk/10">
               <div className="flex items-center gap-2 mb-4">
                 <Award className="h-5 w-5 text-primary" />

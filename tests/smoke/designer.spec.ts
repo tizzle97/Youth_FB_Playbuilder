@@ -3132,3 +3132,59 @@ test('route color: overriding a route leaves the icon\'s zone color unaffected',
   expect(state.zones[0].color).toBe('#6366F1');
   expect(state.paths[0].color).toBe('#000000');
 });
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Community Forum — Top Contributors sidebar.
+ *
+ * Regression coverage for a real bug: this sidebar used to be hardcoded mock
+ * data (three made-up usernames, stock Unsplash photos, fabricated
+ * reputation numbers) rendered as if it were real community activity. Now
+ * backed by get_top_contributors(), a real query over user_reputation.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const OLD_MOCK_CONTRIBUTOR_NAMES = ['CoachMike', 'DefensiveGuru', 'PlayMaker'];
+
+test('Community Forum: Top Contributors shows real data, not the old fabricated names', async ({ page }) => {
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/rpc/get_top_contributors**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'u1', username: 'RealCoach99', avatar_url: null, reputation: 340 },
+        { id: 'u2', username: 'FlagFootballFan', avatar_url: null, reputation: 120 },
+      ]),
+    }));
+
+  await page.goto('/community');
+  await expect(page.getByText('RealCoach99')).toBeVisible();
+  await expect(page.getByText('340', { exact: false })).toBeVisible();
+  for (const name of OLD_MOCK_CONTRIBUTOR_NAMES) {
+    await expect(page.getByText(name)).toHaveCount(0);
+  }
+});
+
+test('Community Forum: no real contributors yet shows an honest empty state, not fabricated ones', async ({ page }) => {
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/rpc/get_top_contributors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/community');
+  await expect(page.getByText('No contributors yet')).toBeVisible();
+  for (const name of OLD_MOCK_CONTRIBUTOR_NAMES) {
+    await expect(page.getByText(name)).toHaveCount(0);
+  }
+});
+
+test('Community Forum: no fabricated "Trending Topics" section (no real topic/tag data exists)', async ({ page }) => {
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/rpc/get_top_contributors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/community');
+  await expect(page.getByText('Top Contributors')).toBeVisible(); // page loaded correctly
+  await expect(page.getByText('Trending Topics')).toHaveCount(0);
+  await expect(page.getByText('#defensivestrategies')).toHaveCount(0);
+});
