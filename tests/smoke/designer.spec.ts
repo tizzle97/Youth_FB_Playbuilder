@@ -2858,6 +2858,136 @@ test('feedback submit is not wedged by the auth lock', async ({ page }) => {
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Feedback capture. A signed-out visitor used to be able to type a full bug
+ * report, hit Submit, and get redirected to /auth with every word discarded.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const FEEDBACK_DRAFT_KEY = 'pbp:feedback-draft';
+
+/** Seed a signed-in session and stub REST, without the sign-out plumbing. */
+async function seedSession(page: Page, opts: { signedIn: boolean }) {
+  await page.addInitScript(({ u, k, jwt, signedIn }) => {
+    localStorage.setItem('pbp-analytics-consent', 'denied');
+    if (!signedIn) return;
+    localStorage.setItem(k, JSON.stringify({
+      access_token: jwt, refresh_token: 'ref',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user: u,
+    }));
+  }, { u: SIGNED_IN_USER, k: AUTH_STORAGE_KEY, jwt: FAKE_JWT, signedIn: opts.signedIn });
+}
+
+test('signed-out visitors are told to sign in before typing, not after', async ({ page }) => {
+  await seedSession(page, { signedIn: false });
+  await page.goto('/plays');
+  await page.getByTitle('Give Feedback').click();
+
+  // Scoped to the panel — the navbar and the page body have their own
+  // "Sign In" buttons for signed-out visitors.
+  const panel = page.getByRole('dialog', { name: 'Give Feedback' });
+
+  // The ask comes first; there is no textarea to pour a bug report into.
+  await expect(panel.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await expect(panel.getByLabel('Your Feedback')).toHaveCount(0);
+
+  await panel.getByRole('button', { name: 'Sign in' }).click();
+  // ...and it remembers where they were, so signing in doesn't dump them home.
+  await expect(page).toHaveURL(/\/auth\?next=%2Fplays/);
+});
+
+test('feedback records the page the user was on', async ({ page }) => {
+  // page_path is the single most expensive missing field when reproducing a
+  // reported bug — it must reach the insert, not just the component's state.
+  let body: Record<string, unknown> | null = null;
+  await seedSession(page, { signedIn: true });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SIGNED_IN_USER) }));
+  await page.route('**/rest/v1/**', (route) => {
+    const req = route.request();
+    if (req.url().includes('/feedback') && req.method() === 'POST') {
+      body = (JSON.parse(req.postData() ?? '[]') as Record<string, unknown>[])[0] ?? null;
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/community');
+  await page.getByTitle('Give Feedback').click();
+  await page.getByLabel('Your Feedback').fill('Routes render behind the player icons here.');
+  await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+  await expect.poll(() => body, { timeout: 10000 }).not.toBeNull();
+  expect(body!.page_path).toBe('/community');
+});
+
+test('a session that expires mid-compose does not eat the draft', async ({ page }) => {
+  // The nasty version of the old bug: the widget looked signed in, so the user
+  // typed, and only at Submit did getUser() come back empty.
+  await seedSession(page, { signedIn: true });
+  // Session is stale server-side — exactly what an expired token looks like.
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ msg: 'invalid JWT' }) }));
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/plays');
+  await page.getByTitle('Give Feedback').click();
+  await page.getByLabel('Your Feedback').fill('Wristband export cuts off the last play.');
+  await page.getByRole('button', { name: 'Bug' }).click();
+  await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+  await expect(page).toHaveURL(/\/auth\?next=%2Fplays/);
+  const draft = await page.evaluate((k) => sessionStorage.getItem(k), FEEDBACK_DRAFT_KEY);
+  expect(JSON.parse(draft ?? '{}')).toMatchObject({
+    type: 'bug',
+    content: 'Wristband export cuts off the last play.',
+    page_path: '/plays',
+  });
+});
+
+test('a parked draft is restored once the user is signed in', async ({ page }) => {
+  await seedSession(page, { signedIn: true });
+  await page.addInitScript(({ k }) => {
+    sessionStorage.setItem(k, JSON.stringify({
+      type: 'feature', content: 'Let me duplicate a whole playbook.', page_path: '/plays',
+    }));
+  }, { k: FEEDBACK_DRAFT_KEY });
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/plays');
+
+  // Panel reopens by itself — the user shouldn't have to remember to retype.
+  await expect(page.getByLabel('Your Feedback')).toHaveValue('Let me duplicate a whole playbook.');
+});
+
+test('the auth next param cannot be pointed off-site', async ({ page }) => {
+  // navigate('//evil.com') is a protocol-relative URL, so an unvalidated
+  // `next` would be an open redirect on the one page where the user has just
+  // typed their password.
+  await seedSession(page, { signedIn: false });
+  await page.route('**/auth/v1/token**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: FAKE_JWT, refresh_token: 'ref', token_type: 'bearer',
+        expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: SIGNED_IN_USER,
+      }),
+    }));
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SIGNED_IN_USER) }));
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/auth?next=%2F%2Fevil.com%2Fphish');
+  await page.getByLabel('Email').fill('coach@example.com');
+  await page.getByLabel('Password').fill('hunter2hunter2');
+  // Scoped to the form — the navbar carries its own "Sign In" button.
+  await page.locator('form').getByRole('button', { name: /Sign in/i }).click();
+
+  await expect(page).toHaveURL('http://localhost:4517/');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Saved toolbar rosters. A coach can relabel/recolor/reshape the built-in
  * chips once and have it stick, instead of re-customizing on every play.
  * ──────────────────────────────────────────────────────────────────────────── */

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import { safeNextPath } from '../../lib/nextPath';
 
 export function AuthPage() {
   usePageMeta({ title: 'Sign In', path: '/auth' });
@@ -17,6 +18,7 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
+  const nextPath = safeNextPath(searchParams.get('next'));
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUsername = e.target.value;
@@ -109,7 +111,7 @@ export function AuthPage() {
         } else if (signUpData.session) {
           // Email confirmation disabled — user is signed in immediately
           setSuccess('Account created successfully! Welcome!');
-          setTimeout(() => navigate('/'), 1500);
+          setTimeout(() => navigate(nextPath), 1500);
         } else {
           // Email confirmation required — tell the user what to actually do
           setSuccess('Account created! Please check your email and click the confirmation link before signing in.');
@@ -131,7 +133,7 @@ export function AuthPage() {
             setError(getSafeErrorMessage(signInError, 'Failed to sign in'));
           }
         } else if (data.user) {
-          navigate('/');
+          navigate(nextPath);
         }
       }
     } catch (err) {
