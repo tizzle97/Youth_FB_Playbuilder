@@ -483,9 +483,15 @@ export function PlaysPage() {
             <Link
               to={`/designer?template=${play.id}`}
               title="Use this play as a starting point for a new one"
+              aria-label="Use this play as a starting point for a new one"
               className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
             >
               <Wand2 className="h-4 w-4" />
+              {/* Icon-only relied on the `title` tooltip, which touch devices
+                  never show — a mobile user had no way to tell what this
+                  button did. Always show the label; the card grid is one
+                  column wide on mobile, so there's room. */}
+              <span className="text-xs">Template</span>
             </Link>
 
             {/* Offense only — the vs. view draws this play under a defense,
@@ -494,9 +500,11 @@ export function PlaysPage() {
               <Link
                 to={`/vs?play=${play.id}`}
                 title="View this play against your defensive plays"
+                aria-label="View this play against your defensive plays"
                 className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
               >
                 <Shield className="h-4 w-4" />
+                <span className="text-xs">Vs.</span>
               </Link>
             )}
 
