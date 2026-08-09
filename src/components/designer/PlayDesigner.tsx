@@ -422,6 +422,19 @@ export function PlayDesigner() {
       }
 
       setCurrentPlayMetadata((prev) => ({ ...prev, ...playData.metadata, playName: playData.name }));
+
+      // Editing a play opened from the Plays page (?from=plays) returns the
+      // coach there once the update lands, instead of leaving them staring
+      // at the designer wondering if it worked. Only for updates to an
+      // existing play — a fresh save (new play or "use as template") keeps
+      // them in the designer, since they're mid-flow building something new.
+      // No transient toast in this case: it would never be seen before the
+      // navigation away.
+      if (editingPlayId && searchParams.get('from') === 'plays') {
+        navigate('/plays');
+        return;
+      }
+
       setSuccessMessage(
         editingPlayId
           ? 'Play updated!'
@@ -432,7 +445,7 @@ export function PlayDesigner() {
       console.error('Save play error:', err);
       setError(getSafeErrorMessage(err, 'Failed to save play'));
     }
-  }, [user, editingPlayId, playType]);
+  }, [user, editingPlayId, playType, searchParams, navigate]);
 
   const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
     try {

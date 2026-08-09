@@ -1628,6 +1628,140 @@ test('"Use as Template" (/designer?template=): loads the source play, prefixes t
   expect(methodsSeen).not.toContain('PATCH');
 });
 
+// A coach opening an existing play from the Plays page, updating it, and
+// saving expects to land back on the Plays page — not be left staring at the
+// designer wondering whether the save landed. The Plays page marks its edit
+// links with ?from=plays so the designer knows to return there afterward.
+test('editing a play opened from the Plays page (?from=plays) returns there after Update', async ({ page }) => {
+  const userJson = {
+    id: '66666666-6666-6666-6666-666666666666',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+  await page.route('**/rest/v1/play_votes**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  const playId = '00000000-0000-0000-0000-0000000000cc';
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.5, y: 0.6, letter: 'QB', color: '#3B82F6' }],
+    zones: [],
+  });
+
+  const methodsSeen: string[] = [];
+  await page.route('**/rest/v1/plays**', (route) => {
+    const req = route.request();
+    const method = req.method();
+    methodsSeen.push(method);
+    if (method === 'PATCH') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    }
+    if (req.url().includes(`id=eq.${playId}`)) {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          id: playId, name: 'Mesh', type: 'offense', canvas_data: canvasData,
+          description: '', is_public: false, user_id: userJson.id,
+          metadata: { playName: 'Mesh' },
+        }),
+      });
+    }
+    // The Plays page's own list fetch after the redirect.
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto(`/designer?play=${playId}&from=plays`);
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+  await expect(page.getByText('(editing)')).toBeVisible();
+
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Mesh');
+  await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();
+  await page.getByRole('button', { name: 'Save Play' }).click();
+
+  await expect(page).toHaveURL(/\/plays$/);
+  expect(methodsSeen).toContain('PATCH');
+});
+
+// The redirect is scoped to the Plays page specifically (via ?from=plays) —
+// editing a play from anywhere else (Playbooks' "Edit Play", or a bare
+// /designer?play= link) must keep the coach on the designer after Update,
+// unchanged from prior behavior.
+test('editing a play without ?from=plays stays on the designer after Update', async ({ page }) => {
+  const userJson = {
+    id: '77777777-7777-7777-7777-777777777777',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }));
+
+  const playId = '00000000-0000-0000-0000-0000000000dd';
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [],
+    playerIcons: [{ x: 0.5, y: 0.6, letter: 'QB', color: '#3B82F6' }],
+    zones: [],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) => {
+    const method = route.request().method();
+    if (method === 'PATCH') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        id: playId, name: 'Mesh', type: 'offense', canvas_data: canvasData,
+        description: '', is_public: false, user_id: userJson.id,
+        metadata: { playName: 'Mesh' },
+      }),
+    });
+  });
+
+  await page.goto(`/designer?play=${playId}`);
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Mesh');
+  await page.getByRole('button', { name: 'Next: Choose Playbook' }).click();
+  await page.getByRole('button', { name: 'Save Play' }).click();
+
+  await expect(page.getByText('Play updated!')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/designer\\?play=${playId}$`));
+});
+
 test('loads a saved play with a legacy mode:"block" path (pre-dates capStyle) without choking', async ({ page }) => {
   // Regression guard: 'block' used to be a whole draw mode; it's now just
   // the fallback capStyle for paths saved before capStyle existed (see

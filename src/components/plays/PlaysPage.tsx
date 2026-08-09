@@ -452,7 +452,9 @@ export function PlaysPage() {
       {user ? (
         <>
           {/* Play Preview */}
-          <Link to={`/designer?play=${play.id}`} className="block">
+          {/* from=plays tells the designer to return here after an update,
+              instead of leaving the coach on the designer post-save. */}
+          <Link to={`/designer?play=${play.id}&from=plays`} className="block">
             <div className="bg-board rounded-lg overflow-hidden aspect-[4/3] mb-2 border border-chalk/10 group-hover:border-primary/30 transition-colors">
               <ThumbnailImage play={play} />
             </div>
