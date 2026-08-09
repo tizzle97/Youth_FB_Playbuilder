@@ -9,6 +9,39 @@ This routine's prompt is checked in instead. **If you edit the routine in the
 web UI, update this file in the same change** — otherwise it drifts and this
 document becomes a lie.
 
+## Deployment status
+
+The code for this routine is merged, but merged is not running. Every box below
+must be ticked before a single piece of feedback gets triaged — until then
+submissions accumulate untouched in the `feedback` table with
+`triage_state='untriaged'`. Update this table (with the date) as each step
+lands, so "is triage actually live?" is answerable without digging through the
+Supabase dashboard.
+
+| # | Step | Status |
+|---|------|--------|
+| 1 | `supabase/feedback_triage.sql` run in the SQL Editor | ✅ 2026-08-05 (per `supabase/SCHEMA.md`) |
+| 2 | `supabase secrets set FEEDBACK_TRIAGE_SECRET=…` | ⬜ not confirmed |
+| 3 | `supabase functions deploy feedback-triage --no-verify-jwt` | ⬜ not confirmed |
+| 4 | Dry run passed (see [the dry run](#before-scheduling-it-the-dry-run)) | ⬜ not run |
+| 5 | Routine created at claude.ai/code/routines, daily | ⬜ not confirmed |
+
+Do them **in that order**. Steps 2 and 3 together are what makes the endpoint
+reachable: deploying before the secret is set leaves a live function whose
+`secretMatches()` fails closed on every request (a 401 that looks exactly like a
+wrong token), and creating the routine before the dry run means the first real
+exercise of the prompt-injection guardrails happens unsupervised, against real
+user input.
+
+Quick check that steps 2–3 are done — from anywhere, with the secret in hand:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "x-triage-secret: $FEEDBACK_TRIAGE_SECRET" \
+  "https://<project-ref>.supabase.co/functions/v1/feedback-triage?limit=1"
+# 200 → both done.  401 → secret missing or mismatched.  404 → not deployed.
+```
+
 ## Setup
 
 1. Run `supabase/feedback_triage.sql` in the Supabase SQL Editor.
