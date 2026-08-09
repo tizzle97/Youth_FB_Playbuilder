@@ -1,5 +1,6 @@
 import { test, expect, Page, CDPSession } from '@playwright/test';
 import { readFileSync } from 'fs';
+import { zoneConnectorVisible } from '../../src/lib/renderPlayScene';
 
 // Mocked-session tests must seed localStorage under the same key the real
 // supabase-js client reads (`sb-<project-ref>-auth-token`, derived from
@@ -3451,4 +3452,96 @@ test('routes: dragging a player leaves another player\'s route untouched', async
   });
   // …while Q's route did move.
   expect(after.paths[qRouteIdx].points[0].y).toBeGreaterThan(before.paths[qRouteIdx].points[0].y + 0.05);
+});
+
+// A zone's dashed connector to its icon is only meaningful once the icon is
+// visibly outside the zone. It used to be decided by comparing the icon's
+// raw distance from the zone center against a threshold scaled off the
+// zone's OWN radius (max(rx, ry) * 0.6) — so stretching the zone larger
+// inflated the very threshold used to decide whether to show the line, and
+// a wide zone could hide the connector even though the icon sat clearly
+// outside the ellipse in the other axis. zoneConnectorVisible() fixes this
+// by normalizing each axis by its own radius (ellipse-relative), which is
+// unit-invariant — normalized 0–1 fractions and pixel coordinates give the
+// same answer, since only the ratios matter.
+test('zone connector: visibility is ellipse-relative, not tied to the zone\'s own size', () => {
+  // Reproduces the reported bug with concrete numbers: a zone dragged well
+  // above its icon (a real vertical gap), then stretched wide horizontally.
+  const zone = { cx: 0.5, cy: 0.3, rx: 0.35, ry: 0.05 };
+  const icon = { x: 0.5, y: 0.45 }; // 0.15 below the zone center — 3x the zone's own height (ry)
+
+  // The old formula, inlined here to document exactly what broke: a single
+  // threshold derived from the zone's largest radius, applied regardless of
+  // which axis the icon actually diverges on.
+  const oldDist = Math.hypot(icon.x - zone.cx, icon.y - zone.cy);
+  const oldVisible = oldDist > Math.max(zone.rx, zone.ry) * 0.6;
+  expect(oldVisible).toBe(false); // the bug: hidden despite the icon being well outside the ellipse
+
+  expect(zoneConnectorVisible(zone, icon)).toBe(true);
+
+  // Sanity check the other direction too: an icon still close to a small,
+  // unstretched zone should not show a connector.
+  expect(zoneConnectorVisible({ cx: 0.5, cy: 0.5, rx: 0.05, ry: 0.05 }, { x: 0.51, y: 0.5 })).toBe(false);
+
+  // No icon (shouldn't happen for a live zone, but iconIndex is a plain
+  // array index with no referential guarantee) never draws a connector.
+  expect(zoneConnectorVisible(zone, undefined)).toBe(false);
+});
+
+test('defense: zone connector stays visible after stretching the zone wide (regression for the reported bug)', async ({ page }) => {
+  await openDesigner(page);
+
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+  await btn(page, 'Player S').click();
+  const spot = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const iconPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  // Create a zone directly on the icon (creation always centers the zone on
+  // its icon — see Canvas.tsx's zoneDraft) — big enough that its edge sits
+  // well clear of the icon's own hit radius.
+  await btn(page, 'Draw a zone of responsibility (drag from a player)').click();
+  await page.mouse.move(iconPx.x, iconPx.y);
+  await page.mouse.down();
+  await page.mouse.move(iconPx.x + 90, iconPx.y + 60, { steps: 6 });
+  await page.mouse.up();
+
+  // Drag the zone body (not the icon — grabbed away from center, near the
+  // right edge, so this can't land on the icon) straight up, away from the
+  // icon, so a real vertical gap opens up. One continuous drag both selects
+  // the zone and moves it, same as a coach dragging a freshly-drawn zone.
+  await btn(page, 'Select / Move').click();
+  state = await canvasState(page);
+  const grabPx = await canvasPoint(page, state.zones[0].cx + state.zones[0].rx * 0.7, state.zones[0].cy);
+  await page.mouse.move(grabPx.x, grabPx.y);
+  await page.mouse.down();
+  await page.mouse.move(grabPx.x, grabPx.y - 150, { steps: 8 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  const zoneAfterMove = state.zones[0];
+  // The move actually landed on the zone, not the icon — the icon is still
+  // where it was placed, and the zone center is now well above it.
+  expect(state.playerIcons[0].y).toBeCloseTo(0.6, 1);
+  expect(zoneAfterMove.cy).toBeLessThan(state.playerIcons[0].y - 0.05);
+  expect(zoneConnectorVisible(zoneAfterMove, state.playerIcons[0])).toBe(true);
+
+  // Now stretch the zone horizontally via its right-edge (x-axis) resize
+  // handle — the exact action reported: "stretching the zone horizontally."
+  const handlePx = await canvasPoint(page, zoneAfterMove.cx + zoneAfterMove.rx, zoneAfterMove.cy);
+  await page.mouse.move(handlePx.x, handlePx.y);
+  await page.mouse.down();
+  await page.mouse.move(handlePx.x + 250, handlePx.y, { steps: 10 });
+  await page.mouse.up();
+
+  state = await canvasState(page);
+  // The stretch actually landed…
+  expect(state.zones[0].rx).toBeGreaterThan(zoneAfterMove.rx + 0.1);
+  // …the resize handle only touched rx, not the vertical gap that makes the
+  // connector meaningful…
+  expect(state.zones[0].ry).toBeCloseTo(zoneAfterMove.ry, 5);
+  expect(state.zones[0].cy).toBeCloseTo(zoneAfterMove.cy, 5);
+  // …and the connector — the actual bug report — is still visible.
+  expect(zoneConnectorVisible(state.zones[0], state.playerIcons[0])).toBe(true);
 });
