@@ -3,15 +3,18 @@ import { X } from 'lucide-react';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 
-interface CreatePostModalProps {
+interface PostFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPostCreated: () => void;
+  onSaved: () => void;
+  /** Present to edit an existing post in place; absent to create a new one. */
+  post?: { id: string; title: string; content: string };
 }
 
-export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostModalProps) {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalProps) {
+  const isEditing = !!post;
+  const [title, setTitle] = useState(post?.title ?? '');
+  const [content, setContent] = useState(post?.content ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -24,26 +27,36 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('You must be signed in to create a post');
+      if (!user) throw new Error(isEditing ? 'You must be signed in to edit a post' : 'You must be signed in to create a post');
 
-      const { error: postError } = await supabase
-        .from('posts')
-        .insert([
-          {
-            title,
-            content,
-            user_id: user.id
-          }
-        ]);
-
-      if (postError) throw postError;
+      if (isEditing) {
+        // RLS (auth.uid() = user_id, unchanged by this update) already scopes
+        // this to the caller's own posts — the .eq('id', ...) below is just
+        // which row, not the security boundary.
+        const { error: updateError } = await supabase
+          .from('posts')
+          .update({ title, content })
+          .eq('id', post.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('posts')
+          .insert([
+            {
+              title,
+              content,
+              user_id: user.id
+            }
+          ]);
+        if (insertError) throw insertError;
+      }
 
       setTitle('');
       setContent('');
-      onPostCreated();
+      onSaved();
       onClose();
     } catch (err) {
-      setError(getSafeErrorMessage(err, 'Failed to create post'));
+      setError(getSafeErrorMessage(err, isEditing ? 'Failed to save changes' : 'Failed to create post'));
     } finally {
       setLoading(false);
     }
@@ -56,7 +69,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
 
         <div className="inline-block w-full max-w-2xl my-8 overflow-hidden text-left align-middle transition-all transform bg-board-light rounded-lg shadow-xl">
           <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10">
-            <h3 className="text-2xl font-bold text-chalk">Create Post</h3>
+            <h3 className="text-2xl font-bold text-chalk">{isEditing ? 'Edit Post' : 'Create Post'}</h3>
             <button
               onClick={onClose}
               className="text-chalk/70 hover:text-chalk transition-colors"
@@ -116,7 +129,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                   disabled={loading}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : 'Create Post'}
+                  {loading ? (isEditing ? 'Saving...' : 'Creating...') : (isEditing ? 'Save Changes' : 'Create Post')}
                 </button>
               </div>
             </div>

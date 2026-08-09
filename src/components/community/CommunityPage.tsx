@@ -16,6 +16,14 @@ export function CommunityPage() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // One-shot lookup, not inside onAuthStateChange — a callback there calling
+  // auth.getUser() re-entrantly is what deadlocked the gotrue session lock
+  // elsewhere in this app (see entitlements.ts's B-4 note).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setCurrentUserId(user?.id ?? null));
+  }, []);
 
   const fetchPosts = async () => {
     try {
@@ -114,6 +122,8 @@ export function CommunityPage() {
               loading={loading}
               timeRange={timeRange}
               searchQuery={searchQuery}
+              currentUserId={currentUserId}
+              onChanged={fetchPosts}
             />
           </div>
 

@@ -3325,6 +3325,171 @@ test('Community Forum: no fabricated "Trending Topics" section (no real topic/ta
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Community Forum — editing and deleting your own posts. RLS already scopes
+ * the writes to the owner (auth.uid() = user_id); these tests cover the UI
+ * half: the buttons only render on your own posts, and edit/delete actually
+ * reach the backend and update what's on screen afterward.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const COMMUNITY_USER = {
+  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+  app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+};
+const OTHER_USER_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+function signInAsCommunityUser(page: Page) {
+  return page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: COMMUNITY_USER, storageKey: AUTH_STORAGE_KEY });
+}
+
+async function mockCommunityAuthors(page: Page) {
+  await page.route('**/rest/v1/rpc/get_top_contributors**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/rpc/get_community_authors**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: COMMUNITY_USER.id, username: 'Coach', avatar_url: null },
+        { id: OTHER_USER_ID, username: 'OtherCoach', avatar_url: null },
+      ]),
+    }));
+}
+
+test('Community Forum: Edit/Delete only render on your own post, never on someone else\'s', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'own-post', title: 'My Post', content: 'Mine', user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' },
+        { id: 'other-post', title: 'Their Post', content: 'Not mine', user_id: OTHER_USER_ID, upvotes: 0, downvotes: 0, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' },
+      ]),
+    }));
+
+  await page.goto('/community');
+  await expect(page.getByText('My Post')).toBeVisible();
+  await expect(page.getByText('Their Post')).toBeVisible();
+
+  const ownArticle = page.locator('article', { hasText: 'My Post' });
+  const otherArticle = page.locator('article', { hasText: 'Their Post' });
+  await expect(ownArticle.locator('button[title="Edit Post"]')).toBeVisible();
+  await expect(ownArticle.locator('button[title="Delete Post"]')).toBeVisible();
+  await expect(otherArticle.locator('button[title="Edit Post"]')).toHaveCount(0);
+  await expect(otherArticle.locator('button[title="Delete Post"]')).toHaveCount(0);
+});
+
+test('Community Forum: signed out, no post shows Edit/Delete', async ({ page }) => {
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'own-post', title: 'My Post', content: 'Mine', user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' },
+      ]),
+    }));
+
+  await page.goto('/community');
+  await expect(page.getByText('My Post')).toBeVisible();
+  await expect(page.locator('button[title="Edit Post"]')).toHaveCount(0);
+  await expect(page.locator('button[title="Delete Post"]')).toHaveCount(0);
+});
+
+test('Community Forum: editing a post saves the change and shows an "edited" marker; an untouched post shows none', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+
+  let edited = false;
+  const patchBodies: any[] = [];
+  await page.route('**/rest/v1/posts**', (route) => {
+    const method = route.request().method();
+    if (method === 'PATCH') {
+      patchBodies.push(route.request().postDataJSON());
+      edited = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'own-post',
+        title: edited ? 'Updated title' : 'Original title',
+        content: edited ? 'Updated content' : 'Original content',
+        user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0,
+        created_at: '2026-08-01T00:00:00Z',
+        updated_at: edited ? '2026-08-01T01:00:00Z' : '2026-08-01T00:00:00Z',
+      }]),
+    });
+  });
+
+  await page.goto('/community');
+  await expect(page.getByText('Original title')).toBeVisible();
+  // Not edited yet — no marker.
+  await expect(page.getByText('edited', { exact: false })).toHaveCount(0);
+
+  await page.locator('button[title="Edit Post"]').click();
+  await expect(page.getByRole('heading', { name: 'Edit Post' })).toBeVisible();
+  const titleInput = page.locator('#title');
+  const contentInput = page.locator('#content');
+  await expect(titleInput).toHaveValue('Original title');
+  await expect(contentInput).toHaveValue('Original content');
+
+  await titleInput.fill('Updated title');
+  await contentInput.fill('Updated content');
+  await page.getByRole('button', { name: 'Save Changes' }).click();
+
+  await expect(page.getByText('Updated title')).toBeVisible();
+  await expect(page.getByText('edited', { exact: false })).toBeVisible();
+  expect(patchBodies).toHaveLength(1);
+  expect(patchBodies[0]).toMatchObject({ title: 'Updated title', content: 'Updated content' });
+  // Update never touches user_id — RLS's WITH CHECK is the real boundary, but
+  // the client shouldn't even attempt to send a different one.
+  expect(patchBodies[0].user_id).toBeUndefined();
+});
+
+test('Community Forum: deleting a post confirms, deletes, and removes it from the list', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+
+  let deleted = false;
+  const deletedIds: string[] = [];
+  await page.route('**/rest/v1/posts**', (route) => {
+    const method = route.request().method();
+    if (method === 'DELETE') {
+      deleted = true;
+      const url = new URL(route.request().url());
+      deletedIds.push(url.searchParams.get('id') || '');
+      return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(deleted ? [] : [
+        { id: 'own-post', title: 'Doomed Post', content: 'Going away', user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' },
+      ]),
+    });
+  });
+
+  await page.goto('/community');
+  await expect(page.getByText('Doomed Post')).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('button[title="Delete Post"]').click();
+
+  await expect(page.getByText('Doomed Post')).toHaveCount(0);
+  expect(deletedIds[0]).toContain('own-post');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Two routes per player — a short option and a deep option on one player.
  * ──────────────────────────────────────────────────────────────────────────── */
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PenSquare } from 'lucide-react';
-import { CreatePostModal } from './CreatePostModal';
+import { PostFormModal } from './PostFormModal';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
@@ -31,10 +31,10 @@ export function CreatePostButton({ onPostCreated }: CreatePostButtonProps) {
         <span>Create Post</span>
       </button>
 
-      <CreatePostModal
+      <PostFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onPostCreated={onPostCreated}
+        onSaved={onPostCreated}
       />
     </>
   );
