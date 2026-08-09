@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { sanitizePostContent } from '../../lib/sanitizeHtml';
 import { PostFormModal } from './PostFormModal';
+import { CommentThread } from './CommentThread';
 
 interface PostListProps {
   posts: any[];
@@ -31,6 +32,7 @@ function wasEdited(post: { created_at: string; updated_at?: string }): boolean {
 export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, currentUserId, onChanged }: PostListProps) {
   const [editingPost, setEditingPost] = useState<{ id: string; title: string; content: string } | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
 
   const handleVote = async (postId: string, voteType: boolean) => {
     try {
@@ -184,11 +186,22 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
                 />
 
                 <div className="flex items-center gap-4">
-                  <button className="flex items-center gap-2 text-chalk/70 hover:text-chalk transition-colors">
+                  <button
+                    onClick={() => setExpandedPostId((cur) => (cur === post.id ? null : post.id))}
+                    className="flex items-center gap-2 text-chalk/70 hover:text-chalk transition-colors"
+                  >
                     <MessageSquare className="h-5 w-5" />
                     <span>{post.comment_count || 0} Comments</span>
                   </button>
                 </div>
+
+                {expandedPostId === post.id && (
+                  <CommentThread
+                    postId={post.id}
+                    currentUserId={currentUserId}
+                    onCommentsChanged={onChanged}
+                  />
+                )}
               </div>
             </div>
           </article>
