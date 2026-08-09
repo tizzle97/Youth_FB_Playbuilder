@@ -46,11 +46,25 @@ export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'users' | 'blog' | 'feedback' | 'moderation'>('users');
   const [search, setSearch] = useState('');
   const [savingPlanFor, setSavingPlanFor] = useState<string | null>(null);
+  const [pendingFeedback, setPendingFeedback] = useState(0);
 
   useEffect(() => {
     if (activeTab === 'users') {
       fetchUsers();
     }
+  }, [activeTab]);
+
+  // Count only — the tab badge is the whole point, so an admin landing on
+  // Users still sees that something is waiting. `head: true` fetches no rows;
+  // the "Admins can view all feedback" RLS policy covers the read.
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase
+        .from('feedback')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setPendingFeedback(count ?? 0);
+    })();
   }, [activeTab]);
 
   const fetchUsers = async () => {
@@ -172,6 +186,15 @@ export function AdminDashboard() {
               >
                 <Inbox className="h-4 w-4" />
                 Feedback
+                {pendingFeedback > 0 && (
+                  <span
+                    className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                      activeTab === 'feedback' ? 'bg-white/20 text-white' : 'bg-primary/20 text-primary'
+                    }`}
+                  >
+                    {pendingFeedback}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('moderation')}
