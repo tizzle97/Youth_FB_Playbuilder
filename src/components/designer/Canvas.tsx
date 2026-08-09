@@ -221,6 +221,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // otherwise every real-world tap would register as a (near-zero) drag
     // and the tap-to-customize popover below would never open.
     const dragMovedRef = useRef(false);
+    // Where the dragged icon sat at the end of the previous move event. Each
+    // move translates the icon's routes by the delta since this point rather
+    // than by the distance from the drag's origin, because the two diverge:
+    // computeSnap can pull the icon onto an alignment guide, so the position
+    // actually applied is not the raw pointer position.
+    const dragIconLastPosRef = useRef<Pt>({ x: 0, y: 0 });
 
     // Icon being edited via the tap-to-customize popover (Select mode only).
     const [editingIconIndex, setEditingIconIndex] = useState<number | null>(null);
@@ -1208,6 +1214,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         draggingIndexRef.current = clicked;
         dragOffsetRef.current = { x: p.x - icon.x, y: p.y - icon.y };
         dragStartRef.current = p;
+        dragIconLastPosRef.current = { x: icon.x, y: icon.y };
         dragMovedRef.current = false;
         setIsDragging(true);
         // Snapshot is deferred to the first actual move (see handlePointerMove)
@@ -1315,11 +1322,32 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const raw = { x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
         const { pos, guideX, guideY, distX, distY } = computeSnap(raw, draggingIndexRef.current);
         setActiveGuides({ x: guideX, y: guideY, distX, distY });
+        const draggedIdx = draggingIndexRef.current;
         setPlayerIcons((prev) => {
           const c = [...prev];
-          c[draggingIndexRef.current!] = { ...c[draggingIndexRef.current!], x: pos.x, y: pos.y };
+          c[draggedIdx] = { ...c[draggedIdx], x: pos.x, y: pos.y };
           return c;
         });
+        // Carry the player's routes along with them. A route is the player's
+        // assignment, so moving a receiver two yards wider should slide their
+        // whole route over — not leave it stranded, and not rubber-band just
+        // its first point, which would deform the shape the coach drew.
+        // Every point translates by the same delta, so the route keeps its
+        // exact geometry. A player may have more than one route (short + deep
+        // option), so this moves all of them.
+        const dx = pos.x - dragIconLastPosRef.current.x;
+        const dy = pos.y - dragIconLastPosRef.current.y;
+        dragIconLastPosRef.current = pos;
+        if (dx !== 0 || dy !== 0) {
+          setPaths((prev) => {
+            if (!prev.some((path) => path.startIconIndex === draggedIdx)) return prev;
+            return prev.map((path) =>
+              path.startIconIndex === draggedIdx
+                ? { ...path, points: path.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) }
+                : path,
+            );
+          });
+        }
         return;
       }
 
