@@ -32,6 +32,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `fix_playbook_plays_positions.sql` | **pending — needs SQL run** | One-off data repair, no schema change: renumbers any `playbook_plays` rows stranded at `order_position <= 0` by the drag-to-reorder bug (a failed reorder only rolled back the browser's on-screen state, never the partial DB write, so retries collided with the stranded row forever). Idempotent — no-op once nothing is `<= 0`. |
 | `add_6v6_game_format.sql` | **pending — needs SQL run** | Widens `custom_formations.game_type` and `user_preferences.default_game_format`'s `CHECK` constraints to allow `'6v6'`, alongside new 6v6 formation templates in `formations.ts`. No new column. |
 | `community_top_contributors.sql` | **pending — needs SQL run** | `get_top_contributors(result_limit int)` — real top-N posters by `user_reputation.reputation` (>0 only), same `auth.users`/`avatar_icons` join pattern as `get_community_authors()`. Fixes the Community page's "Top Contributors" sidebar, which was hardcoded mock data (fake usernames/photos/reputation) presented as real. |
+| `community_posts_updated_at.sql` | **pending — needs SQL run** | `BEFORE UPDATE` trigger on `posts` reusing the existing `update_updated_at_column()` function (already wired to `plays`/`playbooks`, just missing here). Lets the UI show an "(edited)" marker instead of an edit looking identical to the original post. No schema change. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -62,7 +63,7 @@ idempotent `.sql` file and update this doc in the same change.
 ### Community / social
 | Table | Key columns | RLS summary |
 |---|---|---|
-| `posts` | `id`, `user_id`, `title`, `content`, `upvotes`, `downvotes`, timestamps | SELECT public (`true`); insert/update/delete own. |
+| `posts` | `id`, `user_id`, `title`, `content`, `upvotes`, `downvotes`, timestamps | SELECT public (`true`); insert/update/delete own. `updated_at` refreshed on edit by `community_posts_updated_at.sql`'s trigger. |
 | `comments` | `id`, `user_id`, `post_id`, `parent_id`, `content`, `upvotes`, `downvotes` | SELECT public; CRUD own; admins can delete any. |
 | `votes` | `id`, `user_id`, `post_id?`, `comment_id?`, `vote_type bool`; UNIQUE per user+target | SELECT public; CRUD own. Target check: exactly one of post/comment. |
 | `play_votes` | `id`, `user_id`, `play_id`, `created_at`; UNIQUE`(user_id,play_id)` | SELECT public; INSERT own **and only on public plays**; DELETE own. Triggers keep `plays.upvotes` in sync (`play_votes.sql`, B-10). |
