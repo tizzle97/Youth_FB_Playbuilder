@@ -150,6 +150,22 @@ the play in the library (and vice versa via the play description).
 Library grows on autopilot; blog↔library interlinking compounds SEO.
 Requires B-31's generation/thumbnail tooling to exist first.
 
+### B-36 · "Vs. Defense" follow-ups
+The read-only `/vs?play=<id>` view ships offense+defense overlay and defense
+cycling only (deliberately lean). Deferred, in rough priority order:
+1. **Per-matchup coaching notes** — a note attached to an offense×defense
+   pairing ("vs Cover 2, hit the flat"). Needs a new table + RLS + an
+   idempotent `.sql` file; **⚠ requires SQL run**.
+2. **Export the matchup** — a PNG/PDF of the overlaid diagram, and a
+   "whole deck vs this play" sheet. `renderOverlayScene()` already renders to
+   any offscreen context, so this is mostly an ExportModal variant. Likely a
+   Pro gate (viewing stays free).
+3. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
+   read. Blocked on there being no "correct read" data on a play at all.
+4. **Community defenses in the deck** — currently the deck is the coach's own
+   defensive plays only, so a coach with none gets an empty state pointing at
+   the designer. Offering public defenses would seed it.
+
 ## Done
 
 - **2026-08-04 · B-35: Automated feedback triage** — a scheduled agent now

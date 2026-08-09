@@ -1,7 +1,7 @@
 // PlaybooksPage.tsx - Enhanced with PDF Export Feature
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -21,7 +21,8 @@ import {
   LayoutGrid,
   Lock,
   Watch,
-  GripVertical
+  GripVertical,
+  Shield
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -1521,6 +1522,18 @@ export function PlaybooksPage() {
                               >
                                 Edit Play
                               </button>
+                              {/* Offense only — the vs. view draws this play
+                                  under a defense, so a defensive play here
+                                  would just stack two defenses. */}
+                              {play.type === 'offense' && (
+                                <Link
+                                  to={`/vs?play=${play.id}`}
+                                  title="View this play against your defensive plays"
+                                  className="p-2 bg-white text-black hover:bg-chalk rounded-lg transition-colors"
+                                >
+                                  <Shield className="h-4 w-4" />
+                                </Link>
+                              )}
                               <button
                                 onClick={() => removePlayFromPlaybook(play)}
                                 title="Remove from this playbook"

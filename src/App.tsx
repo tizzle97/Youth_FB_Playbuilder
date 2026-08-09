@@ -27,6 +27,7 @@ const BlogPostPage = lazy(() => import('./components/blog/BlogPage').then((m) =>
 const AccountSettings = lazy(() => import('./components/auth/AccountSettings'));
 const PlayDesigner = lazy(() => import('./components/designer/PlayDesigner').then((m) => ({ default: m.PlayDesigner })));
 const PlaysPage = lazy(() => import('./components/plays/PlaysPage').then((m) => ({ default: m.PlaysPage })));
+const VsDefenseView = lazy(() => import('./components/vs/VsDefenseView').then((m) => ({ default: m.VsDefenseView })));
 const PlaybooksPage = lazy(() => import('./components/playbooks/PlaybooksPage').then((m) => ({ default: m.PlaybooksPage })));
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const PrivacyPolicy = lazy(() => import('./components/legal/PrivacyPolicy').then((m) => ({ default: m.PrivacyPolicy })));
@@ -108,6 +109,7 @@ function App() {
               <Route path="/plays" element={<PlaysPage />} />
               <Route path="/playbooks" element={<PlaybooksPage />} />
               <Route path="/designer" element={<PlayDesigner />} />
+              <Route path="/vs" element={<VsDefenseView />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />

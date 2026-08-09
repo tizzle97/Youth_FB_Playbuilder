@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Plus, Filter, Trash2, LogIn, Wand2 } from 'lucide-react';
+import { Book, Plus, Filter, Trash2, LogIn, Wand2, Shield } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
@@ -485,6 +485,18 @@ export function PlaysPage() {
             >
               <Wand2 className="h-4 w-4" />
             </Link>
+
+            {/* Offense only — the vs. view draws this play under a defense,
+                so pointing it at a defensive play would stack two defenses. */}
+            {play.type === 'offense' && (
+              <Link
+                to={`/vs?play=${play.id}`}
+                title="View this play against your defensive plays"
+                className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
+              >
+                <Shield className="h-4 w-4" />
+              </Link>
+            )}
 
             {play.is_public && (
               <PlayVoteButton
