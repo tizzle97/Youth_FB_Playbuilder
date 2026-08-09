@@ -286,14 +286,18 @@ export function PlaybooksPage() {
   // Writes `finalPositionOf(item)` to every item in `affected`, going through
   // a temporary-negative phase first so mid-permutation writes never collide
   // with another affected row's current order_position (UNIQUE(playbook_id,
-  // order_position)). The temp values are unique per call (Date.now()-based),
-  // not small fixed numbers — see handleReorderPlays for why that matters.
+  // order_position)). The temp values are unique per call (epoch-seconds
+  // based), not small fixed numbers — see handleReorderPlays for why that
+  // matters. Seconds, not Date.now()'s milliseconds: order_position is a
+  // Postgres `integer` (max ~2.147e9) and epoch milliseconds (~1.8e12
+  // today) overflows it instantly (22003 "out of range for type integer") —
+  // epoch seconds (~1.8e9 today) comfortably fits until year 2038.
   const writeOrderPositions = async (
     affected: { play: PlayInPlaybook; position: number }[],
     playbookId: string,
     finalPositionOf: (item: { play: PlayInPlaybook; position: number }) => number
   ) => {
-    const tempBase = -(Date.now());
+    const tempBase = -Math.floor(Date.now() / 1000);
     for (let i = 0; i < affected.length; i++) {
       const { error } = await supabase
         .from('playbook_plays')
