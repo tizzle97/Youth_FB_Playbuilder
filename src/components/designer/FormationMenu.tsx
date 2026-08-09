@@ -9,7 +9,7 @@ import { UpgradePrompt } from '../UpgradePrompt';
 import { loadCustomFormations, saveCustomFormation, deleteCustomFormation } from '../../lib/customFormations';
 import { getSafeErrorMessage } from '../../lib/errors';
 
-const GAME_TYPES: PlayMetadata['gameType'][] = ['5v5', '7v7', '11v11'];
+const GAME_TYPES: PlayMetadata['gameType'][] = ['5v5', '6v6', '7v7', '11v11'];
 
 interface FormationMenuProps {
   gameType: PlayMetadata['gameType'];

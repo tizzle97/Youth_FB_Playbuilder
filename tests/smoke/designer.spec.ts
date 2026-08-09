@@ -779,7 +779,7 @@ test('formation menu opens fully on screen from the mobile bottom toolbar', asyn
   expect((await canvasState(page)).playerIcons).toHaveLength(11);
 });
 
-test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 sets', async ({ page }) => {
+test('formation templates: game-format picker in the menu offers 5v5/6v6/7v7/11v11 sets', async ({ page }) => {
   await openDesigner(page);
 
   await btn(page, 'Formation templates').click();
@@ -793,6 +793,17 @@ test('formation templates: game-format picker in the menu offers 5v5/7v7/11v11 s
   await expect(page.getByRole('button', { name: 'Bunch' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Twins' })).toBeVisible();
 
+  await realClick(page, page.getByRole('button', { name: '6v6', exact: true }));
+  await expect(page.getByRole('button', { name: 'Trips' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Bunch' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Twins' })).toBeVisible();
+
+  await realClick(page, page.getByRole('button', { name: 'Trips' }));
+  const sixV6State = await canvasState(page);
+  // 6v6 Trips: snapper + QB + 4 receivers.
+  expect(sixV6State.playerIcons).toHaveLength(6);
+
+  await btn(page, 'Formation templates').click();
   await realClick(page, page.getByRole('button', { name: '5v5', exact: true }));
   await expect(page.getByRole('button', { name: 'Trips' })).toBeVisible();
 
@@ -815,7 +826,7 @@ test('field rendering: switching game format re-renders cleanly for every format
   await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
   expect((await canvasState(page)).playerIcons).toHaveLength(11);
 
-  for (const format of ['7v7', '5v5', '11v11'] as const) {
+  for (const format of ['7v7', '6v6', '5v5', '11v11'] as const) {
     await btn(page, 'Formation templates').click();
     await realClick(page, page.getByRole('button', { name: format, exact: true }));
     await page.keyboard.press('Escape'); // picking a game type doesn't auto-close the popover

@@ -104,7 +104,7 @@ const FORMATIONS_11V11: FormationTemplate[] = [
 function flagFormation(
   id: string,
   name: string,
-  gameType: '5v5' | '7v7',
+  gameType: '5v5' | '6v6' | '7v7',
   receivers: PlayerIcon[],
   extras: PlayerIcon[] = [],
 ): FormationTemplate {
@@ -141,6 +141,23 @@ const FORMATIONS_7V7: FormationTemplate[] = [
   ]),
 ];
 
+const FORMATIONS_6V6: FormationTemplate[] = [
+  flagFormation('6v6-trips', 'Trips', '6v6', [
+    wr(0.10, 'WR1'), wr(0.25, 'WR2'),
+    wr(0.75, 'WR3'), wr(0.90, 'WR4'),
+  ]),
+  flagFormation('6v6-bunch', 'Bunch', '6v6', [
+    wr(0.15, 'WR1'),
+    wr(0.72, 'WR2'), { x: 0.78, y: yBehindLOS(0.5), letter: 'WR3', color: C.WR, shape: 'circle' }, wr(0.84, 'WR4'),
+  ]),
+  flagFormation('6v6-twins', 'Twins', '6v6', [
+    wr(0.15, 'WR1'), wr(0.30, 'WR2'),
+    wr(0.75, 'WR3'),
+  ], [
+    { x: 0.50, y: yBehindLOS(6), letter: 'RB', color: C.RB, shape: 'circle' },
+  ]),
+];
+
 const FORMATIONS_5V5: FormationTemplate[] = [
   flagFormation('5v5-trips', 'Trips', '5v5', [
     wr(0.65, 'WR1'), wr(0.78, 'WR2'), wr(0.90, 'WR3'),
@@ -157,6 +174,7 @@ const FORMATIONS_5V5: FormationTemplate[] = [
 export const FORMATION_TEMPLATES: FormationTemplate[] = [
   ...FORMATIONS_11V11,
   ...FORMATIONS_7V7,
+  ...FORMATIONS_6V6,
   ...FORMATIONS_5V5,
 ];
 

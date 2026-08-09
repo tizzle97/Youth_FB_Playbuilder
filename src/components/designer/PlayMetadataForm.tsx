@@ -37,6 +37,7 @@ export function PlayMetadataForm({ metadata, onChange }: PlayMetadataFormProps) 
             className="w-full px-3 py-2 bg-board border border-chalk/20 rounded-lg text-chalk focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="5v5">5v5 Flag Football</option>
+            <option value="6v6">6v6 Flag Football</option>
             <option value="7v7">7v7 Flag Football</option>
             <option value="11v11">11v11 Traditional</option>
           </select>

@@ -19,7 +19,7 @@ type PublicPlay = {
 };
 
 const TYPE_FILTERS = ['all', 'offense', 'defense', 'special_teams'] as const;
-const GAME_TYPE_FILTERS = ['all', '5v5', '7v7', '11v11'] as const;
+const GAME_TYPE_FILTERS = ['all', '5v5', '6v6', '7v7', '11v11'] as const;
 
 /**
  * Browsable grid of every public play (B-30) — the community "Play
