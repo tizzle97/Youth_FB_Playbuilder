@@ -3422,7 +3422,7 @@ test('Community Forum: editing a post saves the change and shows an "edited" mar
       body: JSON.stringify([{
         id: 'own-post',
         title: edited ? 'Updated title' : 'Original title',
-        content: edited ? 'Updated content' : 'Original content',
+        content: edited ? '<p>Updated content</p>' : '<p>Original content</p>',
         user_id: COMMUNITY_USER.id, upvotes: 0, downvotes: 0,
         created_at: '2026-08-01T00:00:00Z',
         updated_at: edited ? '2026-08-01T01:00:00Z' : '2026-08-01T00:00:00Z',
@@ -3438,18 +3438,23 @@ test('Community Forum: editing a post saves the change and shows an "edited" mar
   await page.locator('button[title="Edit Post"]').click();
   await expect(page.getByRole('heading', { name: 'Edit Post' })).toBeVisible();
   const titleInput = page.locator('#title');
-  const contentInput = page.locator('#content');
+  const contentEditor = page.locator('#content');
   await expect(titleInput).toHaveValue('Original title');
-  await expect(contentInput).toHaveValue('Original content');
+  await expect(contentEditor).toHaveText('Original content');
 
   await titleInput.fill('Updated title');
-  await contentInput.fill('Updated content');
+  // #content is a Tiptap contentEditable, not a form control — no .fill()/
+  // .toHaveValue(); drive it like a real user would (select all, retype).
+  await contentEditor.click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('Updated content');
   await page.getByRole('button', { name: 'Save Changes' }).click();
 
   await expect(page.getByText('Updated title')).toBeVisible();
   await expect(page.getByText('edited', { exact: false })).toBeVisible();
   expect(patchBodies).toHaveLength(1);
-  expect(patchBodies[0]).toMatchObject({ title: 'Updated title', content: 'Updated content' });
+  expect(patchBodies[0].title).toBe('Updated title');
+  expect(patchBodies[0].content).toContain('Updated content');
   // Update never touches user_id — RLS's WITH CHECK is the real boundary, but
   // the client shouldn't even attempt to send a different one.
   expect(patchBodies[0].user_id).toBeUndefined();
@@ -3487,6 +3492,202 @@ test('Community Forum: deleting a post confirms, deletes, and removes it from th
 
   await expect(page.getByText('Doomed Post')).toHaveCount(0);
   expect(deletedIds[0]).toContain('own-post');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Community Forum — basic rich text (bold, underline, bullet list) in post
+ * content, including paste-from-Word, and its security boundary.
+ *
+ * RichTextEditor's schema is restricted to exactly what sanitizePostContent
+ * allows through (paragraph/bold/underline/bulletList/listItem) — on typing
+ * AND on paste, since Tiptap parses pasted HTML through that same schema.
+ * The sanitizer at render time (PostList.tsx) is the actual security
+ * boundary though, not the editor: `posts` RLS only checks ownership, not
+ * content shape, so a non-UI client could write anything to `content`
+ * directly — the XSS test below mocks exactly that.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('Community Forum: toolbar produces bold, underline, and a real bullet list', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  const insertBodies: any[] = [];
+  await page.route('**/rest/v1/posts**', (route) => {
+    if (route.request().method() === 'POST') {
+      insertBodies.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: 'Create Post' }).click();
+  await page.getByPlaceholder("What's on your mind?").fill('Formatting test');
+
+  const content = page.locator('#content');
+  await content.click();
+  await page.getByTitle('Bold').click();
+  await page.keyboard.type('bold text');
+  await page.getByTitle('Bold').click(); // toggle off
+  await page.keyboard.type(' plain ');
+  await page.getByTitle('Underline').click();
+  await page.keyboard.type('underlined text');
+  await page.getByTitle('Underline').click();
+  await page.keyboard.press('Enter');
+  await page.getByTitle('Bullet List').click();
+  await page.keyboard.type('First bullet');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Second bullet');
+
+  await page.getByRole('button', { name: 'Create Post' }).nth(1).click();
+  // The insert is async (sanitize → getUser() → insert() → onSaved/onClose);
+  // .click() only resolves once the event dispatches, not once that chain
+  // finishes. Wait for the modal to actually close — the real signal the
+  // save succeeded — before asserting on what got sent.
+  await expect(page.getByRole('heading', { name: 'Create Post' })).toHaveCount(0);
+
+  expect(insertBodies).toHaveLength(1);
+  const saved = insertBodies[0][0].content as string;
+  expect(saved).toContain('<strong>bold text</strong>');
+  expect(saved).toContain('<u>underlined text</u>');
+  expect(saved).toContain('<ul>');
+  expect(saved).toContain('First bullet');
+  expect(saved).toContain('Second bullet');
+  // Nothing outside the three basics ever gets a chance to appear — StarterKit's
+  // heading/italic/strike/code/blockquote/orderedList nodes are disabled.
+  expect(saved).not.toMatch(/<(h[1-6]|em|s|code|blockquote|ol)[ >]/);
+});
+
+test('Community Forum: rendered post shows real bullets, bold, and underline', async ({ page }) => {
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'rich-post', title: 'Rich Post',
+        content: '<p>Intro paragraph.</p><ul><li><p>One</p></li><li><p>Two</p></li></ul><p><strong>Bold</strong> and <u>underlined</u>.</p>',
+        user_id: OTHER_USER_ID, upvotes: 0, downvotes: 0,
+        created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+      }]),
+    }));
+
+  await page.goto('/community');
+  const article = page.locator('article', { hasText: 'Rich Post' });
+  await expect(article.locator('li')).toHaveCount(2);
+  await expect(article.locator('li', { hasText: 'One' })).toBeVisible();
+  await expect(article.locator('li', { hasText: 'Two' })).toBeVisible();
+  await expect(article.locator('strong', { hasText: 'Bold' })).toBeVisible();
+  await expect(article.locator('u', { hasText: 'underlined' })).toBeVisible();
+});
+
+test('Community Forum: malicious stored content is sanitized at render — scripts, handlers, and styles never survive', async ({ page }) => {
+  // Simulates content that bypassed the editor entirely (RLS checks
+  // ownership, not shape) — proves PostList's render-time sanitizer, not
+  // just the editor's own schema, is what actually stops this.
+  const malicious =
+    '<p>Hello</p>' +
+    '<img src="x" onerror="window.__xss_img = true">' +
+    '<script>window.__xss_script = true</script>' +
+    '<p style="color:red" onclick="window.__xss_click = true">Styled</p>';
+
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'evil-post', title: 'Evil Post', content: malicious,
+        user_id: OTHER_USER_ID, upvotes: 0, downvotes: 0,
+        created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+      }]),
+    }));
+
+  await page.goto('/community');
+  const article = page.locator('article', { hasText: 'Evil Post' });
+  await expect(article.getByText('Hello')).toBeVisible();
+  await expect(article.getByText('Styled')).toBeVisible();
+
+  await expect(article.locator('img')).toHaveCount(0);
+  await expect(article.locator('script')).toHaveCount(0);
+  const styledHtml = await article.locator('p', { hasText: 'Styled' }).evaluate((el) => el.outerHTML);
+  expect(styledHtml).not.toContain('onclick');
+  expect(styledHtml).not.toContain('style=');
+
+  // The payloads never actually ran.
+  const xssFired = await page.evaluate(() => Boolean(
+    (window as any).__xss_img || (window as any).__xss_script || (window as any).__xss_click,
+  ));
+  expect(xssFired).toBe(false);
+});
+
+test('Community Forum: an old plain-text post (no HTML) still renders its text unchanged', async ({ page }) => {
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/posts**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'legacy-post', title: 'Legacy Post',
+        content: 'Anyone know if 5 < 7 defenders & 2 subs is legal in 6v6?',
+        user_id: OTHER_USER_ID, upvotes: 0, downvotes: 0,
+        created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+      }]),
+    }));
+
+  await page.goto('/community');
+  await expect(page.getByText('Anyone know if 5 < 7 defenders & 2 subs is legal in 6v6?')).toBeVisible();
+});
+
+test('Community Forum: pasting a Word-style bulleted list produces a real bullet list, not literal text', async ({ page }) => {
+  await signInAsCommunityUser(page);
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COMMUNITY_USER) }));
+  await mockCommunityAuthors(page);
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  const insertBodies: any[] = [];
+  await page.route('**/rest/v1/posts**', (route) => {
+    if (route.request().method() === 'POST') {
+      insertBodies.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/community');
+  await page.getByRole('button', { name: 'Create Post' }).click();
+  await page.getByPlaceholder("What's on your mind?").fill('Paste test');
+
+  // A synthetic paste — same shape modern Word/Office 365 puts on the HTML
+  // clipboard when copying to a browser: real <ul><li> markup, not "•" text.
+  await page.locator('#content').click();
+  await page.evaluate(() => {
+    const el = document.querySelector('#content') as HTMLElement;
+    const dt = new DataTransfer();
+    dt.setData('text/html', '<ul><li>First item</li><li>Second item</li></ul>');
+    dt.setData('text/plain', 'First item\nSecond item');
+    const evt = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+    el.dispatchEvent(evt);
+  });
+  // The paste event dispatches synchronously, but ProseMirror's own
+  // handling/re-render isn't guaranteed to be done by the very next line —
+  // wait for the pasted text to actually land before moving on.
+  await expect(page.locator('#content')).toContainText('First item');
+
+  await page.getByRole('button', { name: 'Create Post' }).nth(1).click();
+  await expect(page.getByRole('heading', { name: 'Create Post' })).toHaveCount(0);
+
+  expect(insertBodies).toHaveLength(1);
+  const saved = insertBodies[0][0].content as string;
+  expect(saved).toContain('<ul>');
+  expect(saved).toContain('<li>');
+  expect(saved).toContain('First item');
+  expect(saved).toContain('Second item');
+  // Not just dumped as inert text with a bullet character.
+  expect(saved).not.toContain('•');
 });
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -2,6 +2,18 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
+import { sanitizePostContent } from '../../lib/sanitizeHtml';
+import { RichTextEditor } from './RichTextEditor';
+
+/** RichTextEditor isn't a native form control, so it gets no HTML5 `required`
+ *  validation — an editor holding only an empty paragraph still sanitizes to
+ *  non-empty markup (`<p></p>`), so emptiness has to be checked on the
+ *  actual text content, not string length. */
+function isContentEmpty(html: string): boolean {
+  const scratch = document.createElement('div');
+  scratch.innerHTML = html;
+  return (scratch.textContent ?? '').trim().length === 0;
+}
 
 interface PostFormModalProps {
   isOpen: boolean;
@@ -26,6 +38,16 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
     setLoading(true);
 
     try {
+      // sanitizePostContent here is write-time hygiene (keeps stored rows to
+      // the intended tag set, strips Word's inline mso-* junk) — it is NOT
+      // the security boundary. Nothing bypasses this modal to write directly
+      // to `posts` today, but RLS doesn't validate content shape either way,
+      // so PostList must (and does) re-sanitize independently at render time.
+      const sanitizedContent = sanitizePostContent(content);
+      if (isContentEmpty(sanitizedContent)) {
+        throw new Error('Post content cannot be empty');
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error(isEditing ? 'You must be signed in to edit a post' : 'You must be signed in to create a post');
 
@@ -35,7 +57,7 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
         // which row, not the security boundary.
         const { error: updateError } = await supabase
           .from('posts')
-          .update({ title, content })
+          .update({ title, content: sanitizedContent })
           .eq('id', post.id);
         if (updateError) throw updateError;
       } else {
@@ -44,7 +66,7 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
           .insert([
             {
               title,
-              content,
+              content: sanitizedContent,
               user_id: user.id
             }
           ]);
@@ -99,15 +121,14 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
                 <label htmlFor="content" className="block text-sm font-medium text-chalk">
                   Content
                 </label>
-                <textarea
-                  id="content"
-                  rows={6}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-chalk/20 bg-board text-chalk shadow-sm px-4 py-2 placeholder-chalk/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="Share your thoughts, strategies, or questions..."
-                  required
-                />
+                <div className="mt-1">
+                  <RichTextEditor
+                    id="content"
+                    value={content}
+                    onChange={setContent}
+                    placeholder="Share your thoughts, strategies, or questions..."
+                  />
+                </div>
               </div>
 
               {error && (

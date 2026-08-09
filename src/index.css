@@ -31,3 +31,28 @@ body {
     stroke-dashoffset: 0;
   }
 }
+
+/* Community post rich text (RichTextEditor.tsx / PostList.tsx). Tailwind's
+   preflight strips default list styling and no typography plugin is
+   installed, so bullets/paragraph spacing need to be spelled out explicitly
+   for both the live editor and the sanitized rendered output — they share
+   this class so editing and reading look the same. */
+.community-post-content ul {
+  list-style: disc;
+  margin: 0 0 0.5rem 1.25rem;
+}
+.community-post-content li {
+  margin-bottom: 0.25rem;
+}
+.community-post-content p {
+  margin-bottom: 0.5rem;
+}
+.community-post-content p:last-child {
+  margin-bottom: 0;
+}
+.community-post-content strong {
+  font-weight: 700;
+}
+.community-post-content u {
+  text-decoration: underline;
+}

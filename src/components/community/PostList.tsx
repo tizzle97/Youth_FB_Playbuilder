@@ -4,6 +4,7 @@ import { MessageSquare, ArrowUp, ArrowDown, Pencil, Trash2 } from 'lucide-react'
 import type { TimeRange } from '../../types/community';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { sanitizePostContent } from '../../lib/sanitizeHtml';
 import { PostFormModal } from './PostFormModal';
 
 interface PostListProps {
@@ -172,7 +173,15 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
                 </div>
 
                 <h3 className="text-xl font-bold text-chalk mb-2">{post.title}</h3>
-                <p className="text-chalk/70 mb-4">{post.content}</p>
+                {/* The one line in this file that renders untrusted content
+                    as HTML — must never lose the sanitizePostContent() call.
+                    posts RLS only checks auth.uid() = user_id, not content
+                    shape, so this is the actual security boundary regardless
+                    of what PostFormModal already sanitized on write. */}
+                <div
+                  className="community-post-content text-chalk/70 mb-4"
+                  dangerouslySetInnerHTML={{ __html: sanitizePostContent(post.content) }}
+                />
 
                 <div className="flex items-center gap-4">
                   <button className="flex items-center gap-2 text-chalk/70 hover:text-chalk transition-colors">
