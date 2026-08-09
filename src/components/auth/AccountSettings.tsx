@@ -19,6 +19,7 @@ import {
 import { BILLING_ENABLED, openBillingPortal, startProCheckout } from '../../lib/billing';
 import { usePageMeta } from '../../lib/seo';
 import { UpgradeConsentModal } from '../billing/UpgradeConsentModal';
+import { MyFeedback } from '../feedback/MyFeedback';
 
 export default function AccountSettings() {
   usePageMeta({ title: 'Account Settings', path: '/account' });
@@ -386,6 +387,9 @@ export default function AccountSettings() {
                 </div>
               </Link>
             )}
+
+            {/* Renders nothing until the coach has actually sent something. */}
+            <MyFeedback userId={user.id} />
 
             {/* Plan & Usage (B-13). Also the future home of the Stripe
                 Customer Portal link once B-3 ships. */}
