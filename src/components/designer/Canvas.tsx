@@ -17,6 +17,8 @@ import {
   TEXT_BOX_SIZES,
   DEFAULT_TEXT_BOX_SIZE,
   DEFAULT_TEXT_BOX_COLOR,
+  EXPORT_WIDTH,
+  EXPORT_HEIGHT,
   REF_SIZE,
   ROUTE_LINE_WIDTH,
   ARROWHEAD_SIZE,
@@ -66,14 +68,6 @@ const DRAG_THRESHOLD_PX = 4;
 // zone creation visible instead of invisibly tiny.
 const MIN_ZONE_RADIUS = 0.035;
 
-// Fixed export resolution (letter-page proportions) — every play prints
-// the same regardless of the screen it was designed on. The on-screen
-// canvas is locked to this aspect ratio too (PlayDesigner's resize
-// handler), so shapes — zone ellipses especially — look the same on
-// screen as in the printed PDF.
-export const EXPORT_WIDTH = 1650;
-export const EXPORT_HEIGHT = 1275;
-
 // ---------------------------------------------
 // Types
 // ---------------------------------------------
@@ -81,7 +75,7 @@ export const EXPORT_HEIGHT = 1275;
 // working — the types themselves now live in ../../lib/renderPlayScene
 // alongside the rendering code that defines their shape.
 export type { DrawMode, CapStyle, PathItem, IconShape, PlayerIcon, Zone, TextBox };
-export { FIELD_YARDS_ABOVE_LOS, FIELD_YARDS_BELOW_LOS, TOTAL_FIELD_YARDS, TEXT_BOX_SIZES, DEFAULT_TEXT_BOX_SIZE, DEFAULT_TEXT_BOX_COLOR };
+export { FIELD_YARDS_ABOVE_LOS, FIELD_YARDS_BELOW_LOS, TOTAL_FIELD_YARDS, TEXT_BOX_SIZES, DEFAULT_TEXT_BOX_SIZE, DEFAULT_TEXT_BOX_COLOR, EXPORT_WIDTH, EXPORT_HEIGHT };
 
 type CanvasProps = {
   width: number;

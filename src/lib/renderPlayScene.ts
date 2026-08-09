@@ -9,6 +9,17 @@
 // ---------------------------------------------
 export const REF_SIZE = 600; // reference min(width, height) the base sizes were designed at
 
+// Fixed export resolution (letter-page proportions) — every play prints
+// the same regardless of the screen it was designed on. Every on-screen
+// canvas is locked to this aspect ratio too (PlayDesigner's and
+// VsDefenseView's resize handlers), so shapes — zone ellipses especially —
+// look the same on screen as in the printed PDF. Lives here rather than in
+// Canvas.tsx so read-only views can lock the same ratio without importing
+// the whole interactive designer; Canvas.tsx re-exports both for the
+// existing imports across the designer.
+export const EXPORT_WIDTH = 1650;
+export const EXPORT_HEIGHT = 1275;
+
 export const ROUTE_LINE_WIDTH = 3;
 export const ARROWHEAD_SIZE = 14;
 export const PLAYER_SIZE = 36;
@@ -602,6 +613,16 @@ function drawTextBoxes(
   });
 }
 
+/** Optional per-call tweaks, used when stacking two scenes on one canvas. */
+export type RenderSceneOptions = {
+  /** Skip the clearRect + drawField pair so this scene layers over what's
+   *  already on the context instead of wiping it. */
+  skipFieldReset?: boolean;
+  /** Size icons as if this many were on the field, rather than
+   *  playerIcons.length — see renderOverlayScene for why. */
+  iconCountOverride?: number;
+};
+
 /**
  * Render a complete play scene (field, zones, routes, icons) onto a context
  * at any pixel size. All input data is in normalized 0–1 coordinates; visual
@@ -622,15 +643,19 @@ export function renderScene(
   selectedZoneIndex: number | null = null,
   textBoxes: TextBox[] = [],
   selectedTextIndex: number | null = null,
+  opts: RenderSceneOptions = {},
 ) {
   const scale = Math.min(W, H) / REF_SIZE;
   const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
   const lineWidth = ROUTE_LINE_WIDTH * scale;
   const arrowSize = ARROWHEAD_SIZE * scale;
-  const iconSize = PLAYER_SIZE * scale * iconScaleForCount(playerIcons.length);
+  const iconSize =
+    PLAYER_SIZE * scale * iconScaleForCount(opts.iconCountOverride ?? playerIcons.length);
 
-  ctx.clearRect(0, 0, W, H);
-  drawField(ctx, W, H, scale);
+  if (!opts.skipFieldReset) {
+    ctx.clearRect(0, 0, W, H);
+    drawField(ctx, W, H, scale);
+  }
   // Zones sit on top of the grid (translucent, so it shows through) but
   // underneath routes/icons, which should stay crisp.
   drawZones(ctx, W, H, zones, playerIcons, scale, selectedZoneIndex);
@@ -700,4 +725,57 @@ export function renderScene(
   // Text annotations sit on top of everything — they're meant to stay
   // legible over routes/zones/icons, like handwriting on a printed diagram.
   drawTextBoxes(ctx, W, H, textBoxes, scale, selectedTextIndex);
+}
+
+/** One play's drawable contents — the parsed shape of plays.canvas_data. */
+export type SceneLayer = {
+  paths: PathItem[];
+  playerIcons: PlayerIcon[];
+  zones: Zone[];
+  textBoxes: TextBox[];
+};
+
+/**
+ * Draw an offensive play with a defensive play stacked on the same field, for
+ * the read-only "vs. defense" view where a coach cycles defensive looks against
+ * one offense.
+ *
+ * No coordinate transform is involved: the field window is universal
+ * (FIELD_YARDS_ABOVE_LOS / BELOW_LOS) and offense is drawn below the LOS while
+ * defense is drawn above it, so the two scenes already occupy opposite halves.
+ *
+ * The two plays are rendered as two separate calls rather than by concatenating
+ * their arrays, because PathItem.startIconIndex and Zone.iconIndex are indexes
+ * into the *same call's* playerIcons — merging would mean re-basing every
+ * defensive index.
+ */
+export function renderOverlayScene(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  offense: SceneLayer,
+  defense: SceneLayer | null,
+) {
+  // Each side keeps the icon size it has when viewed alone. Summing both
+  // rosters would push a 5v5-on-5v5 matchup to 10 icons and shrink everything
+  // to the 0.8 floor, even though neither play is crowded.
+  const iconCountOverride = Math.max(
+    offense.playerIcons.length,
+    defense?.playerIcons.length ?? 0,
+  );
+
+  // Defense first, so its coverage zones sit underneath the offensive routes
+  // the quarterback is being taught to read.
+  if (defense) {
+    renderScene(
+      ctx, W, H,
+      defense.paths, defense.playerIcons, defense.zones, null, defense.textBoxes, null,
+      { iconCountOverride },
+    );
+  }
+  renderScene(
+    ctx, W, H,
+    offense.paths, offense.playerIcons, offense.zones, null, offense.textBoxes, null,
+    { skipFieldReset: !!defense, iconCountOverride },
+  );
 }
