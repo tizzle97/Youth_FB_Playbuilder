@@ -10,6 +10,14 @@ import { PlayLibrary } from './PlayLibrary';
 import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 
+// Every action in a card footer is the same square pill, so the row's width is
+// predictable and can't outgrow the card the way the old labelled+icon mix did.
+const CARD_ACTION =
+  'flex items-center justify-center h-9 w-9 rounded-lg border border-chalk/10 bg-board hover:bg-board-light text-chalk/70 hover:text-chalk transition-colors';
+
+const THUMBNAIL_FRAME =
+  'block aspect-video bg-board rounded-t-lg overflow-hidden border-b border-chalk/10';
+
 interface Play {
   id: string;
   name: string;
@@ -410,11 +418,17 @@ export function PlaysPage() {
                 {error}
               </div>
             ) : loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="animate-pulse">
-                    <div className="bg-board rounded-lg aspect-[4/3] mb-2"></div>
-                    <div className="h-4 bg-board rounded w-2/3"></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse bg-board-light rounded-lg border border-chalk/10"
+                  >
+                    <div className="bg-board rounded-t-lg aspect-video"></div>
+                    <div className="p-4">
+                      <div className="h-4 bg-board rounded w-2/3 mb-3"></div>
+                      <div className="h-9 bg-board rounded w-1/2 ml-auto"></div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -446,113 +460,126 @@ export function PlaysPage() {
             ) : (
               <>
                 {/* Visible plays */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-  {visiblePlays.map((play) => (
-    <div key={play.id} className="group relative">
-      {user ? (
-        <>
-          {/* Play Preview */}
-          {/* from=plays tells the designer to return here after an update,
-              instead of leaving the coach on the designer post-save. */}
-          <Link to={`/designer?play=${play.id}&from=plays`} className="block">
-            <div className="bg-board rounded-lg overflow-hidden aspect-[4/3] mb-2 border border-chalk/10 group-hover:border-primary/30 transition-colors">
-              <ThumbnailImage play={play} />
-            </div>
-            <h3 className="text-chalk group-hover:text-primary transition-colors mb-1">
-              {play.name}
-            </h3>
-            <p className="text-sm text-chalk/50 capitalize mb-3">
-              {play.type.replace('_', ' ')}
-            </p>
-          </Link>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {visiblePlays.map((play) => (
+                    /* No overflow-hidden on the shell: the add-to-playbook
+                       dropdown is an absolutely-positioned child and would be
+                       clipped by it. The thumbnail clips itself instead. */
+                    <div
+                      key={play.id}
+                      data-testid="play-card"
+                      className="group relative bg-board-light rounded-lg border border-chalk/10 hover:border-primary/30 transition-colors flex flex-col"
+                    >
+                      {/* Signed-out visitors get the same frame without the
+                          edit link — they don't own these plays. */}
+                      {user ? (
+                        /* from=plays tells the designer to return here after an
+                           update, instead of leaving the coach on the designer
+                           post-save. */
+                        <Link
+                          to={`/designer?play=${play.id}&from=plays`}
+                          className={THUMBNAIL_FRAME}
+                        >
+                          <ThumbnailImage play={play} />
+                        </Link>
+                      ) : (
+                        <div className={THUMBNAIL_FRAME}>
+                          <ThumbnailImage play={play} />
+                        </div>
+                      )}
 
-          {/* Action buttons for authenticated users */}
-          <div className="flex items-center gap-2">
-            <AddToPlaybookButton
-              playId={play.id}
-              playName={play.name}
-              onSuccess={() => {
-                // Optional: Show success notification
-                console.log(`"${play.name}" added to playbook successfully!`);
-              }}
-            />
+                      <div className="p-4 flex-1 flex flex-col">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h3 className="min-w-0 truncate font-bold text-chalk group-hover:text-primary transition-colors">
+                            {play.name}
+                          </h3>
+                          <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs capitalize shrink-0">
+                            {play.type.replace('_', ' ')}
+                          </span>
+                        </div>
 
-            {/* Opens this play in the Designer without editingPlayId set, so
-                Save creates a new play instead of updating this one — see
-                PlayDesigner.tsx's load effect. */}
-            <Link
-              to={`/designer?template=${play.id}`}
-              title="Use this play as a starting point for a new one"
-              className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
-            >
-              <Wand2 className="h-4 w-4" />
-            </Link>
+                        {!user && play.profiles && (
+                          <p className="text-xs text-chalk/40">
+                            by {play.profiles.username || 'Anonymous'}
+                          </p>
+                        )}
 
-            {/* Offense only — the vs. view draws this play under a defense,
-                so pointing it at a defensive play would stack two defenses. */}
-            {play.type === 'offense' && (
-              <Link
-                to={`/vs?play=${play.id}`}
-                title="View this play against your defensive plays"
-                className="flex items-center gap-1 px-3 py-2 text-sm bg-board-light hover:bg-board border border-chalk/10 text-chalk/70 hover:text-chalk rounded-lg transition-colors"
-              >
-                <Shield className="h-4 w-4" />
-              </Link>
-            )}
+                        {/* Vote left, actions right. ml-auto keeps the cluster
+                            right-aligned on private plays, which have no vote
+                            button — so the footer doesn't reflow card to card. */}
+                        <div
+                          className={`mt-auto flex items-center justify-between gap-2 flex-wrap ${
+                            user || play.is_public ? 'pt-3' : ''
+                          }`}
+                        >
+                          {play.is_public && (
+                            <PlayVoteButton
+                              playId={play.id}
+                              upvotes={play.upvotes ?? 0}
+                              voted={user ? votedPlayIds.has(play.id) : false}
+                              userId={user?.id}
+                              onError={setError}
+                            />
+                          )}
 
-            {play.is_public && (
-              <PlayVoteButton
-                playId={play.id}
-                upvotes={play.upvotes ?? 0}
-                voted={votedPlayIds.has(play.id)}
-                userId={user.id}
-                onError={setError}
-              />
-            )}
+                          {user && (
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <AddToPlaybookButton
+                                compact
+                                playId={play.id}
+                                playName={play.name}
+                                onSuccess={() => {
+                                  // Optional: Show success notification
+                                  console.log(`"${play.name}" added to playbook successfully!`);
+                                }}
+                              />
 
-            {/* This whole list is already scoped to the signed-in user's own
-                plays (fetchPlays queries .eq('user_id', currentUser.id)) —
-                Community plays render via the separate PlayLibrary component,
-                never here. So every play card reaching this point is already
-                owned by `user`; no admin/ownership gate is needed. */}
-            <button
-              onClick={() => handleDeletePlay(play.id)}
-              className="flex items-center gap-1 px-3 py-2 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-              title="Delete Play"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        </>
-      ) : (
-        /* Existing non-authenticated user view */
-        <div className="block">
-          <div className="bg-board rounded-lg overflow-hidden aspect-[4/3] mb-2 border border-chalk/10">
-            <ThumbnailImage play={play} />
-          </div>
-          <h3 className="text-chalk">
-            {play.name}
-          </h3>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-chalk/50 capitalize">
-              {play.type.replace('_', ' ')}
-            </p>
-            {play.profiles && (
-              <p className="text-xs text-chalk/40">
-                by {play.profiles.username || 'Anonymous'}
-              </p>
-            )}
-          </div>
-          {play.is_public && (
-            <div className="mt-2">
-              <PlayVoteButton playId={play.id} upvotes={play.upvotes ?? 0} voted={false} onError={setError} />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  ))}
-</div>
+                              {/* Opens this play in the Designer without
+                                  editingPlayId set, so Save creates a new play
+                                  instead of updating this one — see
+                                  PlayDesigner.tsx's load effect. */}
+                              <Link
+                                to={`/designer?template=${play.id}`}
+                                title="Use this play as a starting point for a new one"
+                                className={CARD_ACTION}
+                              >
+                                <Wand2 className="h-4 w-4" />
+                              </Link>
+
+                              {/* Offense only — the vs. view draws this play
+                                  under a defense, so pointing it at a defensive
+                                  play would stack two defenses. */}
+                              {play.type === 'offense' && (
+                                <Link
+                                  to={`/vs?play=${play.id}`}
+                                  title="View this play against your defensive plays"
+                                  className={CARD_ACTION}
+                                >
+                                  <Shield className="h-4 w-4" />
+                                </Link>
+                              )}
+
+                              {/* This whole list is already scoped to the
+                                  signed-in user's own plays (fetchPlays queries
+                                  .eq('user_id', currentUser.id)) — Community
+                                  plays render via the separate PlayLibrary
+                                  component, never here. So every play card
+                                  reaching this point is already owned by `user`;
+                                  no admin/ownership gate is needed. */}
+                              <button
+                                onClick={() => handleDeletePlay(play.id)}
+                                className={`${CARD_ACTION} border-transparent bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-400`}
+                                title="Delete Play"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
               </>
             )}

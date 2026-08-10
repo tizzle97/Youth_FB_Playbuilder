@@ -166,6 +166,23 @@ cycling only (deliberately lean). Deferred, in rough priority order:
    defensive plays only, so a coach with none gets an empty state pointing at
    the designer. Offering public defenses would seed it.
 
+### B-37 · Consolidate the four duplicate play-card implementations
+Surfaced while fixing the My Plays card overflow (PR for that is card-only by
+choice). There is no shared play card: My Plays (`plays/PlaysPage.tsx`),
+Community (`plays/PlayLibrary.tsx`), and the playbook detail grid *and* list
+views (`playbooks/PlaybooksPage.tsx`) each hand-roll their own, which is why
+they drifted apart on shell, thumbnail aspect ratio, and button styling in the
+first place. Meanwhile `designer/PlayCard.tsx` is a fully-built card component
+with `onEdit`/`onDelete`/`onAddToPlaybook` that **nothing imports**.
+Also unimported and worth deleting in the same pass:
+`designer/AddToPlaybookModal.tsx`, `designer/PlaybookSelectionModal.tsx`, and
+`designer/PlaybookSelector.tsx` (whose only consumer, `CreatePlaybookModal`, is
+reachable from nowhere else).
+⚠ Not a mechanical extraction: the Community filter smoke test asserts
+`.grid > div.bg-board-light` structurally, so it must be re-pointed at a
+`data-testid` in the same change. Multi-PR; do the dead-code deletion first as
+its own low-risk PR.
+
 ## Done
 
 - **2026-08-09 · B-36: Daily feedback digest email** — closes the last gap in

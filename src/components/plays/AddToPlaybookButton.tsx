@@ -1,6 +1,7 @@
 // Create this file: src/components/plays/AddToPlaybookButton.tsx
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Book, Plus, Check, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -22,12 +23,17 @@ interface AddToPlaybookButtonProps {
   playId: string;
   playName: string;
   onSuccess?: () => void;
+  /** Icon-only square trigger, for card footers where a labelled pill would
+   *  overflow the card. Keeps the primary green so it still reads as the
+   *  primary action without its text. */
+  compact?: boolean;
 }
 
-export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({ 
-  playId, 
-  playName, 
-  onSuccess 
+export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
+  playId,
+  playName,
+  onSuccess,
+  compact = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -56,7 +62,34 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
     setIsOpen((prev) => !prev);
   };
 
-  const dropdownPositionClass = openUpward ? 'bottom-full left-0 mb-2' : 'top-full left-0 mt-2';
+  // Compact triggers sit at the right end of a card's action cluster, so the
+  // panel has to grow leftward — anchored left it would run past the card and
+  // be clipped by the page panel's overflow-hidden.
+  const horizontalAnchor = compact ? 'right-0' : 'left-0';
+  const dropdownPositionClass = openUpward
+    ? `bottom-full ${horizontalAnchor} mb-2`
+    : `top-full ${horizontalAnchor} mt-2`;
+
+  const trigger = compact ? (
+    <button
+      onClick={toggleOpen}
+      className="flex items-center justify-center h-9 w-9 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
+      title="Add to Playbook"
+      aria-label="Add to Playbook"
+    >
+      <Book className="w-4 h-4" />
+    </button>
+  ) : (
+    <button
+      onClick={toggleOpen}
+      className="flex items-center gap-2 px-3 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
+      title="Add to Playbook"
+    >
+      <Book className="w-4 h-4" />
+      Add to Playbook
+      <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+    </button>
+  );
 
   const fetchPlaybooks = async () => {
     try {
@@ -171,15 +204,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
   if (playbooks.length === 0 && !loading && isOpen) {
     return (
       <div className="relative" ref={containerRef}>
-        <button
-          onClick={toggleOpen}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
-          title="Add to Playbook"
-        >
-          <Book className="w-4 h-4" />
-          Add to Playbook
-          <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
+        {trigger}
 
         {isOpen && (
           <>
@@ -191,16 +216,13 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
               <div className="p-4 text-center">
                 <Book className="w-8 h-8 text-chalk/50 mx-auto mb-2" />
                 <p className="text-chalk/70 text-sm mb-3">No playbooks found</p>
-                <button
-                  onClick={() => {
-                    // Navigate to create playbook or handle creation
-                    console.log('Create new playbook');
-                    setIsOpen(false);
-                  }}
-                  className="px-3 py-2 bg-primary hover:bg-primary-dark text-white text-sm rounded-lg transition-colors"
+                <Link
+                  to="/playbooks"
+                  onClick={() => setIsOpen(false)}
+                  className="inline-block px-3 py-2 bg-primary hover:bg-primary-dark text-white text-sm rounded-lg transition-colors"
                 >
                   Create Playbook
-                </button>
+                </Link>
               </div>
             </div>
           </>
@@ -211,15 +233,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
 
   return (
     <div className="relative" ref={containerRef}>
-      <button
-        onClick={toggleOpen}
-        className="flex items-center gap-2 px-3 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
-        title="Add to Playbook"
-      >
-        <Book className="w-4 h-4" />
-        Add to Playbook
-        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      {trigger}
 
       {isOpen && (
         <>

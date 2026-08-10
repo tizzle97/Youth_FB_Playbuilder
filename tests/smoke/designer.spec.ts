@@ -2244,6 +2244,89 @@ test('My Plays: a non-admin owner can delete their own play', async ({ page }) =
   expect(deleteRequestUrl).toContain('id=eq.my-play-1');
 });
 
+test('My Plays: every card action fits inside the card instead of being clipped', async ({ page }) => {
+  // Regression test: the action row was a non-wrapping flex whose first child
+  // was a ~165px labelled "Add to Playbook" pill. On a public offense play —
+  // the widest case, five controls — the row outgrew the ~280px xl:grid-cols-4
+  // column, and the page panel's overflow-hidden clipped the trailing Delete
+  // button clean off the card.
+  //
+  // toBeVisible() is not enough to catch that: an element clipped by an
+  // ancestor's overflow-hidden still reports visible. So this asserts geometry.
+  const userJson = {
+    id: '99999999-9999-9999-9999-999999999999',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'pro' }) }));
+  await page.route('**/rest/v1/play_votes**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() === 'HEAD') {
+      return route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      // Public + offense = the widest footer: vote, add-to-playbook, template,
+      // vs-defense, delete. Long name exercises the title truncation.
+      body: JSON.stringify([{
+        id: 'wide-play', name: 'Trips Right Zip Motion Y Corner Halfback Wheel',
+        type: 'offense', thumbnail: null, is_public: true, upvotes: 12, user_id: userJson.id,
+      }]),
+    });
+  });
+
+  await page.goto('/plays');
+
+  const card = page.getByTestId('play-card').first();
+  await expect(card).toBeVisible();
+
+  const TITLES = [
+    'Add to Playbook',
+    'Use this play as a starting point for a new one',
+    'View this play against your defensive plays',
+    'Upvote this play',
+    'Delete Play',
+  ];
+  for (const title of TITLES) await expect(page.getByTitle(title)).toBeVisible();
+
+  // Measure card and buttons in one synchronous pass. Separate boundingBox()
+  // round-trips can straddle a layout shift (the fallback thumbnail draws to a
+  // canvas after mount), which makes the comparison itself flaky.
+  const overflow = await page.evaluate((titles) => {
+    const card = document.querySelector('[data-testid="play-card"]')!;
+    const cardRect = card.getBoundingClientRect();
+    return titles.flatMap((title) => {
+      const el = card.querySelector(`[title="${title}"]`);
+      if (!el) return [`${title}: not inside the card`];
+      const r = el.getBoundingClientRect();
+      // 1px of rounding slack on each edge.
+      if (r.left < cardRect.left - 1) return [`${title}: ${cardRect.left - r.left}px past the left edge`];
+      if (r.right > cardRect.right + 1) return [`${title}: ${r.right - cardRect.right}px past the right edge`];
+      return [];
+    });
+  }, TITLES);
+  expect(overflow).toEqual([]);
+
+  // A long name truncates rather than wrapping, so cards keep equal heights.
+  const titleLines = await page.evaluate(() => {
+    const h = document.querySelector('[data-testid="play-card"] h3') as HTMLElement;
+    return Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight));
+  });
+  expect(titleLines).toBe(1);
+});
+
 test('PlaybooksPage (B-22/B-23): free user one playbook from the cap sees a usage nudge', async ({ page }) => {
   // Regression test for B-23: PlaybooksPage used to resolve its user via
   // getSession() + onAuthStateChange *and* a separate useEntitlement() call
