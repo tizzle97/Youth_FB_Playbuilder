@@ -67,9 +67,9 @@ export function FeedbackButton() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // The Play Designer covers the full screen; the floating button would
-  // overlap the mobile toolbar's player icons and route action buttons.
-  const hidden = location.pathname === '/designer';
+  // The Play Designer and Vs. Defense view cover the full screen; the
+  // floating button would overlap their own fixed-position controls.
+  const hidden = location.pathname === '/designer' || location.pathname === '/vs';
 
   // getSession() reads the locally stored session — no network round trip on
   // every page load for signed-out visitors. The authoritative getUser() check

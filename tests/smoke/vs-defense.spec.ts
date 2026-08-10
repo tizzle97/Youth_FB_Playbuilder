@@ -51,9 +51,13 @@ type VsState = {
   deckLength: number;
   index: number;
   showDefense: boolean;
+  notesOpen: boolean;
+  noteDraft: string;
+  noteSaveState: 'idle' | 'saving' | 'saved' | 'error';
+  hasNoteForCurrentDefense: boolean;
 };
 
-async function mockBackend(page: Page, defenses: typeof DEFENSES) {
+async function mockBackend(page: Page, defenses: typeof DEFENSES, seededNotes: { defense_play_id: string; note: string }[] = []) {
   await page.addInitScript(({ user, storageKey }) => {
     localStorage.setItem(storageKey, JSON.stringify({
       access_token: 'test-access-token', refresh_token: 'test-refresh-token',
@@ -70,6 +74,17 @@ async function mockBackend(page: Page, defenses: typeof DEFENSES) {
     const url = route.request().url();
     const body = url.includes('type=eq.defense') ? JSON.stringify(defenses) : JSON.stringify(OFFENSE);
     return route.fulfill({ status: 200, contentType: 'application/json', body });
+  });
+
+  // matchup_notes: GET returns the seeded deck of notes; any write (upsert/
+  // delete) is just acknowledged — the UI updates its own local map from the
+  // response of the action that triggered it, not a refetch.
+  await page.route('**/rest/v1/matchup_notes**', (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(seededNotes) });
+    }
+    return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
   });
 }
 
@@ -150,4 +165,46 @@ test('with no saved defenses, the offense still renders and prompts to create on
   expect(state.offenseIcons.map((i) => i.letter)).toEqual(['Q', 'C', 'X', 'Y', 'Z']);
   expect(state.defenseIcons).toEqual([]);
   await expect(page.getByRole('link', { name: /create a defense/i })).toBeVisible();
+});
+
+test('B-36: per-matchup coaching notes load, edit, save, and stay scoped per defense', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+
+  // Cover 2 Zone (def-1, first in the deck) already has a note; Man Blitz
+  // (def-2) doesn't.
+  await mockBackend(page, DEFENSES, [{ defense_play_id: 'def-1', note: 'Seeded note for Cover 2' }]);
+  await openVs(page);
+
+  const initial = await vsState(page);
+  expect(initial.defenseId).toBe('def-1');
+  expect(initial.hasNoteForCurrentDefense).toBe(true);
+
+  // Closed by default; opening loads the existing note into the draft.
+  expect(initial.notesOpen).toBe(false);
+  await page.getByRole('button', { name: /notes/i }).click();
+  expect((await vsState(page)).notesOpen).toBe(true);
+  await expect(page.locator('#matchup-note-textarea')).toHaveValue('Seeded note for Cover 2');
+
+  // Edit and save (blur triggers the save, same as clicking the Save button).
+  await page.locator('#matchup-note-textarea').fill('vs Cover 2, hit the flat');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect((await vsState(page)).noteDraft).toBe('vs Cover 2, hit the flat');
+
+  // Switching to the other defense shows its own (empty) note, not a leak
+  // from the one just edited.
+  await page.getByRole('button', { name: 'Next defense' }).click();
+  await expect(page.locator('#vs-defense-label')).toContainText('Man Blitz');
+  const onSecond = await vsState(page);
+  expect(onSecond.hasNoteForCurrentDefense).toBe(false);
+  expect(onSecond.noteDraft).toBe('');
+  await expect(page.locator('#matchup-note-textarea')).toHaveValue('');
+
+  // Switching back shows the edit that was just saved.
+  await page.getByRole('button', { name: 'Previous defense' }).click();
+  await expect(page.locator('#matchup-note-textarea')).toHaveValue('vs Cover 2, hit the flat');
+  expect((await vsState(page)).hasNoteForCurrentDefense).toBe(true);
+
+  expect(errors, 'no uncaught page errors').toEqual([]);
 });

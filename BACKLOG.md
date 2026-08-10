@@ -151,18 +151,16 @@ Library grows on autopilot; blog↔library interlinking compounds SEO.
 Requires B-31's generation/thumbnail tooling to exist first.
 
 ### B-36 · "Vs. Defense" follow-ups
-The read-only `/vs?play=<id>` view ships offense+defense overlay and defense
-cycling only (deliberately lean). Deferred, in rough priority order:
-1. **Per-matchup coaching notes** — a note attached to an offense×defense
-   pairing ("vs Cover 2, hit the flat"). Needs a new table + RLS + an
-   idempotent `.sql` file; **⚠ requires SQL run**.
-2. **Export the matchup** — a PNG/PDF of the overlaid diagram, and a
+The read-only `/vs?play=<id>` view ships offense+defense overlay, defense
+cycling, and (as of the item below) per-matchup notes. Still deferred, in
+rough priority order:
+1. **Export the matchup** — a PNG/PDF of the overlaid diagram, and a
    "whole deck vs this play" sheet. `renderOverlayScene()` already renders to
    any offscreen context, so this is mostly an ExportModal variant. Likely a
    Pro gate (viewing stays free).
-3. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
+2. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
    read. Blocked on there being no "correct read" data on a play at all.
-4. **Community defenses in the deck** — currently the deck is the coach's own
+3. **Community defenses in the deck** — currently the deck is the coach's own
    defensive plays only, so a coach with none gets an empty state pointing at
    the designer. Offering public defenses would seed it.
 
@@ -184,6 +182,40 @@ reachable from nowhere else).
 its own low-risk PR.
 
 ## Done
+
+- **2026-08-10 · B-36 (1): Per-matchup coaching notes** — the first of B-36's
+  deferred follow-ups: a coach can now attach a personal note to one
+  offense×defense pairing on `/vs?play=<id>` (e.g. "vs Cover 2, hit the
+  flat"), toggled via a new "Notes" button in the header (badge dot when a
+  note exists for the defense on screen). `matchup_notes` is keyed
+  `(user_id, offense_play_id, defense_play_id)` rather than tied to either
+  play's ownership — the offense being viewed can be someone else's public
+  play, but the note is always the viewer's own. All notes for the offense
+  load in one query alongside the defensive deck; switching defenses swaps
+  the textarea to that pairing's note (or empty) without a refetch, and
+  saving (blur or the Save button) upserts, or deletes the row if the note
+  is cleared to empty. Notes load best-effort — a fetch failure (e.g. the
+  migration not yet run) logs and leaves the view otherwise fully working.
+  **Bug fix along the way:** found while writing the smoke test — clicking
+  the existing Previous/Next defense buttons (all prior tests only used the
+  arrow-key shortcut) was silently swallowed on a fresh session, because the
+  cookie consent banner (`fixed bottom-0`, z-50) was never excluded from
+  `/vs` and sat directly on top of its fixed-bottom footer controls. Fixed
+  by extending the existing `/designer` exclusion on `ConsentBanner`,
+  `Footer`, and `FeedbackButton` to also cover `/vs` — same "full-screen
+  tool with its own fixed controls" reasoning already documented for the
+  designer. **⚠ requires SQL run:** `supabase/matchup_notes.sql` (new table,
+  additive, idempotent). **Verification:** `npx tsc --noEmit` clean;
+  `npx eslint` on touched files shows only the two pre-existing
+  `no-explicit-any` warnings on the unrelated test-bridge lines (no new
+  errors); `npm run build` succeeds. Full Playwright smoke suite run
+  against a throwaway placeholder `.env` and the container's pre-installed
+  Chromium binary via a temporary `launchOptions.executablePath` in
+  `playwright.config.ts` (same recurring environment mismatch noted in
+  B-33/B-34 — reverted after the run, not part of this commit); new
+  `vs-defense.spec.ts` test covers loading an existing note, editing,
+  saving, and that switching defenses shows each pairing's own note instead
+  of leaking the one just edited.
 
 - **2026-08-09 · B-36: Daily feedback digest email** — closes the last gap in
   the feedback loop: nothing told anyone a submission had arrived. The admin

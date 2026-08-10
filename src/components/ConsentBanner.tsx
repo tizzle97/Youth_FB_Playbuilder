@@ -5,8 +5,10 @@ import { getStoredConsent, storeConsent } from '../lib/analytics';
 /**
  * Cookie consent banner (BACKLOG B-19). GA only loads once the visitor
  * accepts; declining stores the choice and no analytics cookies are ever set.
- * Hidden on the Play Designer, a full-screen tool (same precedent as
- * Footer/FeedbackButton).
+ * Hidden on the Play Designer and the Vs. Defense view, both full-screen
+ * tools with their own fixed-bottom controls this banner would otherwise
+ * cover (same precedent as Footer/FeedbackButton) — found covering /vs's
+ * Previous/Next defense buttons while adding B-36's coaching notes.
  */
 export function ConsentBanner() {
   const { pathname } = useLocation();
@@ -16,7 +18,7 @@ export function ConsentBanner() {
     setVisible(getStoredConsent() === null);
   }, []);
 
-  if (pathname.startsWith('/designer') || !visible) return null;
+  if (pathname.startsWith('/designer') || pathname.startsWith('/vs') || !visible) return null;
 
   const choose = (choice: 'granted' | 'denied') => {
     storeConsent(choice);
