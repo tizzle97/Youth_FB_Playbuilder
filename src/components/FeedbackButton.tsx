@@ -173,7 +173,7 @@ export function FeedbackButton() {
     return (
       <button
         onClick={openPanel}
-        className="fixed bottom-4 right-4 bg-primary hover:bg-primary-dark text-white rounded-full p-3 shadow-lg transition-colors"
+        className="fixed bottom-4 right-4 z-40 bg-primary hover:bg-primary-dark text-white rounded-full p-3 shadow-lg transition-colors"
         title="Give Feedback"
       >
         <MessageSquare className="h-6 w-6" />
@@ -187,7 +187,7 @@ export function FeedbackButton() {
     <div
       role="dialog"
       aria-label="Give Feedback"
-      className="fixed bottom-4 right-4 w-96 max-w-[calc(100vw-2rem)] bg-board-light rounded-lg shadow-xl border border-chalk/10"
+      className="fixed bottom-4 right-4 z-40 w-96 max-w-[calc(100vw-2rem)] bg-board-light rounded-lg shadow-xl border border-chalk/10"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-chalk/10">
         <h3 className="text-lg font-semibold text-chalk">Give Feedback</h3>
