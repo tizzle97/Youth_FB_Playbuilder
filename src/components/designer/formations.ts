@@ -5,20 +5,30 @@ import type { PlayMetadata } from '../../types/play';
 // Formation templates (B-24): curated starting positions coaches can stamp
 // onto the canvas instead of hand-placing every icon. Coordinates are
 // authored relative to the line of scrimmage using the same math Canvas.tsx
-// uses to render it (yFromYards), so a template lines up on the LOS exactly
-// like a hand-placed icon would.
-const yBehindLOS = (yardsBehindLOS: number) =>
-  (FIELD_YARDS_ABOVE_LOS + yardsBehindLOS) / TOTAL_FIELD_YARDS;
+// uses to render it (yFromYards), so a template lands on the field exactly
+// where a hand-placed icon would.
+//
+// Every icon then sits one yard further back than its authored alignment
+// (2026-08-11): the front line starts a yard off the ball instead of straddling
+// it, and everything behind shifts with it, so relative spacing is unchanged.
+// Applied here rather than in each template so the numbers below stay readable
+// as plain yards behind the LOS. This only affects newly stamped formations —
+// plays already saved keep the coordinates they were saved with.
+const TEMPLATE_SETBACK_YARDS = 1;
 
-const LOS = yBehindLOS(0);
+const yBehindLOS = (yardsBehindLOS: number) =>
+  (FIELD_YARDS_ABOVE_LOS + yardsBehindLOS + TEMPLATE_SETBACK_YARDS) / TOTAL_FIELD_YARDS;
+
+/** The front line — on the ball, plus the shared setback above. */
+const LINE_Y = yBehindLOS(0);
 
 // Colors reuse the app's existing player-icon palette (PlayerToolbar.tsx /
 // PlayerStyleEditor.tsx's SWATCH_COLORS) so stamped icons look like ones a
 // coach placed by hand, not a separate visual language.
 const C = { QB: '#3B82F6', RB: '#10B981', FB: '#F59E0B', WR: '#8B5CF6', TE: '#EC4899', OL: '#000000', SLOT: '#6366F1' };
 
-const ol = (x: number, letter: string): PlayerIcon => ({ x, y: LOS, letter, color: C.OL, shape: 'square' });
-const wr = (x: number, letter: string, y = LOS, color = C.WR): PlayerIcon => ({ x, y, letter, color, shape: 'circle' });
+const ol = (x: number, letter: string): PlayerIcon => ({ x, y: LINE_Y, letter, color: C.OL, shape: 'square' });
+const wr = (x: number, letter: string, y = LINE_Y, color = C.WR): PlayerIcon => ({ x, y, letter, color, shape: 'circle' });
 
 export type FormationTemplate = {
   id: string;
@@ -42,7 +52,7 @@ const FORMATIONS_11V11: FormationTemplate[] = [
     playType: 'offense',
     icons: [
       ...line11,
-      wr(0.80, 'TE', LOS, C.TE),
+      wr(0.80, 'TE', LINE_Y, C.TE),
       wr(0.10, 'WR'),
       wr(0.90, 'WR'),
       { x: 0.50, y: yBehindLOS(1.5), letter: 'QB', color: C.QB, shape: 'circle' },
@@ -57,7 +67,7 @@ const FORMATIONS_11V11: FormationTemplate[] = [
     playType: 'offense',
     icons: [
       ...line11,
-      wr(0.80, 'TE', LOS, C.TE),
+      wr(0.80, 'TE', LINE_Y, C.TE),
       wr(0.06, 'WR'),
       wr(0.18, 'WR'),
       wr(0.94, 'WR'),
@@ -87,7 +97,7 @@ const FORMATIONS_11V11: FormationTemplate[] = [
     playType: 'offense',
     icons: [
       ...line11,
-      wr(0.80, 'TE', LOS, C.TE),
+      wr(0.80, 'TE', LINE_Y, C.TE),
       { x: 0.86, y: yBehindLOS(1), letter: 'WR', color: C.SLOT, shape: 'circle' }, // wingback, tight off the LOS
       wr(0.10, 'WR'),
       { x: 0.50, y: yBehindLOS(1.5), letter: 'QB', color: C.QB, shape: 'circle' },
