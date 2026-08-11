@@ -166,6 +166,15 @@ cycling only (deliberately lean). Deferred, in rough priority order:
    defensive plays only, so a coach with none gets an empty state pointing at
    the designer. Offering public defenses would seed it.
 
+### [from feedback] B-38 · Tighter formation backfield depth for `/vs` mode
+User feedback: default offensive Formation templates place backfield
+players too far behind the LOS, which reads small/sparse when composited
+on `/vs`'s full-field overlay view. Proposal at
+`docs/proposals/tighter-formation-depth-for-vs-mode.md` — needs a human
+call on how far to compress depths and whether to change the shared
+`formations.ts` template data (affects the whole designer) or scope a
+tighter rendering crop to `/vs` specifically.
+
 ### B-37 · Consolidate the four duplicate play-card implementations
 Surfaced while fixing the My Plays card overflow (PR for that is card-only by
 choice). There is no shared play card: My Plays (`plays/PlaysPage.tsx`),
