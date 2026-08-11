@@ -814,6 +814,41 @@ test('formation templates: game-format picker in the menu offers 5v5/6v6/7v7/11v
   expect(state.playerIcons).toHaveLength(5);
 });
 
+// Every template is offset a yard off the ball (formations.ts
+// TEMPLATE_SETBACK_YARDS) rather than straddling the LOS. The offset is
+// applied in one place for all four formats, so this guards all four.
+test('formation templates: every format stamps a yard behind the LOS, not on it', async ({ page }) => {
+  // The universal field is 17 yards above the LOS and 13 below
+  // (renderPlayScene.ts), so the LOS is at 17/30 in normalized coords.
+  const YARD = 1 / 30;
+  const LOS_Y = 17 / 30;
+
+  await openDesigner(page);
+
+  // deepest = the authored yards-behind-LOS of that template's back-most icon.
+  for (const { format, formation, deepest } of [
+    { format: '11v11', formation: 'I-Formation', deepest: 7 },
+    { format: '7v7', formation: 'Trips', deepest: 4 },
+    { format: '6v6', formation: 'Trips', deepest: 4 },
+    { format: '5v5', formation: 'Trips', deepest: 4 },
+  ] as const) {
+    await btn(page, 'Formation templates').click();
+    if (format !== '11v11') {
+      await realClick(page, page.getByRole('button', { name: format, exact: true }));
+    }
+    await realClick(page, page.getByRole('button', { name: formation, exact: true }));
+
+    const ys = (await canvasState(page)).playerIcons.map((i) => i.y);
+    expect(ys.length, `${format} ${formation} stamped no icons`).toBeGreaterThan(0);
+    // Front line is a yard behind the LOS, not on it.
+    expect(Math.min(...ys), `${format} front line`).toBeCloseTo(LOS_Y + YARD, 5);
+    // The backfield moved by exactly one yard too — the whole formation
+    // shifted, it didn't stretch.
+    expect(Math.max(...ys), `${format} backfield`).toBeCloseTo(LOS_Y + (deepest + 1) * YARD, 5);
+    for (const y of ys) expect(y).toBeLessThan(1);
+  }
+});
+
 // The field is one universal canvas for every game format (2026-07-23,
 // superseding B-29's format-aware hashes), but the format picker still
 // drives formation templates — this guards that switching formats with
