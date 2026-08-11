@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Home, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Home, Shield, StickyNote, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
@@ -76,6 +76,12 @@ export function VsDefenseView() {
   const [showDefense, setShowDefense] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
 
+  const [userId, setUserId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaveState, setNoteSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
   const currentDefense = defenses[index] ?? null;
 
   // ── Load the offense and the deck of defenses ───────────────
@@ -95,10 +101,12 @@ export function VsDefenseView() {
           navigate('/auth', { replace: true });
           return;
         }
+        setUserId(user.id);
 
         // The offense may be someone else's public play (RLS allows reading
-        // those), but the defensive deck is always the signed-in coach's own.
-        const [offenseRes, defenseRes] = await Promise.all([
+        // those), but the defensive deck — and any coaching notes — are
+        // always the signed-in coach's own.
+        const [offenseRes, defenseRes, notesRes] = await Promise.all([
           supabase
             .from('plays')
             .select('id, name, type, description, metadata, canvas_data')
@@ -110,10 +118,26 @@ export function VsDefenseView() {
             .eq('user_id', user.id)
             .eq('type', 'defense')
             .order('name'),
+          supabase
+            .from('matchup_notes')
+            .select('defense_play_id, note')
+            .eq('user_id', user.id)
+            .eq('offense_play_id', playId),
         ]);
         if (cancelled) return;
         if (offenseRes.error) throw offenseRes.error;
         if (defenseRes.error) throw defenseRes.error;
+        // Notes are a nice-to-have on top of the core view — a failed fetch
+        // (e.g. the migration hasn't been run yet) shouldn't block the page.
+        if (notesRes.error) {
+          console.error('Matchup notes load error:', notesRes.error);
+        } else {
+          const noteMap: Record<string, string> = {};
+          for (const row of (notesRes.data ?? []) as { defense_play_id: string; note: string }[]) {
+            noteMap[row.defense_play_id] = row.note;
+          }
+          setNotes(noteMap);
+        }
 
         const offRow = offenseRes.data as PlayRow;
         const offScene = parseScene(offRow.canvas_data);
@@ -172,6 +196,52 @@ export function VsDefenseView() {
     // replace so Back leaves the view instead of walking the whole deck.
     setSearchParams(next, { replace: true });
   }, [currentDefense, searchParams, setSearchParams]);
+
+  // ── Keep the notes textarea in sync with whichever defense is on screen ─
+  useEffect(() => {
+    setNoteDraft(currentDefense ? (notes[currentDefense.id] ?? '') : '');
+    setNoteSaveState('idle');
+    // Only re-sync when the matchup itself changes — not on every keystroke
+    // (noteDraft) or every notes refetch, which would stomp an in-progress edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDefense?.id]);
+
+  const saveNote = useCallback(async () => {
+    if (!userId || !offensePlay || !currentDefense) return;
+    const trimmed = noteDraft.trim();
+    const existed = currentDefense.id in notes;
+    if (!trimmed && !existed) return; // nothing to save, nothing to clear
+    setNoteSaveState('saving');
+    try {
+      if (trimmed) {
+        const { error } = await supabase
+          .from('matchup_notes')
+          .upsert(
+            { user_id: userId, offense_play_id: offensePlay.id, defense_play_id: currentDefense.id, note: trimmed },
+            { onConflict: 'user_id,offense_play_id,defense_play_id' },
+          );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('matchup_notes')
+          .delete()
+          .eq('user_id', userId)
+          .eq('offense_play_id', offensePlay.id)
+          .eq('defense_play_id', currentDefense.id);
+        if (error) throw error;
+      }
+      setNotes((prev) => {
+        const next = { ...prev };
+        if (trimmed) next[currentDefense.id] = trimmed;
+        else delete next[currentDefense.id];
+        return next;
+      });
+      setNoteSaveState('saved');
+    } catch (err) {
+      console.error('Matchup note save error:', err);
+      setNoteSaveState('error');
+    }
+  }, [userId, offensePlay, currentDefense, noteDraft, notes]);
 
   // ── Aspect-locked sizing, matching the designer/export ratio ─
   // Keyed on `loading` because the container lives past the loading/error
@@ -243,10 +313,14 @@ export function VsDefenseView() {
         deckLength: defenses.length,
         index,
         showDefense,
+        notesOpen,
+        noteDraft,
+        noteSaveState,
+        hasNoteForCurrentDefense: currentDefense ? currentDefense.id in notes : false,
       }),
     };
     return () => { delete (window as any).__PBP_VS_TEST__; };
-  }, [offenseScene, visibleDefenseScene, currentDefense, defenses.length, index, showDefense]);
+  }, [offenseScene, visibleDefenseScene, currentDefense, defenses.length, index, showDefense, notesOpen, noteDraft, noteSaveState, notes]);
 
   const ariaLabel = useMemo(() => {
     const off = offensePlay?.name ?? 'Play';
@@ -302,7 +376,62 @@ export function VsDefenseView() {
           {showDefense ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           <span className="hidden sm:inline">{showDefense ? 'Hide defense' : 'Show defense'}</span>
         </button>
+        <button
+          onClick={() => setNotesOpen((v) => !v)}
+          disabled={!currentDefense}
+          className="relative flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={notesOpen ? 'Close coaching notes' : 'Coaching notes for this matchup'}
+          aria-pressed={notesOpen}
+        >
+          <StickyNote className="h-4 w-4" />
+          <span className="hidden sm:inline">Notes</span>
+          {currentDefense && currentDefense.id in notes && (
+            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+          )}
+        </button>
       </header>
+
+      {/* ── NOTES PANEL ────────────────────────────────────────── */}
+      {notesOpen && currentDefense && (
+        <div className="absolute right-3 top-14 sm:top-16 z-40 w-[calc(100vw-1.5rem)] max-w-sm bg-board-light border border-chalk/20 rounded-lg shadow-xl p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium text-chalk truncate">
+              Note · vs {currentDefense.name}
+            </span>
+            <button
+              onClick={() => setNotesOpen(false)}
+              className="p-1 text-chalk/50 hover:text-chalk rounded"
+              aria-label="Close notes"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <textarea
+            id="matchup-note-textarea"
+            value={noteDraft}
+            onChange={(e) => { setNoteDraft(e.target.value); setNoteSaveState('idle'); }}
+            onBlur={saveNote}
+            maxLength={2000}
+            rows={4}
+            placeholder="e.g. vs Cover 2, hit the flat…"
+            className="w-full resize-none bg-board border border-chalk/20 text-chalk text-sm rounded-lg px-2 py-1.5 placeholder:text-chalk/30 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-chalk/50" aria-live="polite">
+              {noteSaveState === 'saving' && 'Saving…'}
+              {noteSaveState === 'saved' && 'Saved'}
+              {noteSaveState === 'error' && 'Could not save — try again'}
+            </span>
+            <button
+              onClick={saveNote}
+              disabled={noteSaveState === 'saving'}
+              className="px-3 py-1 text-xs bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── CANVAS ─────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 min-h-0 flex items-center justify-center p-2 sm:p-4">

@@ -4,11 +4,11 @@ import { Logo, Wordmark } from './Logo';
 
 /**
  * Site-wide footer with the legal links every page must carry.
- * Hidden on the Play Designer, which is a full-screen tool.
+ * Hidden on the Play Designer and the Vs. Defense view, both full-screen tools.
  */
 export function Footer() {
   const { pathname } = useLocation();
-  if (pathname.startsWith('/designer')) return null;
+  if (pathname.startsWith('/designer') || pathname.startsWith('/vs')) return null;
 
   return (
     <footer className="bg-board border-t border-chalk/10 mt-auto">

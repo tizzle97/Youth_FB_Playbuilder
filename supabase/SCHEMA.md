@@ -36,6 +36,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `add_6v6_game_format.sql` | applied (2026-08-09) | Widens `custom_formations.game_type` and `user_preferences.default_game_format`'s `CHECK` constraints to allow `'6v6'`, alongside new 6v6 formation templates in `formations.ts`. No new column. |
 | `community_top_contributors.sql` | applied (2026-08-09) | `get_top_contributors(result_limit int)` — real top-N posters by `user_reputation.reputation` (>0 only), same `auth.users`/`avatar_icons` join pattern as `get_community_authors()`. Fixes the Community page's "Top Contributors" sidebar, which was hardcoded mock data (fake usernames/photos/reputation) presented as real. |
 | `community_posts_updated_at.sql` | applied (2026-08-09) | `BEFORE UPDATE` trigger on `posts` reusing the existing `update_updated_at_column()` function (already wired to `plays`/`playbooks`, just missing here). Lets the UI show an "(edited)" marker instead of an edit looking identical to the original post. No schema change. |
+| `matchup_notes.sql` | **not yet applied** | B-36 (1): `matchup_notes` table for the "Vs. Defense" view — a coach's own note on one offense×defense pairing, keyed `(user_id, offense_play_id, defense_play_id)` rather than tied to play ownership (the offense can be someone else's public play). RLS: owner full access only. |
 
 > "verify applied" = created recently; confirm it has been run in Supabase before
 > relying on the behavior.
@@ -62,6 +63,7 @@ idempotent `.sql` file and update this doc in the same change.
 | `formations` | `id`, `user_id`, `name`, `type`, `template`, `is_system bool` | Read if `is_system` or owner; manage own non-system rows. **Unused** — no frontend references; superseded by `custom_formations` below. |
 | `custom_formations` | `id`, `user_id`, `name`, `game_type ('5v5'\|'6v6'\|'7v7'\|'11v11')`, `icons jsonb` (offense-only `PlayerIcon[]`, same shape as the curated templates in `formations.ts`), `created_at` | Owner full access. `BEFORE INSERT` trigger blocks all non-`is_pro()` users — Pro-only feature, not just free-tier-capped (`custom_formations.sql`). |
 | `categories` | `id`, `name`, `type`, `parent_id`, `playbook_id`, `order_position` | Access via owning playbook. |
+| `matchup_notes` | `id`, `user_id`, `offense_play_id→plays`, `defense_play_id→plays`, `note` (≤2000 chars), timestamps; UNIQUE `(user_id, offense_play_id, defense_play_id)` | Owner full access only (`matchup_notes.sql`, **not yet applied**). Personal coaching notes on the `/vs` overlay view — keyed on the viewer, not either play's owner. |
 
 ### Community / social
 | Table | Key columns | RLS summary |
