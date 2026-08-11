@@ -150,6 +150,21 @@ the play in the library (and vice versa via the play description).
 Library grows on autopilot; blog↔library interlinking compounds SEO.
 Requires B-31's generation/thumbnail tooling to exist first.
 
+### B-38 · [from feedback] Default roster colors: Q/X/Z read too similar
+A coach reported the default player-icon colors for Q, X, and Z are too
+close to tell apart at a glance, and asked for a default yellow. Current
+offense defaults in `src/components/designer/rosters.ts`: Q is blue
+(`#3B82F6`), X is purple (`#8B5CF6`), Z is indigo (`#6366F1`) — all three
+sit in the same blue-violet hue band. (A is already yellow, `#F59E0B`, so
+the ask is really "give X or Z a color further from Q's," not "add yellow
+from scratch.") Coaches can already override chip colors themselves via
+the saved-toolbar-rosters feature (2026-08-06), so this is a defaults-only
+polish, not a missing capability — low priority, but a real contrast gap
+for anyone using the stock roster. Fix is a one- or two-line color swap in
+`DEFAULT_ROSTERS`; flagging for a human to pick the replacement hue(s)
+rather than a script guessing, since it's a shared visual token every
+offense roster inherits.
+
 ### B-36 · "Vs. Defense" follow-ups
 The read-only `/vs?play=<id>` view ships offense+defense overlay and defense
 cycling only (deliberately lean). Deferred, in rough priority order:
