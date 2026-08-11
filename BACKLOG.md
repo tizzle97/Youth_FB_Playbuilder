@@ -219,8 +219,9 @@ its own low-risk PR.
   by extending the existing `/designer` exclusion on `ConsentBanner`,
   `Footer`, and `FeedbackButton` to also cover `/vs` — same "full-screen
   tool with its own fixed controls" reasoning already documented for the
-  designer. **⚠ requires SQL run:** `supabase/matchup_notes.sql` (new table,
-  additive, idempotent). **Verification:** `npx tsc --noEmit` clean;
+  designer. **SQL run 2026-08-11** — `supabase/matchup_notes.sql` (new table,
+  additive, idempotent); the feature is live, not just merged.
+  **Verification:** `npx tsc --noEmit` clean;
   `npx eslint` on touched files shows only the two pre-existing
   `no-explicit-any` warnings on the unrelated test-bridge lines (no new
   errors); `npm run build` succeeds. Full Playwright smoke suite run
