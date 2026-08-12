@@ -25,7 +25,7 @@ export function UpgradePrompt({ isOpen, onClose, feature, description }: Upgrade
               <Lock className="h-5 w-5 text-primary shrink-0" />
               <h3 className="text-lg font-bold text-chalk">{feature} is a Pro feature</h3>
             </div>
-            <button onClick={onClose} className="text-chalk/70 hover:text-chalk transition-colors shrink-0">
+            <button onClick={onClose} aria-label="Close" className="tap-target flex items-center justify-center text-chalk/70 hover:text-chalk transition-colors shrink-0">
               <X className="w-5 h-5" />
             </button>
           </div>

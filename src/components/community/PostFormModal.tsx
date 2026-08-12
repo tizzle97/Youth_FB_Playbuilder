@@ -94,7 +94,8 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
             <h3 className="text-2xl font-bold text-chalk">{isEditing ? 'Edit Post' : 'Create Post'}</h3>
             <button
               onClick={onClose}
-              className="text-chalk/70 hover:text-chalk transition-colors"
+              aria-label="Close"
+              className="tap-target flex items-center justify-center text-chalk/70 hover:text-chalk transition-colors"
             >
               <X className="w-6 h-6" />
             </button>

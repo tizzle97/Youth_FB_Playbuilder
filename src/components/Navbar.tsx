@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { Logo, Wordmark } from './Logo';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
@@ -26,6 +26,22 @@ export function Navbar() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Every menu item calls setIsMenuOpen(false) on click, but navigation that
+  // doesn't originate inside the menu — browser back, a UserMenu item, a deep
+  // link — used to leave it hanging open over the new page.
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isMenuOpen]);
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -88,22 +104,25 @@ export function Navbar() {
             {user && <UserMenu user={user} showName={false} />}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-chalk/70 hover:text-chalk hover:bg-board-light focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isMenuOpen}
+              aria-controls="mobile-menu"
+              className="tap-target inline-flex items-center justify-center p-2 rounded-md text-chalk/70 hover:text-chalk hover:bg-board-light focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
             >
-              <Menu className="h-6 w-6" />
+              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </div>
       </div>
 
       {isMenuOpen && (
-        <div className="sm:hidden bg-board-light">
+        <div id="mobile-menu" className="sm:hidden bg-board-light">
           <div className="pt-2 pb-3 space-y-1">
             {navItems.map(({ path, label }) => (
               <Link
                 key={path}
                 to={path}
-                className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
+                className={`tap-target flex items-center pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
                   isActive(path)
                     ? 'bg-board text-primary border-primary'
                     : 'border-transparent text-chalk/70 hover:text-chalk hover:bg-board'

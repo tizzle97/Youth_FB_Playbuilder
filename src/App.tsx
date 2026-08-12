@@ -86,6 +86,23 @@ function RecoveryRedirect() {
   return null;
 }
 
+/**
+ * React Router keeps the window's scroll position across navigations, so
+ * jumping from the bottom of a long list to another page lands mid-page. Most
+ * noticeable on a phone, where every page is long. Skips hash links, which
+ * want to scroll to their own anchor.
+ */
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+
+  useEffect(() => {
+    if (hash) return;
+    window.scrollTo(0, 0);
+  }, [pathname, hash]);
+
+  return null;
+}
+
 function App() {
   useEffect(() => {
     initAnalyticsFromStoredConsent();
@@ -94,6 +111,7 @@ function App() {
   return (
     <Router>
       <RecoveryRedirect />
+      <ScrollToTop />
       <div className="min-h-screen bg-board flex flex-col">
         <Navbar />
         <div className="flex-1">

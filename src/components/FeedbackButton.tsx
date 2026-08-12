@@ -3,6 +3,7 @@ import { MessageSquare, X, LogIn } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { getSafeErrorMessage } from '../lib/errors';
+import { getStoredConsent, onConsentChange } from '../lib/analytics';
 
 type FeedbackType = 'bug' | 'feature' | 'general';
 
@@ -69,7 +70,21 @@ export function FeedbackButton() {
 
   // The Play Designer and Vs. Defense view cover the full screen; the
   // floating button would overlap their own fixed-position controls.
-  const hidden = location.pathname === '/designer' || location.pathname === '/vs';
+  // startsWith, matching Footer and ConsentBanner — with `===` a trailing
+  // slash floats this button over the designer's own bottom toolbar.
+  const hidden =
+    location.pathname.startsWith('/designer') || location.pathname.startsWith('/vs');
+
+  // The consent banner is a bottom-anchored bar that stacks to ~130px on a
+  // phone, which is exactly where this button sits. Lift above it while the
+  // choice is unresolved, and drop back down the moment it's made.
+  const [consentPending, setConsentPending] = useState(() => getStoredConsent() === null);
+  useEffect(() => onConsentChange(() => setConsentPending(false)), []);
+
+  // Clears both the banner and the iPhone home indicator.
+  const bottomOffset = consentPending
+    ? 'bottom-[9.5rem] sm:bottom-24'
+    : 'bottom-[calc(1rem+env(safe-area-inset-bottom))]';
 
   // getSession() reads the locally stored session — no network round trip on
   // every page load for signed-out visitors. The authoritative getUser() check
@@ -173,8 +188,9 @@ export function FeedbackButton() {
     return (
       <button
         onClick={openPanel}
-        className="fixed bottom-4 right-4 z-40 bg-primary hover:bg-primary-dark text-white rounded-full p-3 shadow-lg transition-colors"
+        className={`fixed ${bottomOffset} right-4 z-50 bg-primary hover:bg-primary-dark text-white rounded-full p-3 shadow-lg transition-all`}
         title="Give Feedback"
+        aria-label="Give Feedback"
       >
         <MessageSquare className="h-6 w-6" />
       </button>
@@ -187,7 +203,7 @@ export function FeedbackButton() {
     <div
       role="dialog"
       aria-label="Give Feedback"
-      className="fixed bottom-4 right-4 z-40 w-96 max-w-[calc(100vw-2rem)] bg-board-light rounded-lg shadow-xl border border-chalk/10"
+      className={`fixed ${bottomOffset} right-4 z-50 w-96 max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto bg-board-light rounded-lg shadow-xl border border-chalk/10`}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-chalk/10">
         <h3 className="text-lg font-semibold text-chalk">Give Feedback</h3>

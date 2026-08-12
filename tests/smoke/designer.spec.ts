@@ -2581,6 +2581,31 @@ test('PlaybooksPage: Grid view is the default and unaffected by the List view fe
   await expect(page.locator('button[title="Grid view"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test.describe('touch device', () => {
+  // hasTouch is the only thing that makes `hover: none` evaluate true —
+  // setViewportSize doesn't, and CDP Emulation.setEmulatedMedia ignores the
+  // hover/pointer features entirely. Without it this test passes vacuously.
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
+
+  test('PlaybooksPage: Grid view play actions are reachable without hover', async ({ page }) => {
+    // Regression: Edit Play / Vs / Remove lived in an `opacity-0
+    // group-hover:opacity-100` overlay with no click fallback, and Grid is the
+    // default layout — so on a phone those three actions did not exist at all.
+    await mockPlaybookWithPlays(page, [{ id: 'play-a', name: 'Play A', order_position: 10 }]);
+
+    await expect(page.locator('button[title="Grid view"]')).toHaveAttribute('aria-pressed', 'true');
+
+    const edit = page.getByRole('button', { name: 'Edit Play' });
+    await expect(edit).toBeVisible();
+    // Visible isn't enough — a 0-opacity element still reports visible to
+    // getComputedStyle-free checks. Assert the overlay is actually painted.
+    const opacity = await edit.evaluate((el) => getComputedStyle(el.parentElement!).opacity);
+    expect(opacity).toBe('1');
+
+    await expect(page.getByTitle('Remove from this playbook')).toBeVisible();
+  });
+});
+
 test('PlaybooksPage: dragging a play in List view reorders it and writes a two-phase PATCH', async ({ page }) => {
   const patchCalls = await mockPlaybookWithPlays(page, [
     { id: 'play-a', name: 'Play A', order_position: 10 },

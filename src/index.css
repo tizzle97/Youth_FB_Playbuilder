@@ -6,6 +6,51 @@ body {
   background-color: #101D2E;
 }
 
+/* ── Touch input ────────────────────────────────────────────────────────────
+   Everything here is gated on `pointer: coarse` — a finger, not a mouse — so
+   desktop density is untouched. Keyed on the input device rather than a width
+   breakpoint because a 1280px touchscreen still needs finger-sized targets and
+   a 600px desktop window does not. */
+@media (pointer: coarse) {
+  /* iOS Safari zooms the whole page when a focused control's font-size is
+     under 16px, and never zooms back out. That's ~10 controls across the app
+     (comment box, admin filters, /vs notes); the worst are inside /designer
+     and /vs, which are `fixed inset-0` — zooming detaches their chrome from
+     the visual viewport. One rule beats editing every call site, and the
+     visual size stays as designed everywhere else.
+
+     !important is load-bearing: these are element selectors and Tailwind's
+     `.text-sm` is a class, so it wins on specificity no matter what order the
+     rules appear in. Safe to clamp — no input, select or textarea in the app
+     asks for a font larger than 16px, so this only ever raises. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Fitts' Law floor. Applied opt-in rather than to every button, so it can
+     be added where a control is genuinely too small without inflating the
+     layouts that are already fine. Pair with the existing padding — this only
+     raises the hit area, it doesn't restyle the control. */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* An action revealed by `group-hover` does not exist on a touch device — there
+   is no hover state to enter and no click fallback. Add this alongside the
+   hover classes so the overlay is simply always visible where hover is
+   unavailable, rather than gating real actions behind a gesture that can't
+   happen. Keyed on `hover: none` (not `pointer: coarse`) because the question
+   is specifically whether hovering works. */
+@media (hover: none) {
+  .touch-always-visible {
+    opacity: 1;
+  }
+}
+
 /* Route "draw-in": used on the hero's decorative SVG doodles so the routes
    appear to be drawn on load, echoing "Draw the play." Set --draw-length to
    the path's actual length (via getTotalLength()) for an accurate trace. */
