@@ -215,3 +215,56 @@ test('B-36: per-matchup coaching notes load, edit, save, and stay scoped per def
 
   expect(errors, 'no uncaught page errors').toEqual([]);
 });
+
+test('B-36 (1): export is Pro-gated — free accounts see the upgrade prompt', async ({ page }) => {
+  await mockBackend(page, DEFENSES);
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(null) }));
+  await openVs(page);
+
+  await page.getByRole('button', { name: /^export$/i }).click();
+  await expect(page.getByText('Matchup export is a Pro feature')).toBeVisible();
+  await expect(page.getByText('Export Matchup')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Maybe later' }).click();
+  await expect(page.getByText('Matchup export is a Pro feature')).toHaveCount(0);
+});
+
+test('B-36 (1): Pro accounts can download the current matchup and print the whole deck', async ({ page }) => {
+  await mockBackend(page, DEFENSES);
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ plan: 'pro', current_period_end: null }),
+    }));
+  await openVs(page);
+
+  await page.getByRole('button', { name: /^export$/i }).click();
+  await expect(page.getByText('Export Matchup')).toBeVisible();
+  await expect(page.getByText('Whole deck (2 defenses)')).toBeVisible();
+
+  // Download PNG renders offense + the defense currently on screen (Cover 2
+  // Zone, first in the sorted deck) to a fixed-resolution offscreen canvas
+  // and triggers a native download rather than a popup.
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download PNG' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('smash-concept-vs-cover-2-zone.png');
+});
+
+test('B-36 (1): export modal has no "whole deck" section when the deck is empty', async ({ page }) => {
+  await mockBackend(page, []);
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ plan: 'pro', current_period_end: null }),
+    }));
+  await openVs(page);
+
+  await page.getByRole('button', { name: /^export$/i }).click();
+  await expect(page.getByText('Export Matchup')).toBeVisible();
+  await expect(page.getByText('This matchup')).toBeVisible();
+  await expect(page.getByText(/Whole deck/)).toHaveCount(0);
+});
