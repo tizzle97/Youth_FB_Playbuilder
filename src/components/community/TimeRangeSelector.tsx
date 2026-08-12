@@ -17,8 +17,8 @@ const timeRanges: { value: TimeRange; label: string }[] = [
 
 export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
   return (
-    <div className="flex items-center gap-2 bg-board rounded-lg border border-chalk/20 p-1">
-      <Clock className="h-4 w-4 text-chalk/50 ml-2" />
+    <div className="flex flex-wrap items-center gap-1.5 bg-board rounded-lg border border-chalk/20 p-1">
+      <Clock className="h-4 w-4 text-chalk/50 ml-2 shrink-0" />
       {timeRanges.map((range) => (
         <button
           key={range.value}

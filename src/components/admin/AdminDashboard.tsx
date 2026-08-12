@@ -153,7 +153,10 @@ export function AdminDashboard() {
               <h1 className="text-2xl font-bold text-chalk">Admin Dashboard</h1>
             </div>
 
-            <div className="mt-4 flex gap-4">
+            {/* Wrap rather than scroll: the enclosing panel is overflow-hidden,
+                so an unwrapped 4-tab row put "Moderation" out of reach on a
+                phone entirely. */}
+            <div className="mt-4 flex flex-wrap gap-2 sm:gap-4">
               <button
                 onClick={() => setActiveTab('users')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${

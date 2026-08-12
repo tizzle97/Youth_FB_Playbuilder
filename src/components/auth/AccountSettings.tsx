@@ -339,8 +339,11 @@ export default function AccountSettings() {
     <div className="min-h-screen bg-board py-12">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-board-light rounded-xl shadow-lg border border-chalk/10 overflow-hidden">
-          <div className="px-6 py-4 border-b border-chalk/10 flex justify-between items-center">
-            <div className="flex items-center gap-3">
+          {/* Save Changes lives only in this header, so it must never be
+              crushed — a founding member with unsaved edits put ~450px of
+              content in a 295px row. */}
+          <div className="px-6 py-4 border-b border-chalk/10 flex flex-wrap justify-between items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-2xl font-bold text-chalk">Account Settings</h2>
               {isFoundingMember && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/40 text-primary text-xs font-semibold">
