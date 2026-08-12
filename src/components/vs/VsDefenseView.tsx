@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Home, Shield, StickyNote, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Eye, EyeOff, Home, Shield, StickyNote, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { renderOverlayScene, EXPORT_WIDTH, EXPORT_HEIGHT, type SceneLayer } from '../../lib/renderPlayScene';
+import { rowIsPro } from '../../lib/entitlements';
 import { Logo } from '../Logo';
+import { UpgradePrompt } from '../UpgradePrompt';
+import { VsExportModal } from './VsExportModal';
 
 // ---------------------------------------------
 // Read-only "vs. defense" view: one offensive play with a defensive play drawn
@@ -81,6 +84,14 @@ export function VsDefenseView() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [noteSaveState, setNoteSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Export (B-36 follow-up #1) — Pro-gated, queried directly off `userId`
+  // rather than via useEntitlement(), whose own auth.getUser() call can
+  // deadlock gotrue-js's session lock alongside this view's own (see the B-4
+  // note in entitlements.ts).
+  const [isPro, setIsPro] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const currentDefense = defenses[index] ?? null;
 
@@ -186,6 +197,19 @@ export function VsDefenseView() {
     // and re-running the fetch on every arrow press would refetch the deck.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playId, navigate]);
+
+  // ── Resolve Pro status for the export gate ───────────────────
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    supabase
+      .from('subscriptions')
+      .select('plan, current_period_end')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setIsPro(rowIsPro(data)); });
+    return () => { cancelled = true; };
+  }, [userId]);
 
   // ── Keep ?d= pointed at the visible defense ─────────────────
   useEffect(() => {
@@ -377,6 +401,14 @@ export function VsDefenseView() {
           <span className="hidden sm:inline">{showDefense ? 'Hide defense' : 'Show defense'}</span>
         </button>
         <button
+          onClick={() => { if (isPro) setExportOpen(true); else setShowUpgrade(true); }}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
+          title="Export this matchup"
+        >
+          <Download className="h-4 w-4" />
+          <span className="hidden sm:inline">Export</span>
+        </button>
+        <button
           onClick={() => setNotesOpen((v) => !v)}
           disabled={!currentDefense}
           className="relative flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -517,6 +549,22 @@ export function VsDefenseView() {
           </div>
         )}
       </footer>
+
+      <VsExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        offenseName={offensePlay.name}
+        offenseScene={offenseScene}
+        currentDefense={currentDefense}
+        currentDefenseVisible={showDefense}
+        deck={defenses}
+      />
+      <UpgradePrompt
+        isOpen={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Matchup export"
+        description="Exporting a matchup as a PNG or PDF is part of Playbuilder Pro ($39/yr). Viewing and cycling defenses stays free."
+      />
     </div>
   );
 }

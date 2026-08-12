@@ -167,15 +167,11 @@ offense roster inherits.
 
 ### B-36 · "Vs. Defense" follow-ups
 The read-only `/vs?play=<id>` view ships offense+defense overlay, defense
-cycling, and (as of the item below) per-matchup notes. Still deferred, in
-rough priority order:
-1. **Export the matchup** — a PNG/PDF of the overlaid diagram, and a
-   "whole deck vs this play" sheet. `renderOverlayScene()` already renders to
-   any offscreen context, so this is mostly an ExportModal variant. Likely a
-   Pro gate (viewing stays free).
-2. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
+cycling, per-matchup notes, and (as of the item below) export. Still
+deferred, in rough priority order:
+1. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
    read. Blocked on there being no "correct read" data on a play at all.
-3. **Community defenses in the deck** — currently the deck is the coach's own
+2. **Community defenses in the deck** — currently the deck is the coach's own
    defensive plays only, so a coach with none gets an empty state pointing at
    the designer. Offering public defenses would seed it.
 
@@ -317,6 +313,40 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-12 · B-36 (2): Export the matchup** — a coach can now export
+  what's on `/vs?play=<id>` instead of only viewing it: a new "Export"
+  button in the header opens `VsExportModal.tsx`, offering a PNG download or
+  a print/Save-as-PDF of the current matchup (offense + whichever defense is
+  on screen, honoring the same show/hide toggle as the live view — hiding
+  the defense before exporting produces an offense-only diagram), plus,
+  whenever the coach has more than zero saved defenses, a "print full deck"
+  option that puts the offense against every defense in the deck on its own
+  page (one PDF for the whole binder of looks). Both render through
+  `renderOverlayScene()` at the same fixed `EXPORT_WIDTH`/`EXPORT_HEIGHT`
+  resolution as the designer's own `exportImage()`, so quality matches every
+  other export surface in the app. Gated behind Pro (viewing/cycling stays
+  free, per the item's own note) — status is queried directly off
+  `subscriptions` via the already-resolved `userId` (not `useEntitlement()`,
+  per the B-4 gotrue-deadlock note: this view already runs its own
+  `auth.getUser()` call). Play/defense names are HTML-escaped before being
+  interpolated into the generated print document (existing `escapeHtml()`
+  from `userPreferences.ts`) — the print window is opened via
+  `document.write()` on untrusted user-entered names, so this isn't optional.
+  **Verification:** `npx tsc --noEmit` clean; `npx eslint` on touched files
+  shows only the two pre-existing `no-explicit-any` warnings on the unrelated
+  test-bridge lines (no new errors); `npm run build` succeeds. 3 new smoke
+  tests in `tests/smoke/vs-defense.spec.ts` cover the Pro gate (free account
+  sees the upgrade prompt, no export modal), a Pro account downloading the
+  current matchup (asserts the actual browser download event and its
+  filename) and seeing the whole-deck option, and that the whole-deck option
+  is absent when the coach has no saved defenses — all 7 tests in that file
+  pass. Full Playwright smoke suite (136 tests) run against a throwaway
+  placeholder `.env` and the container's pre-installed Chromium binary via a
+  temporary `launchOptions.executablePath` in `playwright.config.ts` (same
+  recurring environment mismatch noted in B-33/B-34/B-36(1) — reverted after
+  the run, not part of this commit); see the PR description for the full-suite
+  result.
 
 - **2026-08-10 · B-36 (1): Per-matchup coaching notes** — the first of B-36's
   deferred follow-ups: a coach can now attach a personal note to one
