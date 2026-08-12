@@ -196,23 +196,26 @@ reachable from nowhere else).
 `data-testid` in the same change. Multi-PR; do the dead-code deletion first as
 its own low-risk PR.
 
-### B-50 · ⚠ BUG: /vs matchup notes leak between defenses (fix first)
-**Highest priority item in this list.** Found while verifying the mobile work
-on 2026-08-12; shipped in the nightly PR #62, whose description claimed
-123/123. On clean `main` (0a235f6) `vs-defense.spec.ts:170` fails **4 runs in
-6**:
-```
-Expected: ""
-Received: "vs Cover 2, hit the flat"     // vs-defense.spec.ts:201
-```
-Switching to a second defense leaves the *previous* defense's text in
-`#matchup-note-textarea` while `hasNoteForCurrentDefense` correctly reports
-`false`. It reads as a race between the blur-save and the defense swap in
-`VsDefenseView.tsx`. Not cosmetic: the panel saves on blur, so a stale draft
-left in the box can write one defense's note onto another — user data loss.
-Reproduce with
-`npx playwright test tests/smoke/vs-defense.spec.ts --grep "per-matchup" --repeat-each=6 --workers=1`.
-A passing single run means nothing here; always use `--repeat-each`.
+### B-50 · ~~/vs matchup notes leak between defenses~~ — RESOLVED, was a flaky test
+Filed 2026-08-12 as a data-loss bug. **That diagnosis was wrong**, and the
+correction is worth keeping: `vs-defense.spec.ts:170` failed ~4 runs in 6, but
+the product was behaving correctly the whole time.
+
+Switching defenses takes two renders — the first commits the new defense (so
+the label and `hasNoteForCurrentDefense` are already right), and the effect
+that re-syncs the draft schedules the second. A **single** read of the
+`__PBP_VS_TEST__` bridge can land between them and see the previous defense's
+draft. The DOM assertion on the next line auto-retried and always passed,
+which is the tell.
+
+Verified by capturing the actual writes: typing against one defense and
+immediately switching writes exactly one row, targeting the defense that was
+on screen when the text was typed. Zero writes to the other.
+Fixed by polling the bridge instead of snapshotting it.
+
+**The reusable lesson:** a one-shot read of a debug bridge is a race against
+React's render queue whenever the value it reports is set from an effect.
+Poll it, or assert against the DOM.
 
 ### B-38 · Touch-target sweep (`.tap-target`)
 PR #67 added a `.tap-target` utility gated on `@media (pointer: coarse)`, so
