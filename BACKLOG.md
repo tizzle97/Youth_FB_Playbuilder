@@ -345,8 +345,16 @@ leaves a 279px column on a 375px phone.
   placeholder `.env` and the container's pre-installed Chromium binary via a
   temporary `launchOptions.executablePath` in `playwright.config.ts` (same
   recurring environment mismatch noted in B-33/B-34/B-36(1) — reverted after
-  the run, not part of this commit); see the PR description for the full-suite
-  result.
+  the run, not part of this commit): 110/136 passed on the single full
+  concurrent run; the other 26 (spread across `designer.spec.ts`,
+  `mobile.spec.ts`, and this change's own `vs-defense.spec.ts`) all passed
+  when re-run individually or in their own file, so the concurrent-run
+  failures were container resource contention over a 14.7-minute, 2-worker
+  run, not real regressions — 8 of the 26 were `vs-defense.spec.ts` tests
+  that hit `ENOENT: .env` because the placeholder file was deleted mid-run
+  by this same verification pass, not a code issue either. See the PR
+  description for the isolated re-run confirming all touched/adjacent files
+  pass.
 
 - **2026-08-10 · B-36 (1): Per-matchup coaching notes** — the first of B-36's
   deferred follow-ups: a coach can now attach a personal note to one
