@@ -196,6 +196,126 @@ reachable from nowhere else).
 `data-testid` in the same change. Multi-PR; do the dead-code deletion first as
 its own low-risk PR.
 
+### B-50 · ⚠ BUG: /vs matchup notes leak between defenses (fix first)
+**Highest priority item in this list.** Found while verifying the mobile work
+on 2026-08-12; shipped in the nightly PR #62, whose description claimed
+123/123. On clean `main` (0a235f6) `vs-defense.spec.ts:170` fails **4 runs in
+6**:
+```
+Expected: ""
+Received: "vs Cover 2, hit the flat"     // vs-defense.spec.ts:201
+```
+Switching to a second defense leaves the *previous* defense's text in
+`#matchup-note-textarea` while `hasNoteForCurrentDefense` correctly reports
+`false`. It reads as a race between the blur-save and the defense swap in
+`VsDefenseView.tsx`. Not cosmetic: the panel saves on blur, so a stale draft
+left in the box can write one defense's note onto another — user data loss.
+Reproduce with
+`npx playwright test tests/smoke/vs-defense.spec.ts --grep "per-matchup" --repeat-each=6 --workers=1`.
+A passing single run means nothing here; always use `--repeat-each`.
+
+### B-38 · Touch-target sweep (`.tap-target`)
+PR #67 added a `.tap-target` utility gated on `@media (pointer: coarse)`, so
+raising a hit area costs nothing on desktop, and applied it to the
+destructive/primary controls under ~28px. ~25 controls remain at 26-36px:
+designer toolbar chips (`DesignerToolbar.tsx:191` `min-w-[36px]`), the zoom
+pill (`PlayDesigner.tsx:623/630/638`, 28px), filter pills
+(`PlaysPage.tsx:392`, `PlayLibrary.tsx:198/215`), vote arrows
+(`PostList.tsx:118`), `PlaysPage`'s `CARD_ACTION` (36px), admin buttons,
+`PlaybooksPage.tsx:1722`'s 28px drag grip (the only reorder affordance).
+Reference: 44pt iOS / 48dp Android.
+
+### B-39 · Flex rows that can't wrap (measured overflow)
+`/playbooks` **actually scrolls sideways on every phone** — 458px of content in
+a 375px viewport, from the non-wrapping cluster at `PlaybooksPage.tsx:1198`
+(tab pill + New Play + New Playbook = 442px). Measured 2026-08-12 at 375/390/430.
+Same shape elsewhere: `PlaysPage.tsx:349` header and `:385` type filters
+(the latter inside an `overflow-hidden` panel, so there's no scroll escape),
+`AdminDashboard.tsx:156` tabs (also clipped — "Moderation" is unreachable on a
+phone), `TimeRangeSelector.tsx:19`, `AccountSettings.tsx:342` (where the only
+Save Changes button lives), `PlayLibrary.tsx:311`, `Hero.tsx:80`.
+Every **grid** in the app already collapses correctly — the layout failures are
+all flex rows missing `flex-wrap`. Add a guard asserting
+`documentElement.scrollWidth <= clientWidth` per route; that's how this was
+found.
+
+### B-40 · Designer touch tuning
+Icon tap targets are 34-37px and route lines 28px, both below the 44px floor,
+and worst exactly where it matters most: at 11v11 on a 375px canvas the icons
+are 14px wide with hit circles that nearly touch. `Canvas.tsx:913-919`
+(`iconRadiusPx + 10`) and `:945` (`bestDist = 14`) are mouse-era constants —
+a floor on the *hit test* only would fix it without touching rendering.
+Also `:1116-1124`: double-tap-to-finish has a 350ms window with **no distance
+gate**, and `lastTapRef` is written on every drawing pointerdown, so tapping
+out a route at a normal pace silently ends it early. And `DRAG_THRESHOLD_PX = 4`
+(`:66`) is below finger jitter.
+
+### B-41 · Popover bugs on phones
+`FormationMenu.tsx:78` and `RouteColorButton.tsx:49` register `scroll` with
+`capture: true`, so scrolling *inside* the popover (it's `max-h-[60vh]
+overflow-y-auto`) closes it; and `resize`→`close` closes it when the Android
+keyboard opens over its own `autoFocus` input, discarding the formation name.
+The three canvas popovers (`Canvas.tsx:1486-1538`) are 260-280px tall against a
+290px phone canvas, so they clamp to cover the very icon being edited, and
+their flip is canvas-relative rather than viewport-relative — it breaks while
+zoomed. `AddToPlaybookButton.tsx:247` is `max-h-80 overflow-hidden` (not
+`-auto`), silently truncating a long playbook list with no way to scroll.
+
+### B-42 · Admin on mobile
+`AdminDashboard.tsx:242` is the app's only table. It has an `overflow-x-auto`
+wrapper but the `<table>` is `w-full` with no `min-w-*`, so it compresses to
+~27px columns instead of scrolling. Emails have no `break-all`. The plan
+`<select>` at `:280` is `text-xs`.
+
+### B-43 · Modals on phones
+`SavePlayModal.tsx:198` and `ExportModal.tsx:1013` have non-sticky headers, so
+the 24px `×` scrolls out of reach on a ~1000px-tall form; only the backdrop
+remains as a dismiss, and it isn't a visible affordance. `PostFormModal.tsx:89`
+centers with `min-h-screen` (100vh), which fights the iOS keyboard exactly when
+it's up. Neither handles Escape.
+
+### B-44 · Forms & autofill
+`AuthPage.tsx:274` uses `autoComplete="current-password"` on the **signup** path
+too (same JSX for both modes), so password managers won't offer to generate or
+save. The username input has no `autoComplete`, `autoCapitalize="none"`,
+`autoCorrect="off"` or `spellCheck={false}` — iOS capitalizes the first letter.
+No `inputMode`/`enterKeyHint` anywhere in the app.
+
+### B-45 · PWA & mobile meta
+No `theme-color`, so mobile browser chrome stays light against the dark app.
+No `apple-touch-icon` — iOS "Add to Home Screen" screenshots the page, since
+iOS doesn't use SVG favicons. No manifest. No global
+`-webkit-tap-highlight-color` (every tap flashes the default grey box on a dark
+theme) and no `overscroll-behavior`. PR #67 added `viewport-fit=cover`, so
+safe-area insets now resolve — the remaining fixed surfaces can use them.
+
+### B-46 · Touch drag-and-drop in the designer toolbar
+`PlayerToolbar.tsx:24-63` places players via HTML5 drag-and-drop, which no
+mobile browser synthesizes from touch. On a phone, dragging a chip toward the
+field does nothing (it scrolls the roster row instead), and the custom
+drag-image code runs on a gesture that can never fire. The working path is
+tap-chip-then-tap-field, but nothing says so: `Canvas.tsx:1547-1587`'s
+instruction bar has no branch for `selectedPlayer`.
+
+### B-47 · Sticky navbar + an `xs` breakpoint
+`Navbar.tsx:51` is in normal flow, so there's no nav at all after scrolling any
+long page — and its comment explains why it can't simply get `relative z-50`
+(it would form a stacking context and swallow UserMenu's dropdown), so this
+needs care. Separately `tailwind.config.js` never sets `screens`, so one
+`sm:640` flip governs everything from a 320px SE to a 639px foldable.
+
+### B-48 · `/vs` defense picker is desktop-only
+`VsDefenseView.tsx:493` is `hidden sm:block`, so on a phone a coach with 12
+defenses taps Next up to 11 times. No mobile equivalent.
+
+### B-49 · Blog typography
+`BlogPage.tsx:114` uses `prose prose-invert`, but `@tailwindcss/typography`
+isn't installed (`tailwind.config.js` `plugins: []`) — the class is inert. No
+measure, no heading scale, and no `overflow-wrap`, so a URL in post content
+pushes the article sideways. `formatContent` (`:24`) only splits on `\n\n` and
+renders text, so images/markdown don't render at all. `p-8` inside `px-4`
+leaves a 279px column on a 375px phone.
+
 ## Done
 
 - **2026-08-10 · B-36 (1): Per-matchup coaching notes** — the first of B-36's
