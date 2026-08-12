@@ -58,6 +58,22 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
 - `npm run smoke` — Playwright smoke suite (`tests/smoke/`), drives the real app
   headlessly on its own port (4517). Tests assert on real canvas state via the
   dev-only `window.__PBP_TEST__` bridge in `PlayDesigner.tsx` — no pixel sampling.
+  **If your environment ships its own Chromium** instead of the pinned one
+  Playwright downloads (the cloud agent container does), set
+  `PBP_CHROMIUM_PATH=/path/to/chromium` — don't hand-edit `playwright.config.ts`.
+  Four nightly PRs in a row did that and each reported a pass count from a
+  partly-broken run (one claimed 123/123 over a genuinely flaky test; another
+  reported 110/136 and left 26 failures unexplained — all environmental, since
+  the same commit is 136/136 locally). A verification number nobody can trust is
+  worse than no number.
+  ⚠ **Two ways a green/red result can lie**, both hit in Aug 2026: reading the
+  `__PBP_TEST__`/`__PBP_VS_TEST__` bridge **once** races React's render queue
+  when the value is set from an effect (poll it — see the auto-memory
+  `test-bridge-race.md`); and `toBeVisible()` passes for an element completely
+  covered by a fixed overlay or clipped by an ancestor's `overflow: hidden`
+  (hit-test with `document.elementFromPoint`). Also: `pointer: coarse` /
+  `hover: none` only activate under `test.use({ hasTouch: true })` — a viewport
+  size doesn't do it, and CDP `Emulation.setEmulatedMedia` ignores both.
 - `npm run verify` — typecheck + lint + build + smoke. **⚠ Currently always
   fails at the lint step** on those pre-existing errors, before it ever reaches
   build/smoke. Until that backlog is cleaned up, verify by running
