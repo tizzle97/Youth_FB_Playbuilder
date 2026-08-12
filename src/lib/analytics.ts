@@ -32,6 +32,23 @@ export function getStoredConsent(): ConsentChoice | null {
   }
 }
 
+/**
+ * Consent isn't only an analytics question — the banner is a ~130px fixed bar on
+ * mobile, so anything else anchored to the bottom of the viewport has to know
+ * whether it's currently on screen. Subscribers are notified on every choice so
+ * they can move out of the way (and back) without polling localStorage.
+ */
+type ConsentListener = (choice: ConsentChoice) => void;
+const consentListeners = new Set<ConsentListener>();
+
+/** Subscribe to consent changes. Returns an unsubscribe function. */
+export function onConsentChange(listener: ConsentListener): () => void {
+  consentListeners.add(listener);
+  return () => {
+    consentListeners.delete(listener);
+  };
+}
+
 /** Persists the visitor's choice and loads GA immediately if they granted it. */
 export function storeConsent(choice: ConsentChoice): void {
   try {
@@ -40,6 +57,7 @@ export function storeConsent(choice: ConsentChoice): void {
     // Storage blocked — honor the choice for this page view even if it can't persist.
   }
   if (choice === 'granted') loadGoogleAnalytics();
+  consentListeners.forEach((listener) => listener(choice));
 }
 
 let gaLoaded = false;

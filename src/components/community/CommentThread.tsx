@@ -165,7 +165,7 @@ export function CommentThread({ postId, currentUserId, onCommentsChanged }: Comm
                       <button
                         onClick={() => handleDelete(comment.id)}
                         title="Delete Comment"
-                        className="ml-auto p-1 text-chalk/40 hover:text-red-400 rounded transition-colors"
+                        className="tap-target ml-auto flex items-center justify-center p-1 text-chalk/40 hover:text-red-400 rounded transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

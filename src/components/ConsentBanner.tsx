@@ -26,7 +26,7 @@ export function ConsentBanner() {
   };
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-50 bg-board-light border-t border-chalk/10 shadow-lg">
+    <div className="fixed bottom-0 inset-x-0 z-40 bg-board-light border-t border-chalk/10 shadow-lg pb-[env(safe-area-inset-bottom)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center gap-4">
         <p className="text-sm text-chalk/80 flex-1">
           We use Google Analytics to understand how coaches use Playbuilder Pro. See our{' '}
@@ -35,13 +35,13 @@ export function ConsentBanner() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => choose('denied')}
-            className="px-4 py-2 text-sm rounded-md text-chalk/70 hover:text-chalk border border-chalk/20 transition-colors"
+            className="tap-target px-4 py-2 text-sm rounded-md text-chalk/70 hover:text-chalk border border-chalk/20 transition-colors"
           >
             Decline
           </button>
           <button
             onClick={() => choose('granted')}
-            className="px-4 py-2 text-sm rounded-md bg-primary hover:bg-primary-dark text-white transition-colors"
+            className="tap-target px-4 py-2 text-sm rounded-md bg-primary hover:bg-primary-dark text-white transition-colors"
           >
             Accept
           </button>

@@ -400,7 +400,7 @@ export function VsDefenseView() {
             </span>
             <button
               onClick={() => setNotesOpen(false)}
-              className="p-1 text-chalk/50 hover:text-chalk rounded"
+              className="tap-target flex items-center justify-center p-1 text-chalk/50 hover:text-chalk rounded"
               aria-label="Close notes"
             >
               <X className="h-4 w-4" />
@@ -425,7 +425,7 @@ export function VsDefenseView() {
             <button
               onClick={saveNote}
               disabled={noteSaveState === 'saving'}
-              className="px-3 py-1 text-xs bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors disabled:opacity-50"
+              className="tap-target px-3 py-1 text-xs bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors disabled:opacity-50"
             >
               Save
             </button>

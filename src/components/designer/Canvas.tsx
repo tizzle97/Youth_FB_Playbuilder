@@ -1600,6 +1600,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          // iOS fires pointercancel (never pointerup) when the system takes
+          // over a gesture — an edge swipe, an incoming notification. Without
+          // this the pointer id is never removed from activePointersRef, so
+          // the NEXT single touch is misread as the second finger of a pinch
+          // and drawing stays dead until the component remounts.
+          onPointerCancel={handlePointerUp}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           className="block bg-white touch-none"

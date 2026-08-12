@@ -1515,10 +1515,15 @@ export function PlaybooksPage() {
                                 <Play className="h-8 w-8" />
                               </div>
                             )}
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            {/* touch-always-visible: on a phone there is no
+                                hover, so without it Edit/Vs/Remove simply do
+                                not exist here — and this grid is the default
+                                layout. See the @media (hover: none) rule in
+                                index.css. */}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 touch-always-visible transition-opacity flex items-center justify-center gap-2">
                               <button
                                 onClick={() => handleEditPlay(play.id)}
-                                className="px-3 py-2 bg-white text-black rounded-lg text-sm font-medium"
+                                className="tap-target px-3 py-2 bg-white text-black rounded-lg text-sm font-medium"
                               >
                                 Edit Play
                               </button>
@@ -1529,7 +1534,7 @@ export function PlaybooksPage() {
                                 <Link
                                   to={`/vs?play=${play.id}`}
                                   title="View this play against your defensive plays"
-                                  className="p-2 bg-white text-black hover:bg-chalk rounded-lg transition-colors"
+                                  className="tap-target flex items-center justify-center p-2 bg-white text-black hover:bg-chalk rounded-lg transition-colors"
                                 >
                                   <Shield className="h-4 w-4" />
                                 </Link>
@@ -1537,7 +1542,7 @@ export function PlaybooksPage() {
                               <button
                                 onClick={() => removePlayFromPlaybook(play)}
                                 title="Remove from this playbook"
-                                className="p-2 bg-white text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                className="tap-target flex items-center justify-center p-2 bg-white text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -1616,7 +1621,8 @@ export function PlaybooksPage() {
                   <h3 className="text-lg font-bold text-chalk">Create New Playbook</h3>
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    className="text-chalk/70 hover:text-chalk transition-colors"
+                    aria-label="Close"
+                    className="tap-target flex items-center justify-center text-2xl leading-none text-chalk/70 hover:text-chalk transition-colors"
                   >
                     ×
                   </button>
