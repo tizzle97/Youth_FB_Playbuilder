@@ -196,9 +196,16 @@ test('B-36: per-matchup coaching notes load, edit, save, and stay scoped per def
   // from the one just edited.
   await page.getByRole('button', { name: 'Next defense' }).click();
   await expect(page.locator('#vs-defense-label')).toContainText('Man Blitz');
-  const onSecond = await vsState(page);
-  expect(onSecond.hasNoteForCurrentDefense).toBe(false);
-  expect(onSecond.noteDraft).toBe('');
+  // Poll rather than read once. Switching defenses takes two renders: the
+  // first commits the new defense (so the label and hasNoteForCurrentDefense
+  // are already correct), and the effect that re-syncs the draft schedules the
+  // second. A single snapshot of the bridge can land between them and see the
+  // previous defense's draft — a stale read of a debug surface, not a leak.
+  // (Verified: typing against one defense and immediately switching writes
+  // exactly one row, and it targets the defense that was on screen when the
+  // text was typed.)
+  await expect.poll(async () => (await vsState(page)).noteDraft).toBe('');
+  expect((await vsState(page)).hasNoteForCurrentDefense).toBe(false);
   await expect(page.locator('#matchup-note-textarea')).toHaveValue('');
 
   // Switching back shows the edit that was just saved.
