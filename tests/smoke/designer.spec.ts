@@ -780,6 +780,34 @@ test('formation menu opens fully on screen from the mobile bottom toolbar', asyn
   expect((await canvasState(page)).playerIcons).toHaveLength(11);
 });
 
+test('mobile toolbar: tools are labelled, and every one is reachable by scrolling', async ({ page }) => {
+  // The label class used to be `hidden sm:inline` in the horizontal
+  // orientation — which is the ONLY orientation rendered below sm — so every
+  // label was hidden on the one surface it applied to. A phone got ~13
+  // unlabeled 32px icons, including two identical Eraser glyphs where one
+  // clears routes and the other clears the whole play.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+
+  const bar = page.locator('div.sm\\:hidden').filter({ has: page.locator('button[title="Clear All"]') }).first();
+  // Zone / Remove Zone are defense-only, so they're not in this offense list.
+  for (const text of ['Text', 'Straight', 'Route', 'Remove Route', 'Routes', 'All']) {
+    await expect(bar.getByText(text, { exact: true }).first()).toBeVisible();
+  }
+
+  // The destructive pair must be distinguishable, not two bare erasers.
+  await expect(bar.locator('button[title="Clear Routes"]')).toContainText('Routes');
+  await expect(bar.locator('button[title="Clear All"]')).toContainText('All');
+
+  // Wider chips mean more scrolling, so the row must still deliver every tool.
+  // realClick uses true screen coordinates and refuses to auto-scroll, so a
+  // chip stranded off-screen fails here rather than silently "passing".
+  const formation = page.locator('button[title="Formation templates"]:visible');
+  await formation.scrollIntoViewIfNeeded();
+  await realClick(page, formation);
+  await expect(page.locator('div.fixed.z-40')).toBeVisible();
+});
+
 test('formation templates: game-format picker in the menu offers 5v5/6v6/7v7/11v11 sets', async ({ page }) => {
   await openDesigner(page);
 

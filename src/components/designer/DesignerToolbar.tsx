@@ -190,12 +190,32 @@ export function DesignerToolbar({
     : `${btnBase} justify-center px-2.5 py-2 gap-1.5 text-xs font-medium`;
   const iconOnly = `${btnBase} justify-center p-2 min-w-[36px]`;
   const divider = vertical ? 'h-px w-full bg-chalk/15 my-1 shrink-0' : 'w-px h-5 bg-chalk/15 shrink-0 mx-0.5';
-  const label = vertical ? 'whitespace-nowrap' : 'hidden sm:inline whitespace-nowrap';
+  // `hidden sm:inline` used to be the horizontal branch, which hid every label
+  // unconditionally: the horizontal orientation is ONLY rendered below sm (see
+  // PlayDesigner's `sm:hidden` bottom bar), so the label could never appear on
+  // the one surface it applied to. That left a phone showing ~13 unlabeled
+  // 32px icons, several near-identical (two Eraser glyphs, Circle vs
+  // CircleOff). Labels cost horizontal scrolling, which the edge-fade on the
+  // row now advertises.
+  const label = 'whitespace-nowrap';
+
+  // The horizontal rows scroll with `scrollbar-hide`, so without this there is
+  // nothing at all telling a coach more tools exist past the right edge — the
+  // row just looks like it ends. A fade over the last few pixels reads as
+  // "continues"; pointer-events-none so it never eats a tap on the chip under
+  // it.
+  const scrollRow = 'relative flex items-center gap-1 overflow-x-auto scrollbar-hide';
+  const edgeFade = (
+    <div
+      aria-hidden
+      className="pointer-events-none sticky right-0 shrink-0 -ml-6 h-9 w-6 bg-gradient-to-l from-board-light to-transparent"
+    />
+  );
 
   return (
     <div className={`flex flex-col w-full ${vertical ? 'gap-2' : 'gap-1'}`}>
       {/* Tools: a column of labeled rows (sidebar) or one scrollable row (bar) */}
-      <div className={vertical ? 'flex flex-col items-stretch gap-0.5' : 'flex items-center gap-1 overflow-x-auto scrollbar-hide pb-0.5'}>
+      <div className={vertical ? 'flex flex-col items-stretch gap-0.5' : `${scrollRow} pb-0.5`}>
 
         {/* Select */}
         <button
@@ -356,23 +376,31 @@ export function DesignerToolbar({
 
           <div className="w-px h-5 bg-chalk/15 shrink-0 mx-0.5" />
 
-          {/* Clear routes */}
-          <button onClick={onClearRoutes} title="Clear Routes" className={`${iconOnly} text-yellow-400 hover:bg-yellow-400/10`}>
+          {/* Clear routes / Clear all — same Eraser glyph, adjacent, and one of
+              them is destructive, so these two in particular must stay
+              labelled wherever they're shown. */}
+          <button
+            onClick={onClearRoutes}
+            title="Clear Routes"
+            className={`${vertical ? iconOnly : `${btnBase} justify-center px-2.5 py-2 gap-1 text-xs`} text-yellow-400 hover:bg-yellow-400/10`}
+          >
             <Eraser className="h-4 w-4" />
+            {!vertical && <span className={label}>Routes</span>}
           </button>
 
           {/* Clear all */}
           <button onClick={onClear} title="Clear All" className={`${btnBase} justify-center px-2.5 py-2 gap-1 text-xs text-red-400 hover:bg-red-400/10`}>
             <Eraser className="h-4 w-4" />
-            <span className="hidden sm:inline whitespace-nowrap">All</span>
+            <span className={label}>All</span>
           </button>
         </div>
+        {!vertical && edgeFade}
       </div>
 
       {vertical && <div className={divider} />}
 
       {/* Play type + player icons: wrapped grid (sidebar) or scrollable row (bar) */}
-      <div className={vertical ? 'flex flex-col gap-2' : 'flex items-center gap-1 overflow-x-auto scrollbar-hide'}>
+      <div className={vertical ? 'flex flex-col gap-2' : scrollRow}>
         {/* Offense / Defense / Special Teams — decided once per play, locked once it has content */}
         <div
           className={`flex items-center rounded-md border border-chalk/15 overflow-hidden shrink-0 ${vertical ? 'w-full' : ''} ${playTypeLocked ? 'opacity-50' : ''}`}
@@ -400,6 +428,7 @@ export function DesignerToolbar({
           onRosterChange={onRosterChange}
           wrap={vertical}
         />
+        {!vertical && edgeFade}
       </div>
 
       {/* Active mode label */}
