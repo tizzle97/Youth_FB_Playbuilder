@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'fs';
+
+// supabase-js reads its session from localStorage under a key derived from
+// VITE_SUPABASE_URL — same seeding trick as designer.spec.ts.
+const SUPABASE_URL = readFileSync('.env', 'utf-8').match(/^VITE_SUPABASE_URL=(.+)$/m)?.[1].trim() ?? '';
+const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
 
 /**
  * Mobile shell regressions. These are the bugs a normal smoke test cannot see:
@@ -137,6 +143,55 @@ test('Escape closes the mobile nav menu', async ({ page }) => {
   await expect(page.locator('#mobile-menu')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#mobile-menu')).toHaveCount(0);
+});
+
+test('no page scrolls sideways at phone width', async ({ page }) => {
+  // /playbooks used to put 458px of content in a 375px viewport — a whole
+  // document that scrolled horizontally — from one non-wrapping button
+  // cluster. Nothing caught it because every individual element was "visible".
+  // Asserting document width is the cheap guard that would have.
+  const userJson = {
+    id: '22222222-2222-2222-2222-222222222222',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 't', refresh_token: 'r',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'founding' }) }));
+  await page.route('**/rest/v1/user_preferences**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/playbooks**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      { id: 'pb-1', name: 'Game Plan', description: '', created_at: '2025-09-01T00:00:00Z', user_id: userJson.id, playbook_plays: [{ count: 1 }] },
+    ]) }));
+  await page.route('**/rest/v1/plays**', (r) => {
+    if (r.request().method() === 'HEAD') {
+      return r.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      { id: 'play-a', name: 'Trips Right Zip Motion Y Corner', type: 'offense', thumbnail: null, is_public: true, upvotes: 5, user_id: userJson.id, metadata: { formation: 'Trips', gameType: '7v7' } },
+    ]) });
+  });
+
+  for (const route of ['/', '/plays', '/plays?tab=community', '/playbooks', '/account', '/community', '/blog']) {
+    await page.goto(route);
+    await page.waitForTimeout(350);
+    const { scrollW, clientW } = await page.evaluate(() => ({
+      scrollW: document.documentElement.scrollWidth,
+      clientW: document.documentElement.clientWidth,
+    }));
+    expect(scrollW, `${route} scrolls horizontally at ${clientW}px`).toBeLessThanOrEqual(clientW + 1);
+  }
 });
 
 test('navigating to a new route scrolls back to the top', async ({ page }) => {

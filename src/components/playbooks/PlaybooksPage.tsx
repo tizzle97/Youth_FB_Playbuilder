@@ -1195,7 +1195,10 @@ export function PlaybooksPage() {
                   : 'Organize and manage your football plays'}
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            {/* Measured 2026-08-12: unwrapped, this cluster was 442px inside a
+                375px viewport and pushed the whole document to 458px, so every
+                page on /playbooks scrolled sideways on a phone. */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               <div className="flex items-center gap-1 border border-chalk/15 rounded-lg p-1">
                 <button
                   onClick={() => setSearchParams({}, { replace: true })}

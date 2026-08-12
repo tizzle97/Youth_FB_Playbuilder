@@ -345,8 +345,10 @@ export function PlaysPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-board-light rounded-xl border border-chalk/10 overflow-hidden">
           <div className="px-6 py-4 border-b border-chalk/10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            {/* flex-wrap throughout: the panel is overflow-hidden, so a row
+                that outgrows it is clipped rather than scrollable. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                 <h1 className="text-2xl font-bold text-chalk flex items-center gap-2">
                   <Book className="h-6 w-6 text-primary" />
                   Plays
@@ -382,9 +384,9 @@ export function PlaysPage() {
             </div>
 
             {tab === 'mine' && (
-            <div className="mt-4 flex items-center gap-2">
-              <Filter className="h-4 w-4 text-chalk/50" />
-              <div className="flex gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Filter className="h-4 w-4 text-chalk/50 shrink-0" />
+              <div className="flex flex-wrap gap-2">
                 {(['all', 'offense', 'defense', 'special_teams'] as const).map((type) => (
                   <button
                     key={type}

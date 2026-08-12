@@ -308,7 +308,7 @@ export function PlayLibrary() {
                   {play.author?.username ? `by ${play.author.username}` : ''}
                   {gameFormatLabel(play) ? ` · ${gameFormatLabel(play)}` : ''}
                 </p>
-                <div className="mt-auto flex items-center justify-between gap-2">
+                <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
                   <PlayVoteButton
                     playId={play.id}
                     upvotes={play.upvotes ?? 0}
