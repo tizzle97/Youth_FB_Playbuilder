@@ -55,9 +55,16 @@ type VsState = {
   noteDraft: string;
   noteSaveState: 'idle' | 'saving' | 'saved' | 'error';
   hasNoteForCurrentDefense: boolean;
+  usingCommunityDeck: boolean;
+  isCommunityDefense: boolean;
 };
 
-async function mockBackend(page: Page, defenses: typeof DEFENSES, seededNotes: { defense_play_id: string; note: string }[] = []) {
+async function mockBackend(
+  page: Page,
+  defenses: typeof DEFENSES,
+  seededNotes: { defense_play_id: string; note: string }[] = [],
+  communityDefenses: typeof DEFENSES = [],
+) {
   await page.addInitScript(({ user, storageKey }) => {
     localStorage.setItem(storageKey, JSON.stringify({
       access_token: 'test-access-token', refresh_token: 'test-refresh-token',
@@ -68,11 +75,21 @@ async function mockBackend(page: Page, defenses: typeof DEFENSES, seededNotes: {
   await page.route('**/auth/v1/user**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(USER) }));
 
-  // Both play queries hit /rest/v1/plays — the offense fetch is a .single()
-  // keyed by id, the deck fetch filters type=eq.defense.
+  // Three play queries hit /rest/v1/plays — the offense fetch is a .single()
+  // keyed by id, the coach's own deck filters type=eq.defense+user_id, and
+  // the community fallback deck (B-36 follow-up #2) filters
+  // type=eq.defense+is_public=eq.true. Order matters: check the more specific
+  // is_public filter before the generic type=eq.defense one, since both match it.
   await page.route('**/rest/v1/plays**', (route) => {
     const url = route.request().url();
-    const body = url.includes('type=eq.defense') ? JSON.stringify(defenses) : JSON.stringify(OFFENSE);
+    let body: string;
+    if (url.includes('is_public=eq.true')) {
+      body = JSON.stringify(communityDefenses);
+    } else if (url.includes('type=eq.defense')) {
+      body = JSON.stringify(defenses);
+    } else {
+      body = JSON.stringify(OFFENSE);
+    }
     return route.fulfill({ status: 200, contentType: 'application/json', body });
   });
 
@@ -156,7 +173,7 @@ test('?d= restores a specific matchup on reload', async ({ page }) => {
   await expect(page).toHaveURL(/d=def-1/);
 });
 
-test('with no saved defenses, the offense still renders and prompts to create one', async ({ page }) => {
+test('with no saved defenses and none in the community, the offense still renders and prompts to create one', async ({ page }) => {
   await mockBackend(page, []);
   await openVs(page);
 
@@ -164,7 +181,46 @@ test('with no saved defenses, the offense still renders and prompts to create on
   expect(state.deckLength).toBe(0);
   expect(state.offenseIcons.map((i) => i.letter)).toEqual(['Q', 'C', 'X', 'Y', 'Z']);
   expect(state.defenseIcons).toEqual([]);
+  expect(state.usingCommunityDeck).toBe(false);
   await expect(page.getByRole('link', { name: /create a defense/i })).toBeVisible();
+});
+
+test('B-36 (3): falls back to community defenses when the coach has none of their own', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+
+  await mockBackend(page, [], [], DEFENSES);
+  await openVs(page);
+
+  const state = await vsState(page);
+  // Same two well-formed rows as the "own deck" tests survive; the malformed
+  // third is dropped the same way.
+  expect(state.deckLength).toBe(2);
+  expect(state.usingCommunityDeck).toBe(true);
+  expect(state.isCommunityDefense).toBe(true);
+  expect(state.defenseIcons.map((i) => i.letter)).toEqual(['D', 'CB', 'CB', 'S', 'S']);
+  await expect(page.getByText(/showing community defenses/i)).toBeVisible();
+  await expect(page.locator('#vs-defense-label').getByText('Community', { exact: true })).toBeVisible();
+  // The "create your own" empty-state prompt is gone — deck isn't empty.
+  await expect(page.getByRole('link', { name: /create a defense/i })).toHaveCount(0);
+
+  // Cycling still works against the community deck.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#vs-defense-label')).toContainText('Man Blitz');
+  expect((await vsState(page)).isCommunityDefense).toBe(true);
+
+  expect(errors, 'no uncaught page errors').toEqual([]);
+});
+
+test('B-36 (3): the coach\'s own defenses take priority over the community fallback', async ({ page }) => {
+  await mockBackend(page, [DEFENSES[0]], [], DEFENSES);
+  await openVs(page);
+
+  const state = await vsState(page);
+  expect(state.deckLength).toBe(1);
+  expect(state.usingCommunityDeck).toBe(false);
+  expect(state.isCommunityDefense).toBe(false);
+  await expect(page.getByText(/showing community defenses/i)).toHaveCount(0);
 });
 
 test('B-36: per-matchup coaching notes load, edit, save, and stay scoped per defense', async ({ page }) => {

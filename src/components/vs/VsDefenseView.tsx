@@ -30,7 +30,16 @@ type PlayRow = {
   canvas_data: string | null;
 };
 
-type DefenseEntry = { id: string; name: string; description: string | null; gameType?: string; scene: SceneLayer };
+type DefenseEntry = {
+  id: string;
+  name: string;
+  description: string | null;
+  gameType?: string;
+  scene: SceneLayer;
+  /** True when this entry came from the public community deck fallback
+   *  (B-36 follow-up #2) rather than the coach's own saved defenses. */
+  isCommunity?: boolean;
+};
 
 const EMPTY_SCENE: SceneLayer = { paths: [], playerIcons: [], zones: [], textBoxes: [] };
 
@@ -75,6 +84,7 @@ export function VsDefenseView() {
   const [offensePlay, setOffensePlay] = useState<PlayRow | null>(null);
   const [offenseScene, setOffenseScene] = useState<SceneLayer>(EMPTY_SCENE);
   const [defenses, setDefenses] = useState<DefenseEntry[]>([]);
+  const [usingCommunityDeck, setUsingCommunityDeck] = useState(false);
   const [index, setIndex] = useState(0);
   const [showDefense, setShowDefense] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
@@ -115,9 +125,12 @@ export function VsDefenseView() {
         setUserId(user.id);
 
         // The offense may be someone else's public play (RLS allows reading
-        // those), but the defensive deck — and any coaching notes — are
-        // always the signed-in coach's own.
-        const [offenseRes, defenseRes, notesRes] = await Promise.all([
+        // those), and coaching notes are always the signed-in coach's own.
+        // The defensive deck is normally the coach's own too — the community
+        // query below only gets used as a fallback when that's empty (B-36
+        // follow-up #2), fetched up front alongside everything else so
+        // there's no extra round trip in the common case where it goes unused.
+        const [offenseRes, defenseRes, notesRes, communityDefenseRes] = await Promise.all([
           supabase
             .from('plays')
             .select('id, name, type, description, metadata, canvas_data')
@@ -134,10 +147,23 @@ export function VsDefenseView() {
             .select('defense_play_id, note')
             .eq('user_id', user.id)
             .eq('offense_play_id', playId),
+          supabase
+            .from('plays')
+            .select('id, name, description, metadata, canvas_data')
+            .eq('is_public', true)
+            .eq('type', 'defense')
+            .order('upvotes', { ascending: false })
+            .limit(25),
         ]);
         if (cancelled) return;
         if (offenseRes.error) throw offenseRes.error;
         if (defenseRes.error) throw defenseRes.error;
+        // Best-effort like notes below: a coach with their own saved defenses
+        // never needs this query to succeed, so a failure here shouldn't
+        // block the page.
+        if (communityDefenseRes.error) {
+          console.error('Community defense load error:', communityDefenseRes.error);
+        }
         // Notes are a nice-to-have on top of the core view — a failed fetch
         // (e.g. the migration hasn't been run yet) shouldn't block the page.
         if (notesRes.error) {
@@ -158,7 +184,13 @@ export function VsDefenseView() {
         // play is excluded: metadata.gameType is optional and missing on older
         // rows, so filtering on it could silently empty the deck.
         const offFormat = offRow.metadata?.gameType;
-        const deck: DefenseEntry[] = ((defenseRes.data ?? []) as PlayRow[])
+        const sortDeck = (rows: DefenseEntry[]) => rows.sort((a, b) => {
+          const aMatch = offFormat && a.gameType === offFormat ? 0 : 1;
+          const bMatch = offFormat && b.gameType === offFormat ? 0 : 1;
+          return aMatch - bMatch || a.name.localeCompare(b.name);
+        });
+
+        const ownDeck: DefenseEntry[] = sortDeck(((defenseRes.data ?? []) as PlayRow[])
           .map((row): DefenseEntry | null => {
             const scene = parseScene(row.canvas_data);
             if (!scene) return null;
@@ -170,16 +202,38 @@ export function VsDefenseView() {
               scene,
             };
           })
-          .filter((d): d is DefenseEntry => d !== null)
-          .sort((a, b) => {
-            const aMatch = offFormat && a.gameType === offFormat ? 0 : 1;
-            const bMatch = offFormat && b.gameType === offFormat ? 0 : 1;
-            return aMatch - bMatch || a.name.localeCompare(b.name);
-          });
+          .filter((d): d is DefenseEntry => d !== null));
+
+        // Empty state fallback: a coach with no saved defenses of their own
+        // gets the public community deck instead of a dead end pointing only
+        // at the designer.
+        let deck = ownDeck;
+        let usingCommunity = false;
+        if (ownDeck.length === 0) {
+          const communityDeck: DefenseEntry[] = sortDeck(((communityDefenseRes.data ?? []) as PlayRow[])
+            .map((row): DefenseEntry | null => {
+              const scene = parseScene(row.canvas_data);
+              if (!scene) return null;
+              return {
+                id: row.id,
+                name: row.name || 'Untitled Defense',
+                description: row.description,
+                gameType: row.metadata?.gameType,
+                scene,
+                isCommunity: true,
+              };
+            })
+            .filter((d): d is DefenseEntry => d !== null));
+          if (communityDeck.length > 0) {
+            deck = communityDeck;
+            usingCommunity = true;
+          }
+        }
 
         setOffensePlay(offRow);
         setOffenseScene(offScene);
         setDefenses(deck);
+        setUsingCommunityDeck(usingCommunity);
         // Honour ?d= on first load / refresh so a specific matchup is linkable.
         const startAt = deck.findIndex((d) => d.id === defenseParam);
         setIndex(startAt >= 0 ? startAt : 0);
@@ -341,10 +395,15 @@ export function VsDefenseView() {
         noteDraft,
         noteSaveState,
         hasNoteForCurrentDefense: currentDefense ? currentDefense.id in notes : false,
+        usingCommunityDeck,
+        isCommunityDefense: currentDefense?.isCommunity ?? false,
       }),
     };
     return () => { delete (window as any).__PBP_VS_TEST__; };
-  }, [offenseScene, visibleDefenseScene, currentDefense, defenses.length, index, showDefense, notesOpen, noteDraft, noteSaveState, notes]);
+  }, [
+    offenseScene, visibleDefenseScene, currentDefense, defenses.length, index, showDefense,
+    notesOpen, noteDraft, noteSaveState, notes, usingCommunityDeck,
+  ]);
 
   const ariaLabel = useMemo(() => {
     const off = offensePlay?.name ?? 'Play';
@@ -493,7 +552,14 @@ export function VsDefenseView() {
             </Link>
           </div>
         ) : (
-          <div className="flex items-center gap-2 sm:gap-3 max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto">
+            {usingCommunityDeck && (
+              <div className="mb-2 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-center text-xs text-chalk/60 bg-board rounded-lg px-3 py-1.5 border border-chalk/10">
+                <span>You haven&apos;t saved any defenses yet — showing community defenses instead.</span>
+                <Link to="/designer" className="text-primary hover:underline shrink-0">Create your own</Link>
+              </div>
+            )}
+            <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => step(-1)}
               disabled={defenses.length < 2}
@@ -509,6 +575,11 @@ export function VsDefenseView() {
                   the coach cycles, since the canvas itself can't. */}
               <div id="vs-defense-label" aria-live="polite" className="truncate">
                 <span className="text-chalk font-medium">{currentDefense?.name}</span>
+                {currentDefense?.isCommunity && (
+                  <span className="ml-2 text-xs text-primary border border-primary/40 rounded px-1.5 py-0.5">
+                    Community
+                  </span>
+                )}
                 {currentDefense?.gameType && (
                   <span className="ml-2 text-xs text-chalk/50 border border-chalk/20 rounded px-1.5 py-0.5">
                     {currentDefense.gameType}
@@ -546,6 +617,7 @@ export function VsDefenseView() {
             >
               <ChevronRight className="h-5 w-5" />
             </button>
+            </div>
           </div>
         )}
       </footer>

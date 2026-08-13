@@ -167,13 +167,10 @@ offense roster inherits.
 
 ### B-36 · "Vs. Defense" follow-ups
 The read-only `/vs?play=<id>` view ships offense+defense overlay, defense
-cycling, per-matchup notes, and (as of the item below) export. Still
-deferred, in rough priority order:
+cycling, per-matchup notes, export, and (as of the item below) a community
+deck fallback. Still deferred:
 1. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
    read. Blocked on there being no "correct read" data on a play at all.
-2. **Community defenses in the deck** — currently the deck is the coach's own
-   defensive plays only, so a coach with none gets an empty state pointing at
-   the designer. Offering public defenses would seed it.
 
 ### B-37 · Consolidate the four duplicate play-card implementations
 Surfaced while fixing the My Plays card overflow (PR for that is card-only by
@@ -316,6 +313,42 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-13 · B-36 (3): Community defenses in the `/vs` deck** — a coach
+  with no saved defensive plays used to hit a dead end on `/vs?play=<id>`: an
+  empty state pointing only at the designer. The deck now falls back to
+  public community defensive plays (`plays` where `is_public=true` and
+  `type='defense'`, ordered by upvotes, capped at 25) whenever the coach's
+  own deck is empty — fetched up front in the same `Promise.all` as the
+  other page queries (best-effort: a failed fetch just leaves the existing
+  empty state, same treatment as the matchup-notes query) so there's no
+  extra round trip in the common case where a coach already has their own
+  defenses and the fallback goes unused. Community entries are tagged
+  `isCommunity` and get a small "Community" badge next to the defense name,
+  plus a banner above the deck controls pointing back at the designer to
+  create a real one. Coaching notes work unchanged against a community
+  defense — `matchup_notes` was already keyed by `(user_id, offense_play_id,
+  defense_play_id)` rather than ownership, the same reasoning that already
+  lets it work against someone else's public offense. **Note:** with zero
+  public defensive plays live in production today (B-31's defensive content
+  is still a private draft awaiting Jeremy's publish review), this fallback
+  is currently a no-op in prod — it activates automatically once any
+  defensive play gets published, no further change needed.
+  **Verification:** `npx tsc --noEmit` clean; `npx eslint` on touched files
+  shows only the two pre-existing `no-explicit-any` warnings on the unrelated
+  test-bridge lines (no new errors); `npm run build` succeeds. 2 new smoke
+  tests in `tests/smoke/vs-defense.spec.ts` cover the fallback itself
+  (community deck loads, is labeled, cycles correctly, malformed rows are
+  still dropped) and that a coach's own defenses take priority over the
+  community deck when they have any. Full Playwright smoke suite (139
+  tests, including the 2 new ones) run against a throwaway placeholder
+  `.env` and the container's pre-installed Chromium binary via
+  `PBP_CHROMIUM_PATH` (same recurring environment mismatch noted in prior
+  entries; neither is part of this commit): 138/139 passed — the one
+  failure, `mobile.spec.ts` "no page scrolls sideways at phone width", is a
+  30s navigation timeout on `/plays?tab=community` confirmed unrelated:
+  reproduces identically with this change's commits stashed out, against
+  unmodified `main`.
 
 - **2026-08-12 · B-36 (2): Export the matchup** — a coach can now export
   what's on `/vs?play=<id>` instead of only viewing it: a new "Export"
