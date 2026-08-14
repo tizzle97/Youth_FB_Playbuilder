@@ -23,7 +23,7 @@ export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
         <button
           key={range.value}
           onClick={() => onChange(range.value)}
-          className={`px-3 py-1 rounded-md text-sm transition-colors ${
+          className={`tap-target px-3 py-1 rounded-md text-sm transition-colors ${
             value === range.value
               ? 'bg-primary text-white'
               : 'text-chalk/70 hover:text-chalk hover:bg-board-light'

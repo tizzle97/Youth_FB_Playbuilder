@@ -181,7 +181,15 @@ export function DesignerToolbar({
     }
   };
 
-  const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
+  // tap-target only in the horizontal (mobile bottom bar) orientation. The
+  // vertical sidebar is desktop-only and already comfortable, and the rule is
+  // coarse-pointer-gated anyway — but scoping it here keeps the sidebar's
+  // compact rhythm even on a touchscreen laptop.
+  //
+  // Safe for the canvas: it's width-bound on a phone (min(maxW, maxH * ratio)
+  // in PlayDesigner), with ~215px of vertical slack before the height term
+  // starts binding, so a taller bar costs no drawing area.
+  const btnBase = `flex items-center rounded-lg transition-colors shrink-0${vertical ? '' : ' tap-target'}`;
   const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
   const active = 'bg-primary/20 text-primary';
   // Tool buttons: full-width labeled rows in the sidebar, compact chips in the bar
@@ -411,7 +419,7 @@ export function DesignerToolbar({
               key={t}
               disabled={playTypeLocked}
               onClick={() => onSetPlayType(t)}
-              className={`px-1.5 py-1 text-[11px] font-medium capitalize transition-colors ${vertical ? 'flex-1' : ''} ${
+              className={`${vertical ? 'flex-1' : 'tap-target'} px-1.5 py-1 text-[11px] font-medium capitalize transition-colors ${
                 playType === t ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
               } ${playTypeLocked ? 'cursor-not-allowed' : ''}`}
             >

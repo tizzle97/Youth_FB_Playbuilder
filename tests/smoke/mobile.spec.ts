@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { readFileSync } from 'fs';
 
 // supabase-js reads its session from localStorage under a key derived from
@@ -203,4 +203,89 @@ test('navigating to a new route scrolls back to the top', async ({ page }) => {
   await page.locator('#mobile-menu').getByRole('link', { name: 'Blog' }).click();
 
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+
+/* ── Touch-target floor (B-51) ─────────────────────────────────────────────
+   Fitts' Law: a fingertip needs ~44px. This walks the app's main surfaces
+   under touch emulation and fails on ANY interactive control smaller than
+   that, rather than spot-checking a hand-written list — the list I worked
+   from was three days stale and had already drifted through two refactors.
+   The `.tap-target` utility is coarse-pointer-gated, so none of this changes
+   desktop density. */
+const TT_USER = {
+  id: '88888888-8888-8888-8888-888888888888',
+  aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+  app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+};
+
+const TT_PLAYS = [
+  { id: 'p1', name: 'Trips Right', type: 'offense', thumbnail: null, is_public: true, upvotes: 5, user_id: TT_USER.id, description: 'x', created_at: '2025-09-01T00:00:00Z', metadata: { formation: 'Trips', gameType: '7v7' } },
+  { id: 'p2', name: 'Cover 3', type: 'defense', thumbnail: null, is_public: false, upvotes: 0, user_id: TT_USER.id, description: '', created_at: '2025-09-02T00:00:00Z', metadata: {} },
+];
+
+async function seedForTapTargets(page: Page) {
+  await page.addInitScript(({ user, storageKey }: any) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 't', refresh_token: 'r',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: TT_USER, storageKey: AUTH_STORAGE_KEY });
+  const j = (b: any) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+  await page.route('**/auth/v1/user**', (r) => r.fulfill(j(TT_USER)));
+  await page.route('**/rest/v1/admin_users**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (r) => r.fulfill(j({ plan: 'founding' })));
+  await page.route('**/rest/v1/user_preferences**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/play_votes**', (r) => r.fulfill(j([])));
+  await page.route('**/rest/v1/posts**', (r) => r.fulfill(j([
+    { id: 'post-1', user_id: TT_USER.id, title: 'Best 5v5 blitz?', content: 'What do you run', upvotes: 3, downvotes: 0, created_at: '2025-09-01T00:00:00Z', updated_at: '2025-09-01T00:00:00Z' },
+  ])));
+  await page.route('**/rest/v1/comments**', (r) => r.fulfill(j([])));
+  await page.route('**/rest/v1/votes**', (r) => r.fulfill(j([])));
+  await page.route('**/rest/v1/user_reputation**', (r) => r.fulfill(j([])));
+  await page.route('**/rest/v1/playbooks**', (r) => r.fulfill(j([
+    { id: 'pb-1', name: 'Game Plan', description: '', created_at: '2025-09-01T00:00:00Z', user_id: TT_USER.id, playbook_plays: [{ count: 2 }] },
+  ])));
+  await page.route('**/rest/v1/playbook_plays**', (r) => r.fulfill(j(
+    TT_PLAYS.map((p, i) => ({ id: `pp-${i}`, play_id: p.id, order_position: (i + 1) * 10, plays: p })),
+  )));
+  await page.route('**/rest/v1/plays**', (r) => {
+    if (r.request().method() === 'HEAD') {
+      return r.fulfill({ status: 200, headers: { 'content-range': `*/${TT_PLAYS.length}`, 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    return r.fulfill(j(TT_PLAYS));
+  });
+  await page.route('**/rest/v1/rpc/**', (r) => r.fulfill(j([])));
+}
+
+
+const TT_ROUTES = ['/', '/plays', '/plays?tab=community', '/playbooks', '/community', '/account', '/designer'];
+
+test('every interactive control clears 44px under touch', async ({ page }) => {
+  await seedForTapTargets(page);
+
+  const undersized: string[] = [];
+  for (const route of TT_ROUTES) {
+    await page.goto(route);
+    // The designer mounts its canvas and toolbars asynchronously.
+    await page.waitForTimeout(route === '/designer' ? 1200 : 700);
+
+    const found = await page.evaluate(() => {
+      const out: string[] = [];
+      document.querySelectorAll('button, a[title], [role="button"]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return;      // not rendered
+        if (r.width >= 44 && r.height >= 44) return;
+        const cs = getComputedStyle(el);
+        if (cs.visibility === 'hidden' || cs.display === 'none') return;
+        const label = el.getAttribute('title') || el.getAttribute('aria-label') ||
+          (el.textContent || '').trim().slice(0, 30) || el.className.toString().slice(0, 50);
+        out.push(`${Math.round(r.width)}x${Math.round(r.height)} "${label}"`);
+      });
+      return [...new Set(out)];
+    });
+    undersized.push(...found.map((f) => `${route}  ${f}`));
+  }
+
+  expect(undersized).toEqual([]);
 });

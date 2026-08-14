@@ -117,14 +117,14 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
               <div className="flex flex-col items-center gap-1">
                 <button
                   onClick={() => handleVote(post.id, true)}
-                  className="p-1 text-chalk/70 hover:text-primary transition-colors"
+                  className="tap-target flex items-center justify-center p-1 text-chalk/70 hover:text-primary transition-colors"
                 >
                   <ArrowUp className="h-6 w-6" />
                 </button>
                 <span className="text-chalk font-bold">{post.upvotes - post.downvotes}</span>
                 <button
                   onClick={() => handleVote(post.id, false)}
-                  className="p-1 text-chalk/70 hover:text-primary transition-colors"
+                  className="tap-target flex items-center justify-center p-1 text-chalk/70 hover:text-primary transition-colors"
                 >
                   <ArrowDown className="h-6 w-6" />
                 </button>
@@ -159,14 +159,14 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
                       <button
                         onClick={() => setEditingPost({ id: post.id, title: post.title, content: post.content })}
                         title="Edit Post"
-                        className="p-1.5 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10 transition-colors"
+                        className="tap-target flex items-center justify-center p-1.5 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(post.id)}
                         title="Delete Post"
-                        className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                        className="tap-target flex items-center justify-center p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -188,7 +188,7 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => setExpandedPostId((cur) => (cur === post.id ? null : post.id))}
-                    className="flex items-center gap-2 text-chalk/70 hover:text-chalk transition-colors"
+                    className="tap-target flex items-center gap-2 text-chalk/70 hover:text-chalk transition-colors"
                   >
                     <MessageSquare className="h-5 w-5" />
                     <span>{post.comment_count || 0} Comments</span>

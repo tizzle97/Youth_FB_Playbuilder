@@ -14,7 +14,7 @@ import { UsageWarningBanner } from '../UsageWarningBanner';
 // Every action in a card footer is the same square pill, so the row's width is
 // predictable and can't outgrow the card the way the old labelled+icon mix did.
 const CARD_ACTION =
-  'flex items-center justify-center h-9 w-9 rounded-lg border border-chalk/10 bg-board hover:bg-board-light text-chalk/70 hover:text-chalk transition-colors';
+  'tap-target flex items-center justify-center h-9 w-9 rounded-lg border border-chalk/10 bg-board hover:bg-board-light text-chalk/70 hover:text-chalk transition-colors';
 
 interface Play {
   id: string;
@@ -188,7 +188,7 @@ export function PlaysPage() {
                 <div className="flex items-center gap-1 border border-chalk/15 rounded-lg p-1">
                   <button
                     onClick={() => setSearchParams({}, { replace: true })}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    className={`tap-target px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                       tab === 'mine' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
                     }`}
                   >
@@ -196,7 +196,7 @@ export function PlaysPage() {
                   </button>
                   <button
                     onClick={() => setSearchParams({ tab: 'community' }, { replace: true })}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    className={`tap-target px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                       tab === 'community' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
                     }`}
                   >
@@ -223,7 +223,7 @@ export function PlaysPage() {
                   <button
                     key={type}
                     onClick={() => setFilter(type)}
-                    className={`px-3 py-1 text-sm rounded-md capitalize ${
+                    className={`tap-target px-3 py-1 text-sm rounded-md capitalize ${
                       filter === type
                         ? 'bg-primary text-white'
                         : 'text-chalk/70 hover:text-chalk hover:bg-board'

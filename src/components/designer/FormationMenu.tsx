@@ -133,7 +133,7 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
         onClick={() => setOpen((o) => !o)}
         title="Formation templates"
         className={`${btnBase} text-xs font-medium ${
-          fullWidth ? 'w-full justify-start gap-2 px-2.5 py-2' : 'justify-center px-2.5 py-2 gap-1.5'
+          fullWidth ? 'w-full justify-start gap-2 px-2.5 py-2' : 'tap-target justify-center px-2.5 py-2 gap-1.5'
         } ${open ? active : inactive}`}
       >
         <Layout className="h-4 w-4" />

@@ -482,7 +482,7 @@ export function PlayDesigner() {
         {/* Home */}
         <button
           onClick={() => navigate('/')}
-          className="p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
+          className="tap-target flex items-center justify-center p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
           title="Back to Home"
         >
           <Home className="h-5 w-5" />
@@ -516,14 +516,14 @@ export function PlayDesigner() {
             onClick={() => setShowSaveModal(true)}
             disabled={!user}
             title={user ? 'Save play' : 'Sign in to save'}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save className="h-4 w-4" />
             <span className="hidden sm:inline">{isEditingExistingPlay ? 'Update' : 'Save'}</span>
           </button>
           <button
             onClick={() => setShowExportModal(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
+            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Export</span>
@@ -620,14 +620,14 @@ export function PlayDesigner() {
             title="Zoom out"
             disabled={zoomOutTarget === null}
             onClick={() => zoomOutTarget !== null && setZoom(zoomOutTarget)}
-            className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ZoomOut className="h-4 w-4" />
           </button>
           <button
             title="Reset zoom"
             onClick={() => setZoom(1)}
-            className="min-w-[44px] text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
+            className="tap-target flex items-center justify-center min-w-[44px] text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -635,7 +635,7 @@ export function PlayDesigner() {
             title="Zoom in"
             disabled={zoomInTarget === null}
             onClick={() => zoomInTarget !== null && setZoom(zoomInTarget)}
-            className="p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ZoomIn className="h-4 w-4" />
           </button>

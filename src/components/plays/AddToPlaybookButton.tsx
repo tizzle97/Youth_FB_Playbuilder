@@ -73,7 +73,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
   const trigger = compact ? (
     <button
       onClick={toggleOpen}
-      className="flex items-center justify-center h-9 w-9 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
+      className="tap-target flex items-center justify-center h-9 w-9 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
       title="Add to Playbook"
       aria-label="Add to Playbook"
     >
