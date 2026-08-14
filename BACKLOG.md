@@ -178,16 +178,14 @@ choice). There is no shared play card: My Plays (`plays/PlaysPage.tsx`),
 Community (`plays/PlayLibrary.tsx`), and the playbook detail grid *and* list
 views (`playbooks/PlaybooksPage.tsx`) each hand-roll their own, which is why
 they drifted apart on shell, thumbnail aspect ratio, and button styling in the
-first place. Meanwhile `designer/PlayCard.tsx` is a fully-built card component
-with `onEdit`/`onDelete`/`onAddToPlaybook` that **nothing imports**.
-Also unimported and worth deleting in the same pass:
-`designer/AddToPlaybookModal.tsx`, `designer/PlaybookSelectionModal.tsx`, and
-`designer/PlaybookSelector.tsx` (whose only consumer, `CreatePlaybookModal`, is
-reachable from nowhere else).
+first place.
 ⚠ Not a mechanical extraction: the Community filter smoke test asserts
 `.grid > div.bg-board-light` structurally, so it must be re-pointed at a
-`data-testid` in the same change. Multi-PR; do the dead-code deletion first as
-its own low-risk PR.
+`data-testid` in the same change. The dead-code deletion half of this item
+(unimported `designer/PlayCard.tsx`, `AddToPlaybookModal.tsx`,
+`PlaybookSelectionModal.tsx`, `PlaybookSelector.tsx`, `CreatePlaybookModal.tsx`)
+is done (see Done below) — what's left is the actual shared-component
+extraction and re-pointing the four call sites at it.
 
 ### B-50 · ~~/vs matchup notes leak between defenses~~ — RESOLVED, was a flaky test
 Filed 2026-08-12 as a data-loss bug. **That diagnosis was wrong**, and the
@@ -313,6 +311,25 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-14 · B-37 (1): Delete dead play-card code** — the low-risk first
+  half of B-37: removed five files confirmed unimported anywhere in the repo
+  (checked by grepping every `.tsx`/`.ts` file for import statements, not just
+  usages of the name) — `designer/PlayCard.tsx` (a fully-built card component
+  with `onEdit`/`onDelete`/`onAddToPlaybook` that nothing ever wired up),
+  `designer/AddToPlaybookModal.tsx`, `designer/PlaybookSelectionModal.tsx`,
+  `designer/PlaybookSelector.tsx`, and `designer/CreatePlaybookModal.tsx`
+  (only reachable through the two Playbook*Modal/Selector files being deleted
+  alongside it, so it goes too). No behavior change — the remaining scope
+  (extracting one shared play-card component and re-pointing the four
+  hand-rolled implementations at it, including re-pointing the Community
+  filter smoke test off its current structural `.grid > div.bg-board-light`
+  selector) is unstarted and stays in Up next under B-37.
+  **Verification:** `npx tsc --noEmit` clean; `npm run build` succeeds. Full
+  Playwright smoke suite run against a throwaway placeholder `.env` and the
+  container's pre-installed Chromium binary via `PBP_CHROMIUM_PATH` (same
+  recurring environment mismatch noted in prior entries; neither is part of
+  this commit) — see PR description for the pass count.
 
 - **2026-08-13 · B-36 (3): Community defenses in the `/vs` deck** — a coach
   with no saved defensive plays used to hit a dead end on `/vs?play=<id>`: an
