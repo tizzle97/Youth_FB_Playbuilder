@@ -2111,7 +2111,11 @@ test('Community Play Library: type/game-format/formation filters compose correct
   );
 
   await page.goto('/plays?tab=community');
-  const cards = page.locator('.grid > div.bg-board-light');
+  // Counted by testid, not by shell classes. This used to be
+  // `.grid > div.bg-board-light`, which coupled a filter test to the card's
+  // background colour and grid nesting — restyle the card and this fails for
+  // a reason that has nothing to do with filtering.
+  const cards = page.getByTestId('play-card');
   await expect(cards).toHaveCount(5);
 
   // Type filter alone
