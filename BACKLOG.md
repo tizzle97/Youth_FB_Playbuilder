@@ -178,20 +178,6 @@ Fixed by polling the bridge instead of snapshotting it.
 React's render queue whenever the value it reports is set from an effect.
 Poll it, or assert against the DOM.
 
-### B-51 · Touch-target sweep (`.tap-target`)
-*(Was filed as a second B-38 on 2026-08-12, colliding with the feedback-filed
-item of that number above. Renumbered 2026-08-14 — the feedback routine's
-entry keeps B-38, since its PR references it.)*
-PR #67 added a `.tap-target` utility gated on `@media (pointer: coarse)`, so
-raising a hit area costs nothing on desktop, and applied it to the
-destructive/primary controls under ~28px. ~25 controls remain at 26-36px:
-designer toolbar chips (`DesignerToolbar.tsx:191` `min-w-[36px]`), the zoom
-pill (`PlayDesigner.tsx:623/630/638`, 28px), filter pills
-(`PlaysPage.tsx:392`, `PlayLibrary.tsx:198/215`), vote arrows
-(`PostList.tsx:118`), `PlaysPage`'s `CARD_ACTION` (36px), admin buttons,
-`PlaybooksPage.tsx:1722`'s 28px drag grip (the only reorder affordance).
-Reference: 44pt iOS / 48dp Android.
-
 ### B-40 · Designer touch tuning
 Icon tap targets are 34-37px and route lines 28px, both below the 44px floor,
 and worst exactly where it matters most: at 11v11 on a 375px canvas the icons
@@ -270,6 +256,29 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-14 · B-51: Touch-target sweep** — every interactive control on the
+  app's main surfaces now clears 44px under a finger. Rather than working the
+  hand-written list in the old entry (three days old and already stale through
+  two refactors), I measured: a probe walked `/`, `/plays`, `/plays?tab=community`,
+  `/playbooks`, `/community`, `/account` and `/designer` under touch emulation
+  and reported every control under 44px. **~75 found, now 0.**
+  Applied via the existing `.tap-target` utility from PR #67, mostly at shared
+  class constants rather than per-element, so ~40 controls were covered by ~20
+  edits: `PlaysPage`'s `CARD_ACTION`, filter and tab pills, `PlayVoteButton`,
+  `AddToPlaybookButton`'s compact trigger, `DesignerToolbar`'s `btnBase`,
+  `PlayDesigner`'s zoom pill and header, `RouteColorButton`, `FormationMenu`,
+  `PlayerToolbar`, `TimeRangeSelector`, `PostList`, `CreatePostButton`,
+  `PlaybooksPage`'s view toggles, `AccountSettings`' delete button.
+  ⚠ **Desktop is provably untouched** — the rule is `@media (pointer: coarse)`
+  gated, and a before/after diff of **63 control sizes** at 1280px with no
+  `hasTouch` shows zero changes.
+  The designer bar grows ~12px, which costs no canvas: the canvas is
+  width-bound on a phone (`min(maxW, maxH * ratio)`), with ~215px of vertical
+  slack before the height term binds. Confirmed by screenshot.
+  Guard added: `mobile.spec.ts` now fails on ANY control under 44px across
+  those seven routes, so this can't silently regress the way the original list
+  went stale.
 
 - **2026-08-14 · B-38 [from feedback]: default roster colors Q/X/Z read too
   similar** — the first backlog item filed by the feedback triage routine to be

@@ -67,7 +67,7 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
         onClick={() => setOpen((o) => !o)}
         title="Route color: Auto (match player) or a fixed color for every new route"
         className={`${btnBase} text-xs font-medium ${
-          fullWidth ? 'w-full justify-start gap-2 px-2.5 py-2' : 'justify-center px-2.5 py-2 gap-1.5'
+          fullWidth ? 'w-full justify-start gap-2 px-2.5 py-2' : 'tap-target justify-center px-2.5 py-2 gap-1.5'
         } ${open ? active : inactive}`}
       >
         {isAuto ? (

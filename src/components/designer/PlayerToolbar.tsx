@@ -188,7 +188,7 @@ export function PlayerToolbar({
             onClick={() => { setEditMode((v) => !v); setEditingChipId(null); }}
             title={editMode ? 'Done editing players' : 'Edit your players'}
             aria-pressed={editMode}
-            className={`p-2 rounded-md transition-colors ${
+            className={`tap-target flex items-center justify-center p-2 rounded-md transition-colors ${
               editMode ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk hover:bg-board-light'
             }`}
           >

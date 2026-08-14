@@ -1203,7 +1203,7 @@ export function PlaybooksPage() {
               <div className="flex items-center gap-1 border border-chalk/15 rounded-lg p-1">
                 <button
                   onClick={() => setSearchParams({}, { replace: true })}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  className={`tap-target px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     tab === 'mine' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
                   }`}
                 >
@@ -1211,7 +1211,7 @@ export function PlaybooksPage() {
                 </button>
                 <button
                   onClick={() => setSearchParams({ tab: 'packs' }, { replace: true })}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  className={`tap-target px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     tab === 'packs' ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
                   }`}
                 >
@@ -1222,14 +1222,14 @@ export function PlaybooksPage() {
                 <>
                   <button
                     onClick={handleNewPlay}
-                    className="flex items-center gap-2 px-4 py-2 bg-board-light hover:bg-board text-chalk border border-chalk/20 rounded-lg transition-colors"
+                    className="tap-target flex items-center gap-2 px-4 py-2 bg-board-light hover:bg-board text-chalk border border-chalk/20 rounded-lg transition-colors"
                   >
                     <Edit3 className="h-4 w-4" />
                     New Play
                   </button>
                   <button
                     onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
+                    className="tap-target flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
                   >
                     <Plus className="h-4 w-4" />
                     New Playbook
@@ -1257,13 +1257,13 @@ export function PlaybooksPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setViewMode('grid')}
-                    className={`p-2 rounded ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-chalk/70 hover:text-chalk'}`}
+                    className={`tap-target flex items-center justify-center p-2 rounded ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-chalk/70 hover:text-chalk'}`}
                   >
                     <Grid className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setViewMode('list')}
-                    className={`p-2 rounded ${viewMode === 'list' ? 'bg-primary text-white' : 'text-chalk/70 hover:text-chalk'}`}
+                    className={`tap-target flex items-center justify-center p-2 rounded ${viewMode === 'list' ? 'bg-primary text-white' : 'text-chalk/70 hover:text-chalk'}`}
                   >
                     <List className="h-4 w-4" />
                   </button>
@@ -1334,7 +1334,7 @@ export function PlaybooksPage() {
                             e.stopPropagation();
                             deletePlaybook(playbook);
                           }}
-                          className="shrink-0 p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                          className="tap-target shrink-0 flex items-center justify-center p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
                           title="Delete playbook"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1368,7 +1368,7 @@ export function PlaybooksPage() {
                             onClick={() => setPlaysLayout('grid')}
                             title="Grid view"
                             aria-pressed={playsLayout === 'grid'}
-                            className={`p-1.5 rounded-md transition-colors ${
+                            className={`tap-target flex items-center justify-center p-1.5 rounded-md transition-colors ${
                               playsLayout === 'grid' ? 'bg-primary/20 text-primary' : 'text-chalk/50 hover:text-chalk'
                             }`}
                           >
@@ -1378,7 +1378,7 @@ export function PlaybooksPage() {
                             onClick={() => setPlaysLayout('list')}
                             title="List view — drag to reorder"
                             aria-pressed={playsLayout === 'list'}
-                            className={`p-1.5 rounded-md transition-colors ${
+                            className={`tap-target flex items-center justify-center p-1.5 rounded-md transition-colors ${
                               playsLayout === 'list' ? 'bg-primary/20 text-primary' : 'text-chalk/50 hover:text-chalk'
                             }`}
                           >
@@ -1749,7 +1749,7 @@ function SortablePlayRow({
       <button
         onClick={() => onRemove(play)}
         title="Remove from this playbook"
-        className="shrink-0 p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+        className="tap-target shrink-0 flex items-center justify-center p-2 text-chalk/40 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
       >
         <Trash2 className="h-4 w-4" />
       </button>

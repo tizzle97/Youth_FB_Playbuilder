@@ -196,7 +196,7 @@ export function PlayLibrary() {
               <button
                 key={type}
                 onClick={() => setTypeFilter(type)}
-                className={`px-3 py-1 text-sm rounded-md capitalize transition-colors ${
+                className={`tap-target px-3 py-1 text-sm rounded-md capitalize transition-colors ${
                   typeFilter === type
                     ? 'bg-primary text-white'
                     : 'bg-board text-chalk/70 hover:text-chalk border border-chalk/10'
@@ -213,7 +213,7 @@ export function PlayLibrary() {
             <button
               key={gt}
               onClick={() => setGameTypeFilter(gt)}
-              className={`px-3 py-1 text-sm rounded-md capitalize transition-colors ${
+              className={`tap-target px-3 py-1 text-sm rounded-md capitalize transition-colors ${
                 gameTypeFilter === gt
                   ? 'bg-primary text-white'
                   : 'bg-board text-chalk/70 hover:text-chalk border border-chalk/10'
@@ -297,7 +297,7 @@ export function PlayLibrary() {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => handleUseAsTemplate(play)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-chalk/70 hover:text-chalk bg-board-light hover:bg-board border border-chalk/10 rounded-lg transition-colors"
+                      className="tap-target flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-chalk/70 hover:text-chalk bg-board-light hover:bg-board border border-chalk/10 rounded-lg transition-colors"
                       title={user ? 'Open in the Designer to edit and save as a new play' : 'Sign in to use this play as a template'}
                     >
                       <Wand2 className="h-4 w-4" />
@@ -305,7 +305,7 @@ export function PlayLibrary() {
                     {copiedIds.has(play.id) ? (
                       <button
                         onClick={() => navigate('/plays')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-lg"
+                        className="tap-target flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-lg"
                         title="View in My Plays"
                       >
                         <Check className="h-4 w-4" />
@@ -315,7 +315,7 @@ export function PlayLibrary() {
                       <button
                         onClick={() => handleCopy(play)}
                         disabled={copyingId === play.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors disabled:opacity-50"
+                        className="tap-target flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors disabled:opacity-50"
                         title={user ? 'Copy this play into My Plays' : 'Sign in to copy this play'}
                       >
                         <Copy className="h-4 w-4" />

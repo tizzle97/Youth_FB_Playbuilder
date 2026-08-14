@@ -56,7 +56,7 @@ export function PlayVoteButton({ playId, upvotes, voted, userId, onError }: Play
       onClick={toggle}
       disabled={!userId || busy}
       title={!userId ? 'Sign in to vote' : hasVoted ? 'Remove your upvote' : 'Upvote this play'}
-      className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+      className={`tap-target flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
         hasVoted
           ? 'bg-primary/10 text-primary'
           : 'bg-board text-chalk/70 hover:text-chalk hover:bg-board-light'

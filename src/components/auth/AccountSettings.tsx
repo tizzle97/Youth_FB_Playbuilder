@@ -763,7 +763,7 @@ export default function AccountSettings() {
                         <button
                           type="button"
                           onClick={() => setShowDeleteConfirm(true)}
-                          className="inline-flex items-center px-3 py-2 border border-red-500 text-sm leading-4 font-medium rounded-md text-red-500 hover:bg-red-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                          className="tap-target inline-flex items-center px-3 py-2 border border-red-500 text-sm leading-4 font-medium rounded-md text-red-500 hover:bg-red-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Account
