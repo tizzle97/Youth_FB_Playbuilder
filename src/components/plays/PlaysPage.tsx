@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { AddToPlaybookButton } from './AddToPlaybookButton'; // Adjust path as needed
 import { PlayVoteButton } from './PlayVoteButton';
+import { PlayCard, PlayCardTitle } from './PlayCard';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { PlayLibrary } from './PlayLibrary';
@@ -14,9 +15,6 @@ import { UsageWarningBanner } from '../UsageWarningBanner';
 // predictable and can't outgrow the card the way the old labelled+icon mix did.
 const CARD_ACTION =
   'flex items-center justify-center h-9 w-9 rounded-lg border border-chalk/10 bg-board hover:bg-board-light text-chalk/70 hover:text-chalk transition-colors';
-
-const THUMBNAIL_FRAME =
-  'block aspect-video bg-board rounded-t-lg overflow-hidden border-b border-chalk/10';
 
 interface Play {
   id: string;
@@ -33,172 +31,6 @@ interface Play {
     username: string;
     avatar_url?: string;
   };
-}
-
-// Fallback thumbnail generator - only used if no stored thumbnail exists
-function generateFallbackThumbnail(play: Play) {
-  try {
-    const canvasData = JSON.parse(play.canvas_data);
-    const tempCanvas = document.createElement('canvas');
-    const ctx = tempCanvas.getContext('2d');
-
-    if (!ctx) return null;
-
-    // Set canvas size with 4:3 aspect ratio
-    tempCanvas.width = 400;
-    tempCanvas.height = 300;
-
-    // Draw white background
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Calculate field dimensions
-    const yardSpacing = tempCanvas.height / 30;
-    const losY = 20 * yardSpacing;
-    const leftSidelineX = tempCanvas.width * 0.05;
-    const rightSidelineX = tempCanvas.width * 0.95;
-
-    // Draw field lines
-    ctx.beginPath();
-    ctx.strokeStyle = '#1A1A1A';
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.4;
-
-    // Sidelines
-    ctx.moveTo(leftSidelineX, 0);
-    ctx.lineTo(leftSidelineX, tempCanvas.height);
-    ctx.moveTo(rightSidelineX, 0);
-    ctx.lineTo(rightSidelineX, tempCanvas.height);
-    ctx.stroke();
-
-    // Line of scrimmage
-    ctx.beginPath();
-    ctx.strokeStyle = '#60A5FA';
-    ctx.lineWidth = 3;
-    ctx.globalAlpha = 0.7;
-    ctx.moveTo(leftSidelineX, losY);
-    ctx.lineTo(rightSidelineX, losY);
-    ctx.stroke();
-
-    // Draw yard lines
-    ctx.globalAlpha = 0.3;
-    for (let i = 0; i <= 30; i += 5) {
-      if (i === 20) continue; // Skip LOS
-      const y = i * yardSpacing;
-      ctx.beginPath();
-      ctx.strokeStyle = '#1A1A1A';
-      ctx.lineWidth = 2;
-      ctx.moveTo(leftSidelineX, y);
-      ctx.lineTo(rightSidelineX, y);
-      ctx.stroke();
-    }
-
-    ctx.globalAlpha = 1;
-
-    // Draw paths
-    canvasData.paths?.forEach((path: any) => {
-      const p = new Path2D(path.path);
-      ctx.strokeStyle = path.color;
-      ctx.lineWidth = 3;
-      ctx.stroke(p);
-
-      // Draw arrow if exists
-      if (path.arrowFrom && path.arrowTo) {
-        const { x: fromX, y: fromY } = path.arrowFrom;
-        const { x: toX, y: toY } = path.arrowTo;
-
-        const angle = Math.atan2(toY - fromY, toX - fromX);
-        const size = 15;
-
-        ctx.save();
-        ctx.translate(toX, toY);
-        ctx.rotate(angle);
-
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-size, size/2);
-        ctx.lineTo(-size, -size/2);
-        ctx.closePath();
-
-        ctx.fillStyle = path.color;
-        ctx.fill();
-        ctx.restore();
-      }
-    });
-
-    // Draw player icons
-    canvasData.icons?.forEach((icon: any) => {
-      const size = 24;
-      ctx.fillStyle = icon.color;
-
-      if (icon.isSquare) {
-        ctx.fillRect(icon.x - size/2, icon.y - size/2, size, size);
-      } else {
-        ctx.beginPath();
-        ctx.arc(icon.x, icon.y, size/2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 16px Inter';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(icon.letter, icon.x, icon.y);
-    });
-
-    return tempCanvas.toDataURL();
-  } catch (err) {
-    console.error('Error generating fallback thumbnail:', err);
-    return null;
-  }
-}
-
-function getThumbnailSrc(play: Play) {
-  // First, try to use the stored thumbnail
-  if (play.thumbnail && play.thumbnail.startsWith('data:image/')) {
-    return play.thumbnail;
-  }
-
-  // Fallback to generating thumbnail from canvas data
-  return generateFallbackThumbnail(play);
-}
-
-function ThumbnailImage({ play }: { play: Play }) {
-  const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
-  const [imageError, setImageError] = useState(false);
-
-  useEffect(() => {
-    const src = getThumbnailSrc(play);
-    setThumbnailSrc(src);
-    setImageError(false);
-  }, [play]);
-
-  const handleImageError = () => {
-    setImageError(true);
-    // Try fallback thumbnail if stored thumbnail fails
-    if (play.thumbnail && !imageError) {
-      const fallback = generateFallbackThumbnail(play);
-      setThumbnailSrc(fallback);
-    }
-  };
-
-  if (!thumbnailSrc) {
-    return (
-      <div className="w-full h-full bg-board-light flex items-center justify-center">
-        <div className="text-chalk/30 text-sm">No preview</div>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={thumbnailSrc}
-      alt={play.name}
-      className="w-full h-full object-contain"
-      onError={handleImageError}
-      loading="lazy"
-    />
-  );
 }
 
 export function PlaysPage() {
@@ -464,41 +296,20 @@ export function PlaysPage() {
                 {/* Visible plays */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {visiblePlays.map((play) => (
-                    /* No overflow-hidden on the shell: the add-to-playbook
-                       dropdown is an absolutely-positioned child and would be
-                       clipped by it. The thumbnail clips itself instead. */
-                    <div
+                    // clip={false}: the add-to-playbook dropdown is an
+                    // absolutely-positioned child and overflow-hidden would
+                    // erase it. Signed-out visitors get no edit link — they
+                    // don't own these plays. `from=plays` sends the designer
+                    // back here after an update rather than stranding the coach
+                    // in the designer post-save.
+                    <PlayCard
                       key={play.id}
-                      data-testid="play-card"
-                      className="group relative bg-board-light rounded-lg border border-chalk/10 hover:border-primary/30 transition-colors flex flex-col"
+                      play={play}
+                      clip={false}
+                      href={user ? `/designer?play=${play.id}&from=plays` : undefined}
                     >
-                      {/* Signed-out visitors get the same frame without the
-                          edit link — they don't own these plays. */}
-                      {user ? (
-                        /* from=plays tells the designer to return here after an
-                           update, instead of leaving the coach on the designer
-                           post-save. */
-                        <Link
-                          to={`/designer?play=${play.id}&from=plays`}
-                          className={THUMBNAIL_FRAME}
-                        >
-                          <ThumbnailImage play={play} />
-                        </Link>
-                      ) : (
-                        <div className={THUMBNAIL_FRAME}>
-                          <ThumbnailImage play={play} />
-                        </div>
-                      )}
-
-                      <div className="p-4 flex-1 flex flex-col">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h3 className="min-w-0 truncate font-bold text-chalk group-hover:text-primary transition-colors">
-                            {play.name}
-                          </h3>
-                          <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs capitalize shrink-0">
-                            {play.type.replace('_', ' ')}
-                          </span>
-                        </div>
+                      <>
+                        <PlayCardTitle name={play.name} type={play.type} />
 
                         {!user && play.profiles && (
                           <p className="text-xs text-chalk/40">
@@ -578,8 +389,8 @@ export function PlaysPage() {
                             </div>
                           )}
                         </div>
-                      </div>
-                    </div>
+                      </>
+                    </PlayCard>
                   ))}
                 </div>
 

@@ -4,6 +4,7 @@ import { Copy, Check, Play as PlayIcon, Search, Filter, Wand2 } from 'lucide-rea
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { PlayVoteButton } from './PlayVoteButton';
+import { PlayCard, PlayCardTitle } from './PlayCard';
 import { UpgradePrompt } from '../UpgradePrompt';
 
 type PublicPlay = {
@@ -278,32 +279,9 @@ export function PlayLibrary() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((play) => (
-            <div
-              key={play.id}
-              className="bg-board-light rounded-lg border border-chalk/10 hover:border-primary/30 transition-colors overflow-hidden flex flex-col"
-            >
-              <div className="aspect-video bg-white border-b border-chalk/10">
-                {play.thumbnail ? (
-                  <img
-                    src={play.thumbnail}
-                    alt={play.name}
-                    className="w-full h-full object-contain"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-board/30">
-                    <PlayIcon className="h-8 w-8" />
-                  </div>
-                )}
-              </div>
-              <div className="p-4 flex-1 flex flex-col">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className="font-bold text-chalk">{play.name}</h3>
-                  <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs capitalize shrink-0">
-                    {play.type.replace('_', ' ')}
-                  </span>
-                </div>
+            <PlayCard key={play.id} play={play}>
+              <>
+                <PlayCardTitle name={play.name} type={play.type} />
                 <p className="text-xs text-chalk/50 mb-3">
                   {play.author?.username ? `by ${play.author.username}` : ''}
                   {gameFormatLabel(play) ? ` · ${gameFormatLabel(play)}` : ''}
@@ -346,8 +324,8 @@ export function PlayLibrary() {
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
+              </>
+            </PlayCard>
           ))}
         </div>
       )}

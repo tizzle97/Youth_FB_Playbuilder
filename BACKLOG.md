@@ -172,21 +172,6 @@ deck fallback. Still deferred:
 1. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
    read. Blocked on there being no "correct read" data on a play at all.
 
-### B-37 · Consolidate the four duplicate play-card implementations
-Surfaced while fixing the My Plays card overflow (PR for that is card-only by
-choice). There is no shared play card: My Plays (`plays/PlaysPage.tsx`),
-Community (`plays/PlayLibrary.tsx`), and the playbook detail grid *and* list
-views (`playbooks/PlaybooksPage.tsx`) each hand-roll their own, which is why
-they drifted apart on shell, thumbnail aspect ratio, and button styling in the
-first place.
-⚠ Not a mechanical extraction: the Community filter smoke test asserts
-`.grid > div.bg-board-light` structurally, so it must be re-pointed at a
-`data-testid` in the same change. The dead-code deletion half of this item
-(unimported `designer/PlayCard.tsx`, `AddToPlaybookModal.tsx`,
-`PlaybookSelectionModal.tsx`, `PlaybookSelector.tsx`, `CreatePlaybookModal.tsx`)
-is done (see Done below) — what's left is the actual shared-component
-extraction and re-pointing the four call sites at it.
-
 ### B-50 · ~~/vs matchup notes leak between defenses~~ — RESOLVED, was a flaky test
 Filed 2026-08-12 as a data-loss bug. **That diagnosis was wrong**, and the
 correction is worth keeping: `vs-defense.spec.ts:170` failed ~4 runs in 6, but
@@ -312,6 +297,37 @@ leaves a 279px column on a 375px phone.
 
 ## Done
 
+- **2026-08-14 · B-37 (2): one shared play card** — the second and larger half
+  of B-37. My Plays, the Community library and the playbook detail grid each
+  hand-rolled their own card; they now all render `plays/PlayCard.tsx`, which
+  owns the parts that should never differ (shell, thumbnail frame and its empty
+  state, body padding) and takes everything below the title as children,
+  because the actions genuinely do differ per surface. Net **-222 lines** across
+  the three call sites before counting the new component.
+  The playbook **list** view is deliberately not a consumer: it's a compact
+  drag-to-reorder row, not a card, and routing it through here would mean a
+  variant sharing nothing but a name.
+  Three drifts closed by consolidating, each previously invisible: the playbook
+  grid used `object-cover`, so it **cropped** play diagrams and cut routes off
+  at the frame edge (now `object-contain` like the others); its empty-state icon
+  was `text-chalk/30` on a white ground, i.e. nearly invisible; and its meta row
+  now sits at the card bottom, so cards with and without a description align.
+  ⚠ **Deleted `generateFallbackThumbnail` + `ThumbnailImage` (~166 lines) from
+  PlaysPage** rather than promoting them. They read `canvasData.icons` and
+  `path.path`, but v4 saves `playerIcons` and paths with `points` — so for every
+  modern play the "fallback" drew an **empty field with no players or routes**,
+  at absolute pixel coordinates that don't match the normalized ones stored
+  today. My Plays now shows the same honest play-icon placeholder as everywhere
+  else. Only ever reachable for rows with no stored thumbnail, since the
+  designer always writes one on save.
+  Re-pointed the Community filter smoke test from `.grid > div.bg-board-light`
+  to `getByTestId('play-card')` — it was a filter test coupled to the card's
+  background colour and grid nesting.
+  **Verification:** typecheck and build clean, eslint 0 errors on all touched
+  files, smoke **139/139**, and all three surfaces screenshotted before/after at
+  1280 and 375 to confirm the refactor is visually a no-op apart from the three
+  drifts noted above.
+
 - **2026-08-14 · B-37 (1): Delete dead play-card code** — the low-risk first
   half of B-37: removed five files confirmed unimported anywhere in the repo
   (checked by grepping every `.tsx`/`.ts` file for import statements, not just
@@ -321,10 +337,10 @@ leaves a 279px column on a 375px phone.
   `designer/PlaybookSelector.tsx`, and `designer/CreatePlaybookModal.tsx`
   (only reachable through the two Playbook*Modal/Selector files being deleted
   alongside it, so it goes too). No behavior change — the remaining scope
-  (extracting one shared play-card component and re-pointing the four
-  hand-rolled implementations at it, including re-pointing the Community
-  filter smoke test off its current structural `.grid > div.bg-board-light`
-  selector) is unstarted and stays in Up next under B-37.
+  (extracting one shared play-card component and re-pointing the hand-rolled
+  implementations at it, including re-pointing the Community filter smoke test
+  off its structural `.grid > div.bg-board-light` selector) was done the same
+  day; see B-37 (2) above.
   **Verification:** `npx tsc --noEmit` clean; `npm run build` succeeds. Full
   Playwright smoke suite run against a throwaway placeholder `.env` and the
   container's pre-installed Chromium binary via `PBP_CHROMIUM_PATH` (same

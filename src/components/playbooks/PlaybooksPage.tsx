@@ -29,6 +29,7 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
+import { PlayCard } from '../plays/PlayCard';
 import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
 import { PlaybookPackLibrary } from './PlaybookPackLibrary';
@@ -1499,30 +1500,16 @@ export function PlaybooksPage() {
                   ) : playsLayout === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {playsInPlaybook.map((play) => (
-                        <div
+                        <PlayCard
                           key={play.id}
-                          className="bg-board rounded-lg border border-chalk/10 overflow-hidden hover:border-chalk/20 transition-colors group"
-                        >
-                          {/* Play Thumbnail */}
-                          <div className="aspect-video bg-white border-b border-chalk/10 relative">
-                            {play.thumbnail ? (
-                              <img
-                                src={play.thumbnail}
-                                alt={play.name}
-                                className="w-full h-full object-cover"
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-chalk/30">
-                                <Play className="h-8 w-8" />
-                              </div>
-                            )}
-                            {/* touch-always-visible: on a phone there is no
-                                hover, so without it Edit/Vs/Remove simply do
-                                not exist here — and this grid is the default
-                                layout. See the @media (hover: none) rule in
-                                index.css. */}
+                          play={play}
+                          tone="inPanel"
+                          overlay={
+                            /* touch-always-visible: on a phone there is no
+                               hover, so without it Edit/Vs/Remove simply do
+                               not exist here — and this grid is the default
+                               layout. See the @media (hover: none) rule in
+                               index.css. */
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 touch-always-visible transition-opacity flex items-center justify-center gap-2">
                               <button
                                 onClick={() => handleEditPlay(play.id)}
@@ -1550,24 +1537,21 @@ export function PlaybooksPage() {
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
+                          }
+                        >
+                          <h3 className="font-medium text-chalk mb-1 line-clamp-1">
+                            {play.name}
+                          </h3>
+                          {play.description && (
+                            <p className="text-sm text-chalk/70 line-clamp-2 mb-2">
+                              {play.description}
+                            </p>
+                          )}
+                          <div className="mt-auto flex items-center justify-between text-xs text-chalk/50">
+                            <span className="capitalize">{play.type}</span>
+                            <span>{new Date(play.created_at).toLocaleDateString()}</span>
                           </div>
-
-                          {/* Play Info */}
-                          <div className="p-4">
-                            <h3 className="font-medium text-chalk mb-1 line-clamp-1">
-                              {play.name}
-                            </h3>
-                            {play.description && (
-                              <p className="text-sm text-chalk/70 line-clamp-2 mb-2">
-                                {play.description}
-                              </p>
-                            )}
-                            <div className="flex items-center justify-between text-xs text-chalk/50">
-                              <span className="capitalize">{play.type}</span>
-                              <span>{new Date(play.created_at).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        </div>
+                        </PlayCard>
                       ))}
                     </div>
                   ) : (
