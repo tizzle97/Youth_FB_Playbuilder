@@ -1,6 +1,7 @@
 import { test, expect, Page, CDPSession } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { zoneConnectorVisible } from '../../src/lib/renderPlayScene';
+import { DEFAULT_ROSTERS } from '../../src/components/designer/rosters';
 
 // Mocked-session tests must seed localStorage under the same key the real
 // supabase-js client reads (`sb-<project-ref>-auth-token`, derived from
@@ -3199,6 +3200,73 @@ async function withRoster(page: Page, customRoster: unknown) {
   });
   return () => writes;
 }
+
+/** Hue angle (0-360) of a #rrggbb color. Hue alone is the right measure here:
+ *  these chips are all similar saturation and lightness by construction, so
+ *  what makes two of them hard to tell apart on a field is how close their
+ *  hues are. */
+function hueOf(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return -1; // achromatic (the black center) — no hue to compare
+  const d = max - min;
+  const h =
+    max === r ? ((g - b) / d) % 6 :
+    max === g ? (b - r) / d + 2 :
+                (r - g) / d + 4;
+  return ((h * 60) % 360 + 360) % 360;
+}
+
+/** Shortest distance between two hue angles, accounting for the wrap at 360. */
+const hueGap = (a: number, b: number) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+test('default offense roster colors are far enough apart to tell apart', async () => {
+  // From real user feedback: a coach reported Q, X and Z were indistinguishable
+  // at a glance. They were — blue 217°, indigo 239°, purple 258°, the whole
+  // trio inside a 41° band, with adjacent pairs only 19-22° apart.
+  //
+  // This asserts the property rather than the hex values, so a future palette
+  // change can move any chip it likes and still be caught if it re-crowds the
+  // band.
+  const offense = DEFAULT_ROSTERS.offense
+    .map((c) => ({ letter: c.letter, hue: hueOf(c.color) }))
+    .filter((c) => c.hue >= 0); // drops the black center
+
+  const pairs = offense.flatMap((a, i) =>
+    offense.slice(i + 1).map((b) => ({ pair: `${a.letter}/${b.letter}`, gap: hueGap(a.hue, b.hue) })),
+  );
+
+  // 25° floor for every pair. The tightest today is Y/B at 30° (pink vs red),
+  // which predates the report and reads fine on the field; before this fix the
+  // tightest was Z/X at 19°.
+  const tooClose = pairs.filter((p) => p.gap < 25);
+  expect(tooClose.map((p) => `${p.pair} ${Math.round(p.gap)}°`)).toEqual([]);
+
+  // And the specific trio from the report gets a wider berth.
+  for (const name of ['Q/X', 'Q/Z', 'X/Z']) {
+    const found = pairs.find((p) => p.pair === name)!;
+    expect(Math.round(found.gap), `${name} hue gap`).toBeGreaterThanOrEqual(40);
+  }
+});
+
+test('a stamped formation uses the same receiver colors as the toolbar chips', async ({ page }) => {
+  // formations.ts keeps its own color map, so the two can drift — and a coach
+  // placing the same receiver by stamping vs. tapping a chip getting different
+  // colors is worse than either color alone.
+  await openDesigner(page);
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'Spread' }));
+
+  const icons = (await canvasState(page)).playerIcons;
+  const rosterColors = new Set(DEFAULT_ROSTERS.offense.map((c) => c.color.toUpperCase()));
+  const stamped = [...new Set(icons.map((i) => i.color.toUpperCase()))];
+  const strangers = stamped.filter((c) => !rosterColors.has(c));
+  expect(strangers, 'formation colors not present in the offense roster').toEqual([]);
+});
 
 test('saved roster: a customized chip replaces the built-in one', async ({ page }) => {
   await withRoster(page, {

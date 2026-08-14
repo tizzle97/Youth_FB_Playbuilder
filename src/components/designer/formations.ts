@@ -25,7 +25,13 @@ const LINE_Y = yBehindLOS(0);
 // Colors reuse the app's existing player-icon palette (PlayerToolbar.tsx /
 // PlayerStyleEditor.tsx's SWATCH_COLORS) so stamped icons look like ones a
 // coach placed by hand, not a separate visual language.
-const C = { QB: '#3B82F6', RB: '#10B981', FB: '#F59E0B', WR: '#8B5CF6', TE: '#EC4899', OL: '#000000', SLOT: '#6366F1' };
+// SLOT is lime rather than the indigo it used to be, matching the Z chip in
+// rosters.ts — indigo sat between QB blue and WR purple and was reported as
+// unreadable at a glance. Keep these two files in step: a coach can place the
+// same receiver by stamping a formation or by tapping a chip, and getting a
+// different color depending on which route they took is worse than either
+// color alone.
+const C = { QB: '#3B82F6', RB: '#10B981', FB: '#F59E0B', WR: '#8B5CF6', TE: '#EC4899', OL: '#000000', SLOT: '#84CC16' };
 
 const ol = (x: number, letter: string): PlayerIcon => ({ x, y: LINE_Y, letter, color: C.OL, shape: 'square' });
 const wr = (x: number, letter: string, y = LINE_Y, color = C.WR): PlayerIcon => ({ x, y, letter, color, shape: 'circle' });
