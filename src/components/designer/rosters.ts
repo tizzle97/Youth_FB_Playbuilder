@@ -31,7 +31,14 @@ export const DEFAULT_ROSTERS: Record<PlayType, RosterChip[]> = {
     { id: 'off-c', letter: 'C', color: '#000000', shape: 'square' }, // Black — the center
     { id: 'off-x', letter: 'X', color: '#8B5CF6', shape: 'circle' }, // Purple
     { id: 'off-y', letter: 'Y', color: '#EC4899', shape: 'circle' }, // Pink
-    { id: 'off-z', letter: 'Z', color: '#6366F1', shape: 'circle' }, // Indigo
+    // Lime, not the indigo it used to be: a coach reported Q/X/Z were
+    // indistinguishable at a glance, and they were — blue 217°, indigo 239°,
+    // purple 258°, all inside a 41° band. Lime sits at 82°, in the one wide
+    // gap this palette has (between A's amber at 38° and R's green at 160°),
+    // so it clears every other chip by at least 78°. Changing Z rather than
+    // Q or X keeps the conventional blue QB and leaves X/Y as the pair a
+    // coach is least likely to confuse, since they're rarely adjacent.
+    { id: 'off-z', letter: 'Z', color: '#84CC16', shape: 'circle' }, // Lime
   ],
   // Defensive Line, Linebacker, Cornerback, Safety. "CB" (not "C") since "C"
   // is already the offensive Center above.

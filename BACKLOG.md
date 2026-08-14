@@ -150,21 +150,6 @@ the play in the library (and vice versa via the play description).
 Library grows on autopilot; blog↔library interlinking compounds SEO.
 Requires B-31's generation/thumbnail tooling to exist first.
 
-### B-38 · [from feedback] Default roster colors: Q/X/Z read too similar
-A coach reported the default player-icon colors for Q, X, and Z are too
-close to tell apart at a glance, and asked for a default yellow. Current
-offense defaults in `src/components/designer/rosters.ts`: Q is blue
-(`#3B82F6`), X is purple (`#8B5CF6`), Z is indigo (`#6366F1`) — all three
-sit in the same blue-violet hue band. (A is already yellow, `#F59E0B`, so
-the ask is really "give X or Z a color further from Q's," not "add yellow
-from scratch.") Coaches can already override chip colors themselves via
-the saved-toolbar-rosters feature (2026-08-06), so this is a defaults-only
-polish, not a missing capability — low priority, but a real contrast gap
-for anyone using the stock roster. Fix is a one- or two-line color swap in
-`DEFAULT_ROSTERS`; flagging for a human to pick the replacement hue(s)
-rather than a script guessing, since it's a shared visual token every
-offense roster inherits.
-
 ### B-36 · "Vs. Defense" follow-ups
 The read-only `/vs?play=<id>` view ships offense+defense overlay, defense
 cycling, per-matchup notes, export, and (as of the item below) a community
@@ -193,7 +178,10 @@ Fixed by polling the bridge instead of snapshotting it.
 React's render queue whenever the value it reports is set from an effect.
 Poll it, or assert against the DOM.
 
-### B-38 · Touch-target sweep (`.tap-target`)
+### B-51 · Touch-target sweep (`.tap-target`)
+*(Was filed as a second B-38 on 2026-08-12, colliding with the feedback-filed
+item of that number above. Renumbered 2026-08-14 — the feedback routine's
+entry keeps B-38, since its PR references it.)*
 PR #67 added a `.tap-target` utility gated on `@media (pointer: coarse)`, so
 raising a hit area costs nothing on desktop, and applied it to the
 destructive/primary controls under ~28px. ~25 controls remain at 26-36px:
@@ -203,20 +191,6 @@ pill (`PlayDesigner.tsx:623/630/638`, 28px), filter pills
 (`PostList.tsx:118`), `PlaysPage`'s `CARD_ACTION` (36px), admin buttons,
 `PlaybooksPage.tsx:1722`'s 28px drag grip (the only reorder affordance).
 Reference: 44pt iOS / 48dp Android.
-
-### B-39 · Flex rows that can't wrap (measured overflow)
-`/playbooks` **actually scrolls sideways on every phone** — 458px of content in
-a 375px viewport, from the non-wrapping cluster at `PlaybooksPage.tsx:1198`
-(tab pill + New Play + New Playbook = 442px). Measured 2026-08-12 at 375/390/430.
-Same shape elsewhere: `PlaysPage.tsx:349` header and `:385` type filters
-(the latter inside an `overflow-hidden` panel, so there's no scroll escape),
-`AdminDashboard.tsx:156` tabs (also clipped — "Moderation" is unreachable on a
-phone), `TimeRangeSelector.tsx:19`, `AccountSettings.tsx:342` (where the only
-Save Changes button lives), `PlayLibrary.tsx:311`, `Hero.tsx:80`.
-Every **grid** in the app already collapses correctly — the layout failures are
-all flex rows missing `flex-wrap`. Add a guard asserting
-`documentElement.scrollWidth <= clientWidth` per route; that's how this was
-found.
 
 ### B-40 · Designer touch tuning
 Icon tap targets are 34-37px and route lines 28px, both below the 44px floor,
@@ -296,6 +270,43 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-14 · B-38 [from feedback]: default roster colors Q/X/Z read too
+  similar** — the first backlog item filed by the feedback triage routine to be
+  worked. A coach reported Q, X and Z were indistinguishable at a glance, and
+  they were: blue 217°, indigo 239°, purple 258°, the whole trio inside a 41°
+  band with adjacent pairs only 19-22° apart. **Z: indigo `#6366F1` → lime
+  `#84CC16`**, which sits at 82° in the one wide gap this palette has (between
+  A's amber at 38° and R's green at 160°), clearing every other chip by at
+  least 78°. Changed Z rather than Q or X to keep the conventional blue QB.
+  Applied to **both** `rosters.ts` (toolbar chips) and `formations.ts`'s
+  separate `C` map (`SLOT`), which had the identical trio — a coach places the
+  same receiver by stamping a formation *or* tapping a chip, and getting a
+  different color depending on the route taken would be worse than either color
+  alone.
+  The coach also asked for "a default yellow"; A is already amber `#F59E0B`, so
+  the real ask was separation, not a missing color.
+  Existing saved rosters are untouched: `resolveRoster()` merges overrides by
+  stable chip id, so anyone who already customised Z keeps their choice, and
+  saved plays store their own colors.
+  **Tests assert the property, not the hex** — pairwise hue separation across
+  the whole offense roster with a 25° floor (plus 40° for the reported trio),
+  so any future palette change that re-crowds the band is caught. Verified it
+  fails on the old colors, reporting `Q/Z 22°` and `X/Z 20°`. A second test
+  guards the two files against drifting apart again.
+
+- **2026-08-14 · B-39: Stop pages scrolling sideways on a phone** (PR #73) —
+  `/playbooks` put 458px of content in a 375px viewport, so the whole document
+  scrolled horizontally on every phone, from one non-wrapping cluster
+  (`PlaybooksPage.tsx:1198`, 442px of the 458). Seven other rows shared the
+  shape and two sat inside `overflow-hidden` panels, so their overrun was
+  *clipped* rather than scrollable — which is how `/admin` lost its
+  "Moderation" tab and `/plays` lost its "special teams" filter on a phone.
+  Fixed together with `flex-wrap`; every grid in the app already collapsed
+  correctly, so the change was entirely additive. Guard added asserting
+  `documentElement.scrollWidth <= clientWidth` across seven routes at 375px,
+  and verified it fails without the fix. (Moved to Done 2026-08-14 — it shipped
+  on the 12th and was left in Up next by mistake.)
 
 - **2026-08-14 · B-37 (2): one shared play card** — the second and larger half
   of B-37. My Plays, the Community library and the playbook detail grid each
