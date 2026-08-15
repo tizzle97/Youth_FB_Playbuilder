@@ -62,11 +62,22 @@ const GUIDE_COLOR = '#f59e0b';
 
 // Minimum on-screen travel (in pixels) before a pointer-down-then-move on an
 // icon counts as a drag rather than tap jitter. Below this, pointer-up opens
-// the tap-to-customize popover instead.
-const DRAG_THRESHOLD_PX = 4;
+// the tap-to-customize popover instead. 8px clears typical finger jitter
+// (4px was tuned for mouse/trackpad only).
+const DRAG_THRESHOLD_PX = 8;
 // Smallest radius (normalized) a zone can have — keeps a plain tap-no-drag
 // zone creation visible instead of invisibly tiny.
 const MIN_ZONE_RADIUS = 0.035;
+// Floor on icon/route hit-test radius so a tap target never drops below the
+// ~44px (radius 22) minimum, even when icons shrink at high roster counts
+// (iconScaleForCount) — a floor here only widens the *hit test*, it doesn't
+// change anything drawn.
+const MIN_HIT_RADIUS_PX = 22;
+// Max screen-pixel distance between two taps for the second to count as a
+// "double-tap to finish route" (paired with the existing 350ms timing gate).
+// Without this, two ordinary taps placed at different points in quick
+// succession while sketching a route were misread as finishing it early.
+const DOUBLE_TAP_DIST_PX = 24;
 
 // ---------------------------------------------
 // Types
@@ -165,6 +176,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [waypointColor, setWaypointColor] = useState('#e05a1e');
     const [waypointIconIndex, setWaypointIconIndex] = useState<number | null>(null);
     const lastTapRef = useRef<number>(0);
+    const lastTapPosRef = useRef<{ x: number; y: number } | null>(null);
     // Rubber-band segment being dragged out from the route's current tip
     // (press-drag-release adds one segment; a no-movement tap commits at the
     // tap point, which is exactly the old tap-to-add behavior). Anchored at
@@ -914,7 +926,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       playerIcons.findIndex((icon) => {
         const dx = (icon.x - p.x) * width;
         const dy = (icon.y - p.y) * height;
-        return Math.sqrt(dx * dx + dy * dy) <= iconRadiusPx + 10;
+        return Math.sqrt(dx * dx + dy * dy) <= Math.max(MIN_HIT_RADIUS_PX, iconRadiusPx + 10);
       });
 
     /** Shortest on-screen pixel distance from `p` to a polyline. */
@@ -940,7 +952,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
      *  it starts from. Works identically when a player has only 1 route. */
     const findPathAt = (p: Pt): number => {
       let best = -1;
-      let bestDist = 14; // hit radius, px — matches the icon hit-test's +10 feel with some slack for thin lines
+      let bestDist = MIN_HIT_RADIUS_PX; // hit radius, px — matches the icon hit-test floor
       paths.forEach((path, i) => {
         const d = distanceToPolylinePx(p, path.points);
         if (d < bestDist) { bestDist = d; best = i; }
@@ -1115,8 +1127,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // Straight + Waypoint modes — click-to-add-segments flow
       if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
-        const isDoubleTap = now - lastTapRef.current < 350;
+        const lastPos = lastTapPosRef.current;
+        const tapDist = lastPos ? Math.hypot(e.clientX - lastPos.x, e.clientY - lastPos.y) : Infinity;
+        const isDoubleTap = now - lastTapRef.current < 350 && tapDist < DOUBLE_TAP_DIST_PX;
         lastTapRef.current = now;
+        lastTapPosRef.current = { x: e.clientX, y: e.clientY };
 
         if (isDoubleTap && waypointPoints.length >= 2) {
           finishWaypoint();

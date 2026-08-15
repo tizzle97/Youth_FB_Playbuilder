@@ -1,6 +1,6 @@
 import { test, expect, Page, CDPSession } from '@playwright/test';
 import { readFileSync } from 'fs';
-import { zoneConnectorVisible } from '../../src/lib/renderPlayScene';
+import { zoneConnectorVisible, REF_SIZE, PLAYER_SIZE, iconScaleForCount } from '../../src/lib/renderPlayScene';
 import { DEFAULT_ROSTERS } from '../../src/components/designer/rosters';
 
 // Mocked-session tests must seed localStorage under the same key the real
@@ -467,6 +467,76 @@ test('offense: curved route with block ending and dotted line — new combinatio
   expect(state.paths[0].mode).toBe('waypoint');
   expect(state.paths[0].capStyle).toBe('block');
   expect(state.paths[0].dashed).toBe(true);
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * B-40: double-tap-to-finish had a 350ms timing gate but no distance gate, so
+ * two ordinary taps placed at different points on the field in quick
+ * succession (normal pace while sketching, not a deliberate double-tap) were
+ * misread as "finish the route", silently dropping whatever point should
+ * have come next. Fixed by requiring the second tap land within
+ * DOUBLE_TAP_DIST_PX of the first, on top of the existing timing check.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('double-tap-to-finish requires proximity, not just timing', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  const p2 = await canvasPoint(page, 0.55, 0.5);
+  await page.mouse.click(p2.x, p2.y);
+  // No wait here — the next tap lands well inside the 350ms window, at a
+  // DIFFERENT point on the field. Regression: the old code only gated on
+  // timing, so this used to be misread as "double-tap to finish" and
+  // silently dropped this 3rd point instead of adding it.
+  const p3 = await canvasPoint(page, 0.25, 0.2);
+  await page.mouse.click(p3.x, p3.y);
+
+  // Route must still be in progress — Finish Route stays available and
+  // nothing has been committed to paths yet.
+  const finishBtn = page.getByRole('button', { name: 'Finish Route' });
+  await expect(finishBtn).toBeVisible();
+  expect((await canvasState(page)).paths).toHaveLength(0);
+
+  await finishBtn.click();
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points).toHaveLength(3);
+});
+
+test('double-tap at the same spot still finishes the route', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  const p2 = await canvasPoint(page, 0.55, 0.5);
+  await page.mouse.click(p2.x, p2.y);
+  await page.waitForTimeout(TAP_GAP);
+
+  const p3 = await canvasPoint(page, 0.3, 0.3);
+  await page.mouse.click(p3.x, p3.y); // commits the 3rd point
+  await page.mouse.click(p3.x, p3.y); // same spot, fast — a real double-tap
+
+  await expect(page.getByRole('button', { name: 'Finish Route' })).toHaveCount(0);
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].points).toHaveLength(3);
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1277,7 +1347,7 @@ test('tap-to-customize survives sub-pixel pointer jitter, real drags still move 
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
 
   // A "tap" with 1px of jitter between pointerdown and pointerup must still
-  // open the popover (DRAG_THRESHOLD_PX in Canvas.tsx is 4).
+  // open the popover (DRAG_THRESHOLD_PX in Canvas.tsx is 8).
   await page.mouse.move(icon.x, icon.y);
   await page.mouse.down();
   await page.mouse.move(icon.x + 1, icon.y + 1);
@@ -2636,6 +2706,38 @@ test.describe('touch device', () => {
     expect(opacity).toBe('1');
 
     await expect(page.getByTitle('Remove from this playbook')).toBeVisible();
+  });
+
+  test('B-40: 11v11 icon hit-test never drops below a 44px tap target on a phone canvas', async ({ page }) => {
+    // Icons auto-shrink at high roster counts (iconScaleForCount), and the
+    // old hit-test radius (iconRadiusPx + 10) shrank right along with them —
+    // at 11v11 on a narrow phone canvas the tap circle dropped well under the
+    // 44px floor Fitts' Law calls for. A floor on the hit test alone (no
+    // rendering change) fixes it.
+    await openDesigner(page);
+    await btn(page, 'Formation templates').click();
+    await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
+    const state = await canvasState(page);
+    expect(state.playerIcons).toHaveLength(11);
+
+    const box = await page.locator('#play-canvas').boundingBox();
+    if (!box) throw new Error('canvas has no bounding box');
+    const screenScale = Math.min(box.width, box.height) / REF_SIZE;
+    const iconRadiusPx = (PLAYER_SIZE * screenScale * iconScaleForCount(11)) / 2;
+    const oldRadius = iconRadiusPx + 10;
+    // Sanity check the fixture actually exercises the floor — if the phone
+    // canvas were somehow large enough that oldRadius already met 22px, this
+    // test would pass vacuously regardless of the fix.
+    expect(oldRadius).toBeLessThan(22);
+
+    const qb = state.playerIcons.find((i) => i.letter === 'QB')!;
+    const center = { x: box.x + qb.x * box.width, y: box.y + qb.y * box.height };
+    // Strictly between the old radius (would miss) and the new 22px floor
+    // (must hit).
+    const offset = Math.round((oldRadius + 22) / 2);
+    await page.mouse.click(center.x + offset, center.y);
+
+    await expect(page.getByLabel('Player label')).toBeVisible();
   });
 });
 
