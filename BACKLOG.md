@@ -178,17 +178,6 @@ Fixed by polling the bridge instead of snapshotting it.
 React's render queue whenever the value it reports is set from an effect.
 Poll it, or assert against the DOM.
 
-### B-40 · Designer touch tuning
-Icon tap targets are 34-37px and route lines 28px, both below the 44px floor,
-and worst exactly where it matters most: at 11v11 on a 375px canvas the icons
-are 14px wide with hit circles that nearly touch. `Canvas.tsx:913-919`
-(`iconRadiusPx + 10`) and `:945` (`bestDist = 14`) are mouse-era constants —
-a floor on the *hit test* only would fix it without touching rendering.
-Also `:1116-1124`: double-tap-to-finish has a 350ms window with **no distance
-gate**, and `lastTapRef` is written on every drawing pointerdown, so tapping
-out a route at a normal pace silently ends it early. And `DRAG_THRESHOLD_PX = 4`
-(`:66`) is below finger jitter.
-
 ### B-41 · Popover bugs on phones
 `FormationMenu.tsx:78` and `RouteColorButton.tsx:49` register `scroll` with
 `capture: true`, so scrolling *inside* the popover (it's `max-h-[60vh]
@@ -256,6 +245,40 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-15 · B-40: Designer touch tuning** — icon tap targets were 34-37px
+  and route lines 28px, both below the 44px floor, worst exactly where it
+  matters most: at 11v11 on a phone canvas the icons are 14px wide with hit
+  circles that nearly touch. `Canvas.tsx`'s `findIcon()` (icon hit-test,
+  `iconRadiusPx + 10`) and `findPathAt()` (route hit-test, `bestDist`) were
+  mouse-era constants that shrink right along with `iconScaleForCount()` — now
+  both floor at a new `MIN_HIT_RADIUS_PX = 22` (44px diameter), touching only
+  the hit test, not anything drawn. Separately, double-tap-to-finish gated
+  only on the existing 350ms timing window with **no distance check** —
+  `lastTapRef` is written on every drawing pointerdown, so two ordinary taps
+  at different points on the field in quick succession (normal pace while
+  sketching a route, not a deliberate double-tap) were misread as "finish the
+  route" and silently dropped whatever point should have come next. Added a
+  `DOUBLE_TAP_DIST_PX = 24` proximity gate alongside the timing one (paired
+  `lastTapPosRef` tracking screen position). Also bumped `DRAG_THRESHOLD_PX`
+  4 → 8 to clear typical finger jitter (a mouse/trackpad-tuned value).
+  **Verification:** `npx tsc --noEmit` clean; `npx eslint` on touched files
+  shows only pre-existing warnings (0 new errors). `npm run build` succeeds.
+  3 new smoke tests: the icon hit-test floor (stamps an 11v11 formation on a
+  375px touch viewport, computes the actual old-vs-new radius from the real
+  canvas box via `REF_SIZE`/`PLAYER_SIZE`/`iconScaleForCount`, and clicks
+  strictly between them to prove the floor — not just a formula change);
+  double-tap-to-finish requiring proximity (two fast taps at different points
+  no longer end the route early); and a same-spot double-tap still finishing
+  it (regression guard for the legitimate gesture). Full Playwright smoke
+  suite: 143/145 passed against a throwaway placeholder `.env` and the
+  container's pre-installed Chromium via `PBP_CHROMIUM_PATH` (neither part of
+  this commit). The 2 failures (`mobile.spec.ts`: "no page scrolls sideways
+  at phone width" and "every interactive control clears 44px under touch")
+  are both a 30s `page.goto` timeout navigating to `/plays?tab=community` —
+  confirmed unrelated to this change: reproduces identically, alone (not just
+  under concurrent-run contention) and with this change's commit removed
+  entirely (checked out in a clean worktree of unmodified `main`).
 
 - **2026-08-14 · B-51: Touch-target sweep** — every interactive control on the
   app's main surfaces now clears 44px under a finger. Rather than working the
