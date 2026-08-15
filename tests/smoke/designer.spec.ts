@@ -4568,3 +4568,131 @@ test('defense: zone connector stays visible after stretching the zone wide (regr
   // …and the connector — the actual bug report — is still visible.
   expect(zoneConnectorVisible(state.zones[0], state.playerIcons[0])).toBe(true);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-40 · Designer touch tuning
+//
+// These drive REAL touch events through CDP. That matters: page.mouse produces
+// pointerType 'mouse', which takes the tighter mouse tolerances, so a
+// mouse-driven test would pass against the old constants and prove nothing.
+// The 140-odd existing mouse-driven tests are the other half of this — they
+// assert the mouse path is untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One finger down-and-up at a page coordinate. */
+async function tap(client: CDPSession, x: number, y: number) {
+  await touchPoints(client, 'touchStart', [{ x, y, id: 1 }]);
+  await touchPoints(client, 'touchEnd', []);
+}
+
+test('touch: tapping out a route at speed does not finish it early', async ({ page }) => {
+  // The double-tap-to-finish window was time-only. Any two taps inside 350ms
+  // ended the route however far apart they were, so a coach tapping points at
+  // a brisk pace lost the rest of the route. It now also requires the two taps
+  // to be in roughly the same PLACE.
+  await openDesigner(page);
+  const client = await page.context().newCDPSession(page);
+
+  // Routes start from a player, so one has to exist first — without this the
+  // whole test passes vacuously on paths.length === 0.
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.30, 0.72);
+  await page.mouse.click(spot.x, spot.y);
+  const icon = (await canvasState(page)).playerIcons[0];
+  expect(icon, 'a player must be placed for a route to start from').toBeTruthy();
+  const iconPt = await canvasPoint(page, icon.x, icon.y);
+
+  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  await tap(client, iconPt.x, iconPt.y);
+  // Four more points, each well clear of the last, all faster than 350ms apart.
+  for (const fx of [0.42, 0.54, 0.66, 0.78]) {
+    const pt = await canvasPoint(page, fx, 0.45);
+    await tap(client, pt.x, pt.y);
+  }
+
+  // Still open: nothing was committed, because no two taps were co-located.
+  expect((await canvasState(page)).paths, 'route auto-finished early').toHaveLength(0);
+
+  // A real double-tap — twice in the same place — still finishes it, and the
+  // route keeps every point tapped along the way.
+  const last = await canvasPoint(page, 0.78, 0.45);
+  await tap(client, last.x + 2, last.y + 2);
+  await expect.poll(async () => (await canvasState(page)).paths.length).toBe(1);
+  const path = (await canvasState(page)).paths[0];
+  expect(path.points.length, 'every tapped point should have survived').toBeGreaterThanOrEqual(5);
+});
+
+test('touch: the hit radius has a 44px floor, and resolves to the nearest icon', async ({ page }) => {
+  // Two separate properties, both previously wrong for a fingertip:
+  //
+  //  1. reach — was iconRadiusPx + 10, about 17px at 11v11 on a phone where
+  //     the icons render ~14px wide. Touch now gets a 22px radius (44px
+  //     across), the platform floor.
+  //  2. resolution — findIcon returned the FIRST icon in range, not the
+  //     nearest. Harmless while the radius was tiny; wrong as soon as 44px
+  //     circles overlap, which they do at 11v11 spacing on a phone.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+  const client = await page.context().newCDPSession(page);
+
+  await btn(page, 'Formation templates').click();
+  await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
+  const icons = (await canvasState(page)).playerIcons;
+  expect(icons).toHaveLength(11);
+
+  const box = (await page.locator('#play-canvas').boundingBox())!;
+  const pageX = (nx: number) => box.x + box.width * nx;
+  const pageY = (ny: number) => box.y + box.height * ny;
+  const openLabel = () => page.locator('input[maxlength]').first();
+
+  // ── 1. The floor. Tap 20px below the RB — outside the old ~17px reach,
+  // inside the new 22px one, and far from every other icon.
+  const rb = icons.find((i) => i.letter === 'RB')!;
+  await tap(client, pageX(rb.x), pageY(rb.y) + 20);
+  await expect(openLabel(), 'a tap 20px from the icon should still hit it').toBeVisible();
+  expect(await openLabel().inputValue()).toBe('RB');
+
+  // Dismiss before the next phase: with a popover open, the next canvas tap
+  // only closes it, so without this the second assertion would read the FIRST
+  // phase's still-open editor and pass or fail for the wrong reason.
+  await tap(client, pageX(0.05), pageY(0.05));
+  await expect(openLabel()).toHaveCount(0);
+
+  // ── 2. Nearest, not first-in-array. LG and C are neighbouring linemen; a
+  // point 70% of the way from LG to C is inside both 44px circles but clearly
+  // nearer C. Array order would have answered LG.
+  const lg = icons.find((i) => i.letter === 'LG')!;
+  const c = icons.find((i) => i.letter === 'C')!;
+  expect(icons.indexOf(lg), 'LG must precede C for this to test order').toBeLessThan(icons.indexOf(c));
+  await tap(client, pageX(lg.x + (c.x - lg.x) * 0.7), pageY(lg.y));
+  await expect(openLabel()).toBeVisible();
+  expect(await openLabel().inputValue(), 'should resolve to the nearer icon').toBe('C');
+});
+
+test('touch: a small wobble during a tap opens the editor instead of nudging the player', async ({ page }) => {
+  // DRAG_THRESHOLD_PX is 4 — fine for a mouse, below finger jitter. A touch
+  // gesture now needs 10px before it counts as a drag.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+  const client = await page.context().newCDPSession(page);
+
+  await page.locator('button[title="Player Q"]:visible').first().click();
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  const placed = (await canvasState(page)).playerIcons[0];
+  expect(placed).toBeTruthy();
+
+  await btn(page, 'Select / Move').click();
+
+  // Press, wobble 6px (between the mouse and touch thresholds), release.
+  await touchPoints(client, 'touchStart', [{ x: spot.x, y: spot.y, id: 1 }]);
+  await touchPoints(client, 'touchMove', [{ x: spot.x + 4, y: spot.y + 4, id: 1 }]);
+  await touchPoints(client, 'touchEnd', []);
+
+  // Treated as a tap: the editor opens…
+  await expect(page.locator('input[maxlength]').first()).toBeVisible();
+  // …and the player did not move.
+  const after = (await canvasState(page)).playerIcons[0];
+  expect(after.x).toBeCloseTo(placed.x, 5);
+  expect(after.y).toBeCloseTo(placed.y, 5);
+});

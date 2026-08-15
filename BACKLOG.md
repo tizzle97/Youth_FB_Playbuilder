@@ -178,17 +178,6 @@ Fixed by polling the bridge instead of snapshotting it.
 React's render queue whenever the value it reports is set from an effect.
 Poll it, or assert against the DOM.
 
-### B-40 · Designer touch tuning
-Icon tap targets are 34-37px and route lines 28px, both below the 44px floor,
-and worst exactly where it matters most: at 11v11 on a 375px canvas the icons
-are 14px wide with hit circles that nearly touch. `Canvas.tsx:913-919`
-(`iconRadiusPx + 10`) and `:945` (`bestDist = 14`) are mouse-era constants —
-a floor on the *hit test* only would fix it without touching rendering.
-Also `:1116-1124`: double-tap-to-finish has a 350ms window with **no distance
-gate**, and `lastTapRef` is written on every drawing pointerdown, so tapping
-out a route at a normal pace silently ends it early. And `DRAG_THRESHOLD_PX = 4`
-(`:66`) is below finger jitter.
-
 ### B-41 · Popover bugs on phones
 `FormationMenu.tsx:78` and `RouteColorButton.tsx:49` register `scroll` with
 `capture: true`, so scrolling *inside* the popover (it's `max-h-[60vh]
@@ -256,6 +245,35 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-15 · B-40: Designer touch tuning** — the drawing surface's
+  tolerances were all mouse-era constants, and every one of them was wrong for
+  a fingertip. Four changes, none of which touch rendering:
+  **Double-tap-to-finish now has a distance gate.** The window was time-only, so
+  *any* two taps inside 350ms ended the route however far apart — a coach
+  tapping out points at a brisk pace silently lost the rest of the route. It now
+  requires the two taps to be within 28px of each other as well.
+  **Icon hit radius gets a 44px floor on touch** (`TOUCH_ICON_HIT_MIN_PX`),
+  where it was `iconRadiusPx + 10` ≈ 17px at 11v11 on a phone — a tap target
+  smaller than the fingertip aiming at it, on icons rendering ~14px wide.
+  **`findIcon` resolves to the nearest icon rather than the first in array
+  order.** Harmless while the radius was tiny; wrong the moment 44px circles
+  overlap, which they do at 11v11 spacing (linemen sit ~37px apart on a phone),
+  where array order would hand the tap to whichever player was placed earlier.
+  **Route hit radius 14px → 22px on touch**, and **drag threshold 4px → 10px on
+  touch** — 4px is below the jitter a finger produces during what the coach
+  experiences as a stationary tap, so taps were registering as micro-drags and
+  nudging players instead of opening their editor.
+  All four are keyed on `e.pointerType !== 'mouse'`, so **the mouse path is
+  byte-for-byte unchanged** — evidenced by the ~140 existing mouse-driven
+  designer tests still passing.
+  **Tests drive real touch through CDP**, which is the point: `page.mouse`
+  reports `pointerType: 'mouse'` and takes the tighter tolerances, so a
+  mouse-driven test would pass against the old constants and prove nothing. All
+  three new tests were confirmed to fail on the old code and pass on the new.
+  One of them was vacuous on first write — it asserted `paths.length === 0`
+  without ever placing a player, so no route could start regardless; caught by
+  running it against the fix and watching the *second* half fail.
 
 - **2026-08-14 · B-51: Touch-target sweep** — every interactive control on the
   app's main surfaces now clears 44px under a finger. Rather than working the
