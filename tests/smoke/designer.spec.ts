@@ -1,6 +1,6 @@
 import { test, expect, Page, CDPSession } from '@playwright/test';
 import { readFileSync } from 'fs';
-import { zoneConnectorVisible } from '../../src/lib/renderPlayScene';
+import { zoneConnectorVisible, REF_SIZE, PLAYER_SIZE, iconScaleForCount } from '../../src/lib/renderPlayScene';
 import { DEFAULT_ROSTERS } from '../../src/components/designer/rosters';
 
 // Mocked-session tests must seed localStorage under the same key the real
@@ -4645,10 +4645,21 @@ test('touch: the hit radius has a 44px floor, and resolves to the nearest icon',
   const pageY = (ny: number) => box.y + box.height * ny;
   const openLabel = () => page.locator('input[maxlength]').first();
 
-  // ── 1. The floor. Tap 20px below the RB — outside the old ~17px reach,
-  // inside the new 22px one, and far from every other icon.
+  // ── 1. The floor. Derive the old reach from the real sizing constants
+  // rather than hardcoding a pixel offset, so this keeps discriminating if
+  // icon sizing ever changes. (Technique borrowed from the nightly routine's
+  // parallel take on B-40, PR #79 — it was the better idea.)
+  const screenScale = Math.min(box.width, box.height) / REF_SIZE;
+  const iconRadiusPx = (PLAYER_SIZE * screenScale * iconScaleForCount(11)) / 2;
+  const oldReach = iconRadiusPx + 10;
+  // Vacuity guard: if the canvas were large enough that the old reach already
+  // cleared 22px, every assertion below would pass with or without the fix.
+  expect(oldReach, 'fixture must actually exercise the floor').toBeLessThan(22);
+
+  // Strictly between the old reach (would miss) and the new floor (must hit).
+  const offset = (oldReach + 22) / 2;
   const rb = icons.find((i) => i.letter === 'RB')!;
-  await tap(client, pageX(rb.x), pageY(rb.y) + 20);
+  await tap(client, pageX(rb.x), pageY(rb.y) + offset);
   await expect(openLabel(), 'a tap 20px from the icon should still hit it').toBeVisible();
   expect(await openLabel().inputValue()).toBe('RB');
 
