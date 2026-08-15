@@ -154,7 +154,7 @@ export function Pricing() {
             ) : (
               <button
                 disabled
-                className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary/40 text-white/80 cursor-not-allowed"
+                className="tap-target mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary/40 text-white/80 cursor-not-allowed"
               >
                 Coming soon
               </button>

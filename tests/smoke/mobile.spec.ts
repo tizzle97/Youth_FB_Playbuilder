@@ -162,6 +162,18 @@ test('no page scrolls sideways at phone width', async ({ page }) => {
     }));
   }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
 
+  // Catch-all for anything the pages above reach for that isn't named here —
+  // play_votes, the community-author RPC, reputation. Unmocked, these go to
+  // whatever VITE_SUPABASE_URL points at, and against a placeholder host they
+  // don't fail fast, they hang: the nightly routine reported this test as a
+  // 30s page.goto timeout on /plays?tab=community when nothing was wrong with
+  // the app. A test that depends on the network reaching a real backend isn't
+  // testing what it claims to.
+  //
+  // Registered FIRST on purpose: Playwright checks route handlers in reverse
+  // registration order, so the specific mocks below take precedence over this.
+  await page.route('**/rest/v1/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route('**/auth/v1/user**', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
   await page.route('**/rest/v1/admin_users**', (r) =>
@@ -184,7 +196,9 @@ test('no page scrolls sideways at phone width', async ({ page }) => {
   });
 
   for (const route of ['/', '/plays', '/plays?tab=community', '/playbooks', '/account', '/community', '/blog']) {
-    await page.goto(route);
+    // domcontentloaded, not the default 'load': a single slow font or image
+    // shouldn't decide whether a layout assertion gets to run.
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(350);
     const { scrollW, clientW } = await page.evaluate(() => ({
       scrollW: document.documentElement.scrollWidth,
@@ -232,6 +246,9 @@ async function seedForTapTargets(page: Page) {
     }));
   }, { user: TT_USER, storageKey: AUTH_STORAGE_KEY });
   const j = (b: any) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+  // Registered first so the specific mocks below win — Playwright checks route
+  // handlers in reverse registration order. See the overflow test's note.
+  await page.route('**/rest/v1/**', (r) => r.fulfill(j([])));
   await page.route('**/auth/v1/user**', (r) => r.fulfill(j(TT_USER)));
   await page.route('**/rest/v1/admin_users**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
   await page.route('**/rest/v1/subscriptions**', (r) => r.fulfill(j({ plan: 'founding' })));
@@ -266,7 +283,7 @@ test('every interactive control clears 44px under touch', async ({ page }) => {
 
   const undersized: string[] = [];
   for (const route of TT_ROUTES) {
-    await page.goto(route);
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
     // The designer mounts its canvas and toolbars asynchronously.
     await page.waitForTimeout(route === '/designer' ? 1200 : 700);
 

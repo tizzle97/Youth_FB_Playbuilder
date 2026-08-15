@@ -63,7 +63,33 @@ const GUIDE_COLOR = '#f59e0b';
 // Minimum on-screen travel (in pixels) before a pointer-down-then-move on an
 // icon counts as a drag rather than tap jitter. Below this, pointer-up opens
 // the tap-to-customize popover instead.
+//
+// A mouse cursor is a pixel and holds still; a fingertip covers ~7mm of glass
+// and wanders several pixels during what the coach experiences as a stationary
+// tap. One threshold can't serve both — at 4px a touch "tap" routinely
+// registers as a micro-drag and nudges the player instead of opening their
+// editor.
 const DRAG_THRESHOLD_PX = 4;
+const TOUCH_DRAG_THRESHOLD_PX = 10;
+
+// Hit radii, in screen pixels. These affect ONLY what counts as being "on" a
+// target — nothing here changes what is drawn.
+//
+// 22px = a 44px-wide tap circle, the iOS/Android floor. It matters most in the
+// case it's least forgiving: at 11v11 on a 375px-wide canvas the icons render
+// ~14px across, so without a floor the tap target is smaller than the fingertip
+// aiming at it.
+const TOUCH_ICON_HIT_MIN_PX = 22;
+// Routes are the hardest thing on the canvas to hit — a 2px line, targeted by
+// Remove Route and Recolor Route, both destructive-ish.
+const TOUCH_PATH_HIT_PX = 22;
+const MOUSE_PATH_HIT_PX = 14;
+
+// A double-tap finishes a route. Two taps this far apart in space are two
+// deliberate points, however fast they came — without the distance gate,
+// tapping out a route at a normal pace silently ends it early.
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_SLOP_PX = 28;
 // Smallest radius (normalized) a zone can have — keeps a plain tap-no-drag
 // zone creation visible instead of invisibly tiny.
 const MIN_ZONE_RADIUS = 0.035;
@@ -164,7 +190,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [waypointSegmentDashed, setWaypointSegmentDashed] = useState<boolean[]>([]);
     const [waypointColor, setWaypointColor] = useState('#e05a1e');
     const [waypointIconIndex, setWaypointIconIndex] = useState<number | null>(null);
-    const lastTapRef = useRef<number>(0);
+    // Last tap's time AND place. Position is what makes the double-tap test
+    // honest: without it, any two taps inside 350ms end the route no matter
+    // how far apart, so a coach tapping out points at a brisk pace loses the
+    // rest of the route.
+    const lastTapRef = useRef<{ t: number; x: number; y: number }>({ t: 0, x: 0, y: 0 });
+    // Whether the gesture in progress came from a finger/pen rather than a
+    // mouse. Drives hit radii and the drag threshold — see the constants at the
+    // top of this file. Set on pointerdown, before any hit-testing runs.
+    const coarsePointerRef = useRef(false);
     // Rubber-band segment being dragged out from the route's current tip
     // (press-drag-release adds one segment; a no-movement tap commits at the
     // tap point, which is exactly the old tap-to-add behavior). Anchored at
@@ -217,7 +251,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // would swallow the next undo press. Real pointer devices (mice,
     // trackpads, touchscreens) commonly fire at least one pointermove event
     // during what a user experiences as a stationary tap, so this only
-    // flips once the pointer has actually traveled past DRAG_THRESHOLD_PX —
+    // flips once the pointer has actually traveled past dragThresholdPx() —
     // otherwise every real-world tap would register as a (near-zero) drag
     // and the tap-to-customize popover below would never open.
     const dragMovedRef = useRef(false);
@@ -899,6 +933,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // ------------------------------------------
     // Pointer helpers
     // ------------------------------------------
+    /** How far the pointer must travel before it's a drag rather than a tap.
+     *  Finger jitter on a stationary tap routinely exceeds the mouse value. */
+    const dragThresholdPx = () =>
+      coarsePointerRef.current ? TOUCH_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX;
+
     /** Pointer position in normalized 0–1 coordinates. */
     const getPos = (e: React.PointerEvent): Pt => {
       const canvas = canvasRef.current!;
@@ -909,13 +948,27 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       };
     };
 
-    /** Hit-test icons using on-screen pixel distance. */
-    const findIcon = (p: Pt) =>
-      playerIcons.findIndex((icon) => {
-        const dx = (icon.x - p.x) * width;
-        const dy = (icon.y - p.y) * height;
-        return Math.sqrt(dx * dx + dy * dy) <= iconRadiusPx + 10;
+    /** Hit-test icons using on-screen pixel distance.
+     *
+     *  Returns the NEAREST icon within range, not the first one in array order.
+     *  That distinction only started mattering with the touch floor below: at
+     *  11v11 on a phone the linemen sit ~37px apart, so 44px-wide tap circles
+     *  genuinely overlap, and "first in the array" would hand the tap to
+     *  whichever player happened to be placed earlier rather than the one the
+     *  coach aimed at. */
+    const findIcon = (p: Pt) => {
+      const reach = Math.max(
+        iconRadiusPx + 10,
+        coarsePointerRef.current ? TOUCH_ICON_HIT_MIN_PX : 0,
+      );
+      let best = -1;
+      let bestDist = reach;
+      playerIcons.forEach((icon, i) => {
+        const d = Math.hypot((icon.x - p.x) * width, (icon.y - p.y) * height);
+        if (d <= bestDist) { bestDist = d; best = i; }
       });
+      return best;
+    };
 
     /** Shortest on-screen pixel distance from `p` to a polyline. */
     const distanceToPolylinePx = (p: Pt, points: Pt[]): number => {
@@ -940,7 +993,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
      *  it starts from. Works identically when a player has only 1 route. */
     const findPathAt = (p: Pt): number => {
       let best = -1;
-      let bestDist = 14; // hit radius, px — matches the icon hit-test's +10 feel with some slack for thin lines
+      // Hit radius in px. A fingertip gets the 44px floor; a mouse keeps the
+      // tighter reach so clicking near a line doesn't grab it unintentionally.
+      let bestDist = coarsePointerRef.current ? TOUCH_PATH_HIT_PX : MOUSE_PATH_HIT_PX;
       paths.forEach((path, i) => {
         const d = distanceToPolylinePx(p, path.points);
         if (d < bestDist) { bestDist = d; best = i; }
@@ -1001,6 +1056,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
       (e.currentTarget as any).setPointerCapture?.(e.pointerId);
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // Before any hit-testing: everything below reads this to pick touch or
+      // mouse tolerances. Pen counts as coarse — it's held like a finger and
+      // has the same jitter, even though it aims better.
+      coarsePointerRef.current = e.pointerType !== 'mouse';
 
       // Second (or later) finger touching down turns this into a pinch —
       // abort whatever single-finger gesture the first finger may have
@@ -1115,8 +1174,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // Straight + Waypoint modes — click-to-add-segments flow
       if (drawingMode && (drawMode === 'waypoint' || drawMode === 'straight')) {
         const now = Date.now();
-        const isDoubleTap = now - lastTapRef.current < 350;
-        lastTapRef.current = now;
+        const last = lastTapRef.current;
+        // Both gates, not just the clock: a double-tap is two taps in the same
+        // PLACE. Two points 100px apart are two points the coach meant, however
+        // quickly they arrived.
+        const isDoubleTap =
+          now - last.t < DOUBLE_TAP_MS &&
+          Math.hypot((p.x - last.x) * width, (p.y - last.y) * height) <= DOUBLE_TAP_SLOP_PX;
+        lastTapRef.current = { t: now, x: p.x, y: p.y };
 
         if (isDoubleTap && waypointPoints.length >= 2) {
           finishWaypoint();
@@ -1314,7 +1379,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             (p.x - dragStartRef.current.x) * width,
             (p.y - dragStartRef.current.y) * height,
           );
-          if (traveled < DRAG_THRESHOLD_PX) return;
+          if (traveled < dragThresholdPx()) return;
           // Record the pre-drag state exactly once, the moment the icon first moves.
           dragMovedRef.current = true;
           pushSnapshot();
@@ -1359,7 +1424,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             (p.x - dragStartRef.current.x) * width,
             (p.y - dragStartRef.current.y) * height,
           );
-          if (traveled < DRAG_THRESHOLD_PX) return;
+          if (traveled < dragThresholdPx()) return;
           dragMovedRef.current = true;
           pushSnapshot();
         }
@@ -1417,7 +1482,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           const traveled = tip
             ? Math.hypot((pendingPoint.x - tip.x) * width, (pendingPoint.y - tip.y) * height)
             : 0;
-          if (traveled >= DRAG_THRESHOLD_PX) {
+          if (traveled >= dragThresholdPx()) {
             setWaypointPoints((prev) => [...prev, pendingPoint]);
             // Whatever the toggle reads right now is this segment's style —
             // already-committed segments before it are untouched.

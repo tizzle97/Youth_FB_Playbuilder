@@ -1294,7 +1294,7 @@ export function PlaybooksPage() {
                     <p className="text-chalk/70 mb-4">No playbooks found</p>
                     <button
                       onClick={() => { setCreatePlaybookError(null); setShowCreateModal(true); }}
-                      className="text-sm text-primary hover:text-primary/80"
+                      className="tap-target inline-flex items-center justify-center text-sm text-primary hover:text-primary/80"
                     >
                       Create your first playbook
                     </button>

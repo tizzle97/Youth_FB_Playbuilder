@@ -458,7 +458,7 @@ export default function AccountSettings() {
                   <button
                     type="button"
                     onClick={() => (BILLING_ENABLED ? setShowUpgradeConsent(true) : navigate('/'))}
-                    className="w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                    className="tap-target w-full px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
                   >
                     Upgrade to Pro — $39/yr
                   </button>
