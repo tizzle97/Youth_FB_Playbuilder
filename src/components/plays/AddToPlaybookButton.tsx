@@ -244,7 +244,7 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
           />
           
           {/* Dropdown */}
-          <div className={`absolute ${dropdownPositionClass} w-72 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50 max-h-80 overflow-hidden`}>
+          <div className={`absolute ${dropdownPositionClass} w-72 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-50 max-h-80 overflow-y-auto`}>
             <div className="p-4 border-b border-chalk/10">
               <h3 className="font-medium text-chalk">Select Playbook</h3>
               <p className="text-sm text-chalk/60 mt-1">Add "{playName}" to a playbook</p>
