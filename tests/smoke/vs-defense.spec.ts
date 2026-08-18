@@ -324,3 +324,26 @@ test('B-36 (1): export modal has no "whole deck" section when the deck is empty'
   await expect(page.getByText('This matchup')).toBeVisible();
   await expect(page.getByText(/Whole deck/)).toHaveCount(0);
 });
+
+test.describe('mobile', () => {
+  // B-48: the "Jump to a defense" <select> was `hidden sm:block`, so on a
+  // phone the only way through a deck of 12 defenses was up to 11 taps of
+  // "Next". `hasTouch` (not just a narrow viewport) is what puts Playwright
+  // on the phone-layout code path here — see the note in mobile.spec.ts.
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
+
+  test('B-48: the "jump to a defense" dropdown is reachable on a phone, not just Next taps', async ({ page }) => {
+    await mockBackend(page, DEFENSES);
+    await openVs(page);
+
+    const select = page.getByLabel('Jump to a defense');
+    await expect(select).toBeVisible();
+    const box = (await select.boundingBox())!;
+    expect(box.width, 'dropdown should render with real width on a phone, not be collapsed').toBeGreaterThan(0);
+
+    // Jumping straight to the second defense — no repeated "Next" taps needed.
+    await select.selectOption({ label: 'Man Blitz' });
+    await expect(page.locator('#vs-defense-label')).toContainText('Man Blitz');
+    expect((await vsState(page)).index).toBe(1);
+  });
+});
