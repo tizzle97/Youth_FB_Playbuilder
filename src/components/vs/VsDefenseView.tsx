@@ -415,7 +415,7 @@ export function VsDefenseView() {
   // ── Render ──────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-board flex items-center justify-center text-chalk/50">
+      <div className="fixed inset-0 z-50 bg-board flex items-center justify-center text-chalk/50">
         Loading…
       </div>
     );
@@ -423,7 +423,7 @@ export function VsDefenseView() {
 
   if (error || !offensePlay) {
     return (
-      <div className="fixed inset-0 bg-board flex flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="fixed inset-0 z-50 bg-board flex flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-chalk/70">{error || 'That play could not be found.'}</p>
         <Link to="/plays" className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors">
           Back to My Plays
@@ -433,7 +433,9 @@ export function VsDefenseView() {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-board overflow-hidden">
+    // z-50: must outrank Navbar's sticky z-40 so this still fully covers it — see
+    // the z-index note in Navbar.tsx.
+    <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
       {/* ── HEADER ─────────────────────────────────────────────── */}
       <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">
         <Link

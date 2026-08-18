@@ -3,6 +3,13 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      // Default Tailwind screens jump straight from 0 to `sm: 640px`, so a
+      // 320px phone and a 639px foldable get identical mobile treatment.
+      // `xs` gives layouts a checkpoint inside that range without touching
+      // the existing sm/md/lg/xl/2xl breakpoints (this extends, not replaces).
+      screens: {
+        xs: '400px',
+      },
       colors: {
         primary: {
           DEFAULT: '#1FA75D', // Turf green (brand accent)

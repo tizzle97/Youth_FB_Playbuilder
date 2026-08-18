@@ -4913,3 +4913,34 @@ test('selecting a roster chip tells the user to tap the field to place it', asyn
   await page.mouse.move(spot.x, spot.y);
   await expect(page.getByText('Tap to turn this player into "R"')).toBeVisible();
 });
+
+test('the app navbar stays visible while scrolling a long page', async ({ page }) => {
+  // Regression for B-47: the nav used to be a plain in-flow box, so it scrolled
+  // out of view on any page taller than the viewport. `boundingBox().y` (not
+  // toBeVisible(), which passes for an occluded element too) is the real check
+  // that it's pinned to the top of the viewport, not just present in the DOM.
+  await page.goto('/');
+  await page.evaluate(() => window.scrollTo(0, 800));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const box = await page.locator('nav').first().boundingBox();
+  expect(box?.y).toBe(0);
+});
+
+test('the sticky navbar stays fully covered by the full-screen /designer view', async ({ page }) => {
+  // Regression for B-47: making the app navbar `sticky` (positioned, with a
+  // z-index) means it now competes on z-index instead of losing automatically
+  // to later, non-positioned DOM content. /designer's `fixed inset-0` shell
+  // has to explicitly outrank it (z-50 vs. nav's z-40) or the navbar would
+  // float back on top and swallow clicks on the designer's own header —
+  // exactly the failure the old "keep nav non-positioned" comment warned about.
+  await openDesigner(page);
+
+  const hitsAppNavbar = await page.evaluate(() => {
+    const header = document.querySelector('header');
+    const headerBox = header?.getBoundingClientRect();
+    const point = headerBox ? { x: headerBox.left + headerBox.width / 2, y: headerBox.top + headerBox.height / 2 } : { x: 200, y: 20 };
+    return !!document.elementFromPoint(point.x, point.y)?.closest('nav');
+  });
+  expect(hitsAppNavbar).toBe(false);
+});
