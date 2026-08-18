@@ -411,3 +411,39 @@ test('taps get no default highlight flash and the page does not rubber-band', as
   expect(styles.overscrollX).toBe('none');
   expect(styles.overscrollY).toBe('none');
 });
+
+/* ── Blog post typography on phones (B-49) ──────────────────────────────────
+   `prose prose-invert` was inert (no `@tailwindcss/typography` plugin
+   registered), so a post carrying a long unbroken token — a URL with no
+   spaces — had nothing to wrap it and pushed the whole article sideways.
+   The `/blog/<slug>` route wasn't in the existing "no page scrolls
+   sideways" sweep (which only exercises unauthenticated fixed routes), so
+   this regression had no guard at all. */
+test('a long unbroken URL in a blog post does not push the page sideways', async ({ page }) => {
+  const longUrl = 'https://example.com/' + 'a'.repeat(120) + '/deep/path/segment';
+  await page.route('**/rest/v1/blog_posts**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'post-1',
+        title: 'A post with a long link',
+        content: `Check this out: ${longUrl}\n\nMore text after it.`,
+        slug: 'long-link-post',
+        description: null,
+        author_id: 'someone',
+        published_at: '2025-09-01T00:00:00Z',
+        created_at: '2025-09-01T00:00:00Z',
+        updated_at: '2025-09-01T00:00:00Z',
+      }),
+    }));
+
+  await page.goto('/blog/long-link-post', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'A post with a long link' })).toBeVisible();
+
+  const { scrollW, clientW } = await page.evaluate(() => ({
+    scrollW: document.documentElement.scrollWidth,
+    clientW: document.documentElement.clientWidth,
+  }));
+  expect(scrollW, 'the long URL should wrap instead of widening the document').toBeLessThanOrEqual(clientW + 1);
+});
