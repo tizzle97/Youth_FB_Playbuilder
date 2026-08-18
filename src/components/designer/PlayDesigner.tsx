@@ -475,7 +475,9 @@ export function PlayDesigner() {
   );
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-board overflow-hidden">
+    // z-50: must outrank Navbar's sticky z-40 so this still fully covers it — see
+    // the z-index note in Navbar.tsx.
+    <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
 
       {/* ── HEADER ─────────────────────────────────────────────── */}
       <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">

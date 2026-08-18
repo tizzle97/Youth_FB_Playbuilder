@@ -713,7 +713,10 @@ test('custom formations (Pro): save current icons, see it listed, stamp it, then
 
   await btn(page, 'Formation templates').click();
   await expect(page.getByText('Save your own formations')).toHaveCount(0);
-  const popover = page.locator('div.fixed.z-40');
+  // z-[60], not z-40: these popovers are portaled to <body>, so /designer's
+  // own `z-50` full-screen shell (added for the sticky navbar, see the
+  // z-index note in Navbar.tsx) needs outranking too, not just the app nav.
+  const popover = page.locator('div.fixed.z-\\[60\\]');
   await popover.getByText('Save current arrangement').click();
   await popover.getByPlaceholder('Formation name').fill('My Trips Set');
   await popover.getByRole('button', { name: 'Save' }).click();
@@ -768,7 +771,10 @@ test('formation menu opens fully on screen from the mobile bottom toolbar', asyn
   await openDesigner(page);
 
   await btn(page, 'Formation templates').click();
-  const popover = page.locator('div.fixed.z-40');
+  // z-[60], not z-40: these popovers are portaled to <body>, so /designer's
+  // own `z-50` full-screen shell (added for the sticky navbar, see the
+  // z-index note in Navbar.tsx) needs outranking too, not just the app nav.
+  const popover = page.locator('div.fixed.z-\\[60\\]');
   await expect(popover).toBeVisible();
   const box = await popover.boundingBox();
   expect(box).not.toBeNull();
@@ -805,7 +811,10 @@ test('icon-edit popover stays on screen and clear of the icon on a short phone c
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
 
-  const popover = page.locator('div.fixed.z-40');
+  // z-[60], not z-40: these popovers are portaled to <body>, so /designer's
+  // own `z-50` full-screen shell (added for the sticky navbar, see the
+  // z-index note in Navbar.tsx) needs outranking too, not just the app nav.
+  const popover = page.locator('div.fixed.z-\\[60\\]');
   await expect(popover).toBeVisible();
   const box = await popover.boundingBox();
   expect(box).not.toBeNull();
@@ -836,7 +845,10 @@ test('scrolling inside the formation menu does not close it', async ({ page }) =
   await openDesigner(page);
 
   await btn(page, 'Formation templates').click();
-  const popover = page.locator('div.fixed.z-40');
+  // z-[60], not z-40: these popovers are portaled to <body>, so /designer's
+  // own `z-50` full-screen shell (added for the sticky navbar, see the
+  // z-index note in Navbar.tsx) needs outranking too, not just the app nav.
+  const popover = page.locator('div.fixed.z-\\[60\\]');
   await expect(popover).toBeVisible();
 
   // Past the "just opened, reposition instead of closing" grace window.
@@ -855,7 +867,10 @@ test('a resize does not close a popover while an input inside it has focus', asy
   await openDesigner(page);
 
   await btn(page, 'Route color: Auto (match player) or a fixed color for every new route').click();
-  const popover = page.locator('div.fixed.z-40');
+  // z-[60], not z-40: these popovers are portaled to <body>, so /designer's
+  // own `z-50` full-screen shell (added for the sticky navbar, see the
+  // z-index note in Navbar.tsx) needs outranking too, not just the app nav.
+  const popover = page.locator('div.fixed.z-\\[60\\]');
   await expect(popover).toBeVisible();
 
   await page.getByLabel('Custom route color').focus();
@@ -890,7 +905,7 @@ test('mobile toolbar: tools are labelled, and every one is reachable by scrollin
   const formation = page.locator('button[title="Formation templates"]:visible');
   await formation.scrollIntoViewIfNeeded();
   await realClick(page, formation);
-  await expect(page.locator('div.fixed.z-40')).toBeVisible();
+  await expect(page.locator('div.fixed.z-\\[60\\]')).toBeVisible();
 });
 
 test('formation templates: game-format picker in the menu offers 5v5/6v6/7v7/11v11 sets', async ({ page }) => {
@@ -4912,4 +4927,35 @@ test('selecting a roster chip tells the user to tap the field to place it', asyn
   await page.locator('button[title="Player R"]:visible').first().click();
   await page.mouse.move(spot.x, spot.y);
   await expect(page.getByText('Tap to turn this player into "R"')).toBeVisible();
+});
+
+test('the app navbar stays visible while scrolling a long page', async ({ page }) => {
+  // Regression for B-47: the nav used to be a plain in-flow box, so it scrolled
+  // out of view on any page taller than the viewport. `boundingBox().y` (not
+  // toBeVisible(), which passes for an occluded element too) is the real check
+  // that it's pinned to the top of the viewport, not just present in the DOM.
+  await page.goto('/');
+  await page.evaluate(() => window.scrollTo(0, 800));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const box = await page.locator('nav').first().boundingBox();
+  expect(box?.y).toBe(0);
+});
+
+test('the sticky navbar stays fully covered by the full-screen /designer view', async ({ page }) => {
+  // Regression for B-47: making the app navbar `sticky` (positioned, with a
+  // z-index) means it now competes on z-index instead of losing automatically
+  // to later, non-positioned DOM content. /designer's `fixed inset-0` shell
+  // has to explicitly outrank it (z-50 vs. nav's z-40) or the navbar would
+  // float back on top and swallow clicks on the designer's own header —
+  // exactly the failure the old "keep nav non-positioned" comment warned about.
+  await openDesigner(page);
+
+  const hitsAppNavbar = await page.evaluate(() => {
+    const header = document.querySelector('header');
+    const headerBox = header?.getBoundingClientRect();
+    const point = headerBox ? { x: headerBox.left + headerBox.width / 2, y: headerBox.top + headerBox.height / 2 } : { x: 200, y: 20 };
+    return !!document.elementFromPoint(point.x, point.y)?.closest('nav');
+  });
+  expect(hitsAppNavbar).toBe(false);
 });

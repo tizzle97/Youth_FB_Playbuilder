@@ -59,12 +59,17 @@ export function Navbar() {
     { path: '/blog', label: 'Blog' }
   ];
 
-  // Deliberately no `position`/`z-index` here: the nav must stay a plain in-flow box so it
-  // doesn't form a stacking context. That lets UserMenu's `z-50` dropdown compete in the root
-  // context and paint above the Hero's `relative z-10`. Adding `relative z-50` here instead
-  // floats the whole bar over page content and swallows clicks on the designer toolbar.
+  // `sticky top-0 z-40` keeps the nav reachable while scrolling a long page (Blog,
+  // Community) instead of vanishing once you leave normal flow. z-40 sits below every
+  // modal/dropdown in the app (all z-50, including UserMenu's own dropdown, which still
+  // paints above its ancestor nav) and above Hero's `relative z-10`, which is the point.
+  // /designer and /vs are the one exception: both are `fixed inset-0` full-screen tools
+  // that are meant to cover the nav entirely, so they carry an explicit `z-50` of their
+  // own — without it, a z-40 positioned nav would float above their z-auto container and
+  // swallow clicks on their toolbar, which is the failure mode this used to avoid by
+  // keeping the nav non-positioned. Check both spots before changing this z-index.
   return (
-    <nav className="bg-board-light border-b border-chalk/10">
+    <nav className="sticky top-0 z-40 bg-board-light border-b border-chalk/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
@@ -100,7 +105,7 @@ export function Navbar() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-1 sm:hidden">
+          <div className="flex items-center gap-1 xs:gap-2 sm:hidden">
             {user && <UserMenu user={user} showName={false} />}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}

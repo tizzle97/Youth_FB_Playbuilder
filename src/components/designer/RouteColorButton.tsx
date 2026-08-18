@@ -101,8 +101,11 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
 
       {open && coords && createPortal(
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div ref={popoverRef} className="fixed z-40" style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}>
+          {/* z-[55]/z-[60], not z-30/z-40: portaled to <body>, so this now competes
+              directly with /designer's own `z-50` full-screen shell (see the
+              z-index note in Navbar.tsx) instead of nesting inside it. */}
+          <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
+          <div ref={popoverRef} className="fixed z-[60]" style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}>
             <RouteColorEditor
               initialColor={isAuto ? DEFAULT_PREVIEW_COLOR : value}
               initialAuto={isAuto}
