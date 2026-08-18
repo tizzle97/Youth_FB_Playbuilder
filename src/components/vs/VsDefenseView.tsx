@@ -600,7 +600,7 @@ export function VsDefenseView() {
                   if (at >= 0) setIndex(at);
                 }}
                 aria-label="Jump to a defense"
-                className="hidden sm:block max-w-[14rem] px-2 py-2 text-sm bg-board border border-chalk/20 text-chalk rounded-lg"
+                className="block max-w-[6.5rem] sm:max-w-[14rem] px-2 py-2 text-sm bg-board border border-chalk/20 text-chalk rounded-lg"
               >
                 {defenses.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
