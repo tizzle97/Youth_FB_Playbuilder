@@ -162,11 +162,14 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
 
       {open && coords && createPortal(
         <>
-          {/* Click-outside catcher */}
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          {/* Click-outside catcher. z-[55]/z-[60], not z-30/z-40: portaled to
+              <body>, so this now competes directly with /designer's own
+              `z-50` full-screen shell (see the z-index note in Navbar.tsx)
+              instead of nesting inside it. */}
+          <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
           <div
             ref={popoverRef}
-            className="fixed z-40 bg-board-light border border-chalk/20 rounded-xl shadow-2xl p-2 w-56 max-h-[60vh] overflow-y-auto"
+            className="fixed z-[60] bg-board-light border border-chalk/20 rounded-xl shadow-2xl p-2 w-56 max-h-[60vh] overflow-y-auto"
             style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}
             onPointerDown={(e) => e.stopPropagation()}
           >

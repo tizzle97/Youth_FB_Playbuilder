@@ -1729,9 +1729,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         {/* ── Icon customize popover (tap an icon in Select mode) ── */}
         {/* Portaled to <body> (position:fixed) so it clamps against the real
             viewport rather than the canvas's own zoom-scaled coordinate
-            space — see the "Shared popover viewport anchor" comment above. */}
+            space — see the "Shared popover viewport anchor" comment above.
+            z-[60], not z-40: being portaled means this now competes directly
+            with /designer's own `z-50` full-screen shell (see the z-index
+            note in Navbar.tsx) instead of nesting inside it. */}
         {editingIcon && editingIconIndex !== null && createPortal(
-          <div className="fixed z-40" style={{ left: editorLeft, top: editorTop }}>
+          <div className="fixed z-[60]" style={{ left: editorLeft, top: editorTop }}>
             <PlayerStyleEditor
               key={editingIconIndex}
               initialLetter={editingIcon.letter}
@@ -1750,7 +1753,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         {/* ── Recolor Route popover (tap a route line in Recolor Route mode) ── */}
         {editingRouteColorIcon && editingRouteColorPath && editingRouteColorPathIndex !== null && createPortal(
-          <div className="fixed z-40" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
+          <div className="fixed z-[60]" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
             <RouteColorEditor
               key={editingRouteColorPathIndex}
               initialColor={editingRouteColorPath.color}
@@ -1768,7 +1771,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         {/* ── Text box popover (tap a text box in Select mode, or right after placing one) ── */}
         {editingText && editingTextIndex !== null && createPortal(
-          <div className="fixed z-40" style={{ left: textEditorLeft, top: textEditorTop }}>
+          <div className="fixed z-[60]" style={{ left: textEditorLeft, top: textEditorTop }}>
             <TextBoxEditor
               key={editingTextIndex}
               initialText={editingText.text}
