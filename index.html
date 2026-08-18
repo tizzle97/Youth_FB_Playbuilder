@@ -5,6 +5,17 @@
          only after the visitor accepts the cookie consent banner (BACKLOG B-19). -->
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS doesn't rasterize SVG favicons for "Add to Home Screen", so it falls
+         back to a screenshot of the page unless a raster icon is given here.
+         Generated from brand-icon.svg via scripts/render-icons.mjs. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Colors mobile browser chrome (Android URL bar, iOS status bar area) to
+         match the dark app shell instead of the default light background. -->
+    <meta name="theme-color" content="#101D2E" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Playbuilder" />
     <!-- viewport-fit=cover is required for env(safe-area-inset-*) to resolve to
          anything but 0. Without it the designer's bottom-toolbar padding and the
          consent banner's buttons sit under the iPhone home indicator. Note the

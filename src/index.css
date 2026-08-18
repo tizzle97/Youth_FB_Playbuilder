@@ -2,8 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* Stops the whole page from rubber-banding / pull-to-refresh on a swipe that
+     starts outside a scrollable element (e.g. above the designer canvas).
+     Elements that need their own scroll/bounce (canvas pan, modal lists) opt
+     back in locally rather than this being relaxed globally. */
+  overscroll-behavior: none;
+}
+
 body {
   background-color: #101D2E;
+  /* Every tap on a dark theme otherwise flashes the browser's default grey
+     highlight box; real pressed/hover states in the app supply their own
+     feedback, so this is pure noise. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ── Touch input ────────────────────────────────────────────────────────────
