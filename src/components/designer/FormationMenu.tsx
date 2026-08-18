@@ -39,6 +39,7 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
   // user — see B-24 follow-up).
   const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const templates = formationsFor(gameType);
 
   useEffect(() => {
@@ -69,16 +70,35 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
     // or the menu would flicker shut immediately after the click that opened
     // it whenever the trigger sits near the scrollable edge.
     const close = () => setOpen(false);
-    const onScroll = () => {
+    const onScroll = (e: Event) => {
+      // The popover body itself is `max-h-[60vh] overflow-y-auto` (it can
+      // list more templates/custom formations than fit). Scroll events don't
+      // bubble, but a capture-phase window listener still sees them fire on
+      // their real target — so without this check, scrolling *inside* the
+      // list was indistinguishable from the page scrolling behind it, and
+      // every scroll of the template list closed the menu it was scrolling.
+      if (e.target instanceof Node && popoverRef.current?.contains(e.target)) return;
       if (Date.now() - openedAt < 300) { updatePosition(); return; }
       close();
     };
+    const onResize = () => {
+      // On Android, the on-screen keyboard opening/closing over the "save
+      // formation" name input fires a window resize — closing here would
+      // silently discard whatever the coach had just typed. Reposition
+      // instead of closing while that input (or anything else in the
+      // popover) has focus.
+      if (popoverRef.current && document.activeElement && popoverRef.current.contains(document.activeElement)) {
+        updatePosition();
+        return;
+      }
+      close();
+    };
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('resize', close);
+    window.addEventListener('resize', onResize);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('resize', close);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('keydown', onKeyDown);
     };
@@ -145,6 +165,7 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
           {/* Click-outside catcher */}
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <div
+            ref={popoverRef}
             className="fixed z-40 bg-board-light border border-chalk/20 rounded-xl shadow-2xl p-2 w-56 max-h-[60vh] overflow-y-auto"
             style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}
             onPointerDown={(e) => e.stopPropagation()}

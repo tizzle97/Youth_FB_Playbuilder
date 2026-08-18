@@ -178,17 +178,6 @@ Fixed by polling the bridge instead of snapshotting it.
 React's render queue whenever the value it reports is set from an effect.
 Poll it, or assert against the DOM.
 
-### B-41 · Popover bugs on phones
-`FormationMenu.tsx:78` and `RouteColorButton.tsx:49` register `scroll` with
-`capture: true`, so scrolling *inside* the popover (it's `max-h-[60vh]
-overflow-y-auto`) closes it; and `resize`→`close` closes it when the Android
-keyboard opens over its own `autoFocus` input, discarding the formation name.
-The three canvas popovers (`Canvas.tsx:1486-1538`) are 260-280px tall against a
-290px phone canvas, so they clamp to cover the very icon being edited, and
-their flip is canvas-relative rather than viewport-relative — it breaks while
-zoomed. `AddToPlaybookButton.tsx:247` is `max-h-80 overflow-hidden` (not
-`-auto`), silently truncating a long playbook list with no way to scroll.
-
 ### B-42 · Admin on mobile
 `AdminDashboard.tsx:242` is the app's only table. It has an `overflow-x-auto`
 wrapper but the `<table>` is `w-full` with no `min-w-*`, so it compresses to
@@ -245,6 +234,57 @@ renders text, so images/markdown don't render at all. `p-8` inside `px-4`
 leaves a 279px column on a 375px phone.
 
 ## Done
+
+- **2026-08-16 · B-41: Popover bugs on phones** — four independent fixes, all
+  in the same family (popovers dismissing or mispositioning themselves):
+  **Scroll-inside-closes-it:** `FormationMenu.tsx` and `RouteColorButton.tsx`
+  register `scroll` on `window` with `capture: true` so a page scroll behind
+  the popover closes it — but scroll events don't bubble, and a capture-phase
+  window listener still sees them fire on their real target, so scrolling
+  *inside* the popover's own `overflow-y-auto` list was indistinguishable
+  from the page scrolling and closed the very list being scrolled. Fixed by
+  checking the event target against a ref on the popover content before
+  treating it as an outside scroll.
+  **Resize-discards-input:** the same components' `resize`→close handler
+  fired when a mobile on-screen keyboard opened over the popover's own input
+  (e.g. the "save formation" name field), silently discarding whatever the
+  coach had just typed. Fixed by skipping the close (repositioning instead)
+  while `document.activeElement` is inside the popover.
+  **Canvas popovers covering the icon they edit:** the three canvas-anchored
+  popovers (icon style, route color, text box — `Canvas.tsx`) clamped and
+  flipped against the canvas's own local coordinate space, not the real
+  viewport. On a phone the canvas renders ~290px tall (it's width-bound, not
+  height-bound — see `PlayDesigner.tsx`'s letterboxing), shorter than the
+  260-280px popovers, so neither the "below" nor "above" branch had room and
+  the fallback clamp landed the popover directly on top of the icon being
+  edited. It also broke while zoomed, since the canvas's local coordinate
+  space balloons past the visible screen at higher zoom levels. Fixed by
+  portaling all three to `<body>` (`position: fixed`) and clamping/flipping
+  against `window.innerWidth`/`innerHeight` via the canvas's real
+  `getBoundingClientRect()`, the same pattern `FormationMenu`/
+  `RouteColorButton` already used for the toolbar popovers.
+  **Playbook list truncation:** `AddToPlaybookButton.tsx`'s dropdown wrapper
+  was `max-h-80 overflow-hidden` (not `-auto`), so content past 320px was
+  clipped instead of scrollable — changed to `overflow-y-auto`.
+  **Verification:** `npx tsc --noEmit` clean; `npx eslint` on the four
+  touched files shows only pre-existing warnings, no new errors/warnings;
+  `npm run build` succeeds. 3 new smoke tests in `tests/smoke/designer.spec.ts`
+  cover the canvas-popover viewport clamp (asserts the popover stays fully
+  on-screen and clear of the icon it's editing, on a viewport sized to
+  reproduce the ~290px-tall canvas), the formation-menu scroll-inside case,
+  and the resize-while-focused case — all three confirmed to fail against the
+  pre-fix code and pass against the fix. Full Playwright smoke suite: 147/148
+  passed on the single concurrent 2-worker run; the one failure
+  (`mobile.spec.ts` "every interactive control clears 44px under touch",
+  a `page.goto` navigation timeout) reproduces the same environmental
+  resource-contention flakiness already documented elsewhere in this file
+  (e.g. B-36 (3)) — confirmed by re-running it alone with `--workers=1`,
+  where it passed. No smoke coverage added for the `AddToPlaybookButton`
+  fix: it's a one-line CSS relaxation (`overflow-hidden` → `overflow-y-auto`,
+  strictly loosens clipping, can't newly hide anything) on a component with
+  no existing test scaffolding (no signed-in-session/playbooks-list mock
+  exists for it yet), so a dedicated test harness felt disproportionate to
+  the risk here — flagging as a gap rather than skipping silently.
 
 - **2026-08-15 · B-40: Designer touch tuning** — the drawing surface's
   tolerances were all mouse-era constants, and every one of them was wrong for

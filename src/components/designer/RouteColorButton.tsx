@@ -23,6 +23,7 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -40,16 +41,31 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
     };
     updatePosition();
     const close = () => setOpen(false);
-    const onScroll = () => {
+    const onScroll = (e: Event) => {
+      // Same fix as FormationMenu: a capture-phase window listener sees the
+      // editor's own internal scrolling too, since scroll events don't
+      // bubble but still fire capture handlers on ancestors — without this
+      // check, scrolling inside the popover was indistinguishable from the
+      // page scrolling behind it and closed the very thing being scrolled.
+      if (e.target instanceof Node && popoverRef.current?.contains(e.target)) return;
       if (Date.now() - openedAt < 300) { updatePosition(); return; }
       close();
     };
+    const onResize = () => {
+      // Don't discard in-progress input (e.g. a custom hex value) just
+      // because the on-screen keyboard opening fired a resize.
+      if (popoverRef.current && document.activeElement && popoverRef.current.contains(document.activeElement)) {
+        updatePosition();
+        return;
+      }
+      close();
+    };
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('resize', close);
+    window.addEventListener('resize', onResize);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('resize', close);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('keydown', onKeyDown);
     };
@@ -86,7 +102,7 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
       {open && coords && createPortal(
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="fixed z-40" style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}>
+          <div ref={popoverRef} className="fixed z-40" style={{ left: coords.left, top: coords.top, bottom: coords.bottom }}>
             <RouteColorEditor
               initialColor={isAuto ? DEFAULT_PREVIEW_COLOR : value}
               initialAuto={isAuto}

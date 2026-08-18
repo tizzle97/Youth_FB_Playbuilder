@@ -781,6 +781,90 @@ test('formation menu opens fully on screen from the mobile bottom toolbar', asyn
   expect((await canvasState(page)).playerIcons).toHaveLength(11);
 });
 
+// B-41: on a phone the canvas itself renders ~290px tall (width-bound, not
+// height-bound — see PlayDesigner.tsx's letterboxing), shorter than the
+// icon-edit popover (260px). The old placement math clamped/flipped against
+// the canvas's own local coordinate space, so when neither the "below" nor
+// "above" branch had room, it fell back to pinning near the top of that
+// space — which sat right on top of the icon being edited instead of beside
+// it. Fixed by portaling to <body> and clamping against the real viewport
+// (which has the whole page's height to work with, not just the canvas).
+test('icon-edit popover stays on screen and clear of the icon on a short phone canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  // Dead center vertically — neither flip direction has enough of the
+  // canvas's own ~290px to fit a 260px popover, so this is exactly the case
+  // the old canvas-relative clamp handled wrong.
+  const spot = await canvasPoint(page, 0.5, 0.5);
+  await page.mouse.click(spot.x, spot.y);
+
+  await btn(page, 'Select / Move').click();
+  const state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+
+  const popover = page.locator('div.fixed.z-40');
+  await expect(popover).toBeVisible();
+  const box = await popover.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+
+  // The popover must sit clear of the icon it's editing, not on top of it.
+  const iconHit = { left: icon.x - 15, right: icon.x + 15, top: icon.y - 15, bottom: icon.y + 15 };
+  const overlapsIcon = !(
+    box!.x > iconHit.right ||
+    box!.x + box!.width < iconHit.left ||
+    box!.y > iconHit.bottom ||
+    box!.y + box!.height < iconHit.top
+  );
+  expect(overlapsIcon).toBe(false);
+});
+
+// B-41: FormationMenu/RouteColorButton register `scroll` on `window` with
+// `capture: true` so a scroll of the page behind the popover closes it. But
+// scroll events don't bubble, and a capture-phase window listener still sees
+// them fire on their real target — so without checking the target, scrolling
+// *inside* the popover's own `overflow-y-auto` template list was
+// indistinguishable from the page scrolling, and closed the very menu being
+// scrolled.
+test('scrolling inside the formation menu does not close it', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Formation templates').click();
+  const popover = page.locator('div.fixed.z-40');
+  await expect(popover).toBeVisible();
+
+  // Past the "just opened, reposition instead of closing" grace window.
+  await page.waitForTimeout(350);
+  await popover.evaluate((el) => el.dispatchEvent(new Event('scroll')));
+
+  await expect(popover).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I-Formation' })).toBeVisible();
+});
+
+// B-41: the same `resize`->close listener fires when a mobile on-screen
+// keyboard opens over an autoFocus'd input inside the popover, discarding
+// whatever the coach had just started typing. Fixed by skipping the close
+// (repositioning instead) while an element inside the popover has focus.
+test('a resize does not close a popover while an input inside it has focus', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Route color: Auto (match player) or a fixed color for every new route').click();
+  const popover = page.locator('div.fixed.z-40');
+  await expect(popover).toBeVisible();
+
+  await page.getByLabel('Custom route color').focus();
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+
+  await expect(popover).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Auto (match player)' })).toBeVisible();
+});
+
 test('mobile toolbar: tools are labelled, and every one is reachable by scrolling', async ({ page }) => {
   // The label class used to be `hidden sm:inline` in the horizontal
   // orientation — which is the ONLY orientation rendered below sm — so every

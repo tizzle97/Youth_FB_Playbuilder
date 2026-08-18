@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { PlayerStyleEditor } from './PlayerStyleEditor';
 import { RouteColorEditor } from './RouteColorEditor';
 import { TextBoxEditor } from './TextBoxEditor';
@@ -1548,8 +1549,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       } catch { /* ignore */ }
     };
 
+    // ── Shared popover viewport anchor ──────────────────────────────
+    // The three popovers below are portaled to <body> (position:fixed) and
+    // clamp/flip against the real viewport, not the canvas's own width/height.
+    // The canvas's local coordinate space is `canvasSize * zoom` — it shrinks
+    // below the popover's own height on a small phone (a 290px-tall canvas
+    // against a 260px+ popover) and balloons past the visible screen while
+    // zoomed, so clamping against it could still land the popover off-screen
+    // or right on top of the icon being edited instead of beside it.
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const anchorLeft = canvasRect?.left ?? 0;
+    const anchorTop = canvasRect?.top ?? 0;
+
     // ── Icon-edit popover placement ───────────────────────────────
-    // Anchored under the icon, clamped inside the canvas; flips above the
+    // Anchored under the icon, clamped inside the viewport; flips above the
     // icon when there isn't enough room below.
     const editingIcon = editingIconIndex !== null ? playerIcons[editingIconIndex] : null;
     let editorLeft = 0;
@@ -1557,10 +1570,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     if (editingIcon) {
       const POPOVER_W = 230;
       const POPOVER_H = 260;
-      editorLeft = Math.min(Math.max(editingIcon.x * width - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
-      editorTop = editingIcon.y * height + iconRadiusPx + 10;
-      if (editorTop + POPOVER_H > height - 8) {
-        editorTop = Math.max(8, editingIcon.y * height - iconRadiusPx - POPOVER_H - 10);
+      const iconX = anchorLeft + editingIcon.x * width;
+      const iconY = anchorTop + editingIcon.y * height;
+      editorLeft = Math.min(Math.max(iconX - POPOVER_W / 2, 8), Math.max(8, window.innerWidth - POPOVER_W - 8));
+      editorTop = iconY + iconRadiusPx + 10;
+      if (editorTop + POPOVER_H > window.innerHeight - 8) {
+        editorTop = Math.max(8, iconY - iconRadiusPx - POPOVER_H - 10);
       }
     }
 
@@ -1576,10 +1591,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     if (editingRouteColorIcon) {
       const POPOVER_W = 230;
       const POPOVER_H = 190;
-      routeColorEditorLeft = Math.min(Math.max(editingRouteColorIcon.x * width - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
-      routeColorEditorTop = editingRouteColorIcon.y * height + iconRadiusPx + 10;
-      if (routeColorEditorTop + POPOVER_H > height - 8) {
-        routeColorEditorTop = Math.max(8, editingRouteColorIcon.y * height - iconRadiusPx - POPOVER_H - 10);
+      const iconX = anchorLeft + editingRouteColorIcon.x * width;
+      const iconY = anchorTop + editingRouteColorIcon.y * height;
+      routeColorEditorLeft = Math.min(Math.max(iconX - POPOVER_W / 2, 8), Math.max(8, window.innerWidth - POPOVER_W - 8));
+      routeColorEditorTop = iconY + iconRadiusPx + 10;
+      if (routeColorEditorTop + POPOVER_H > window.innerHeight - 8) {
+        routeColorEditorTop = Math.max(8, iconY - iconRadiusPx - POPOVER_H - 10);
       }
     }
 
@@ -1595,10 +1612,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const POPOVER_W = 230;
       const POPOVER_H = 280;
       const b = ctx ? textBoxBounds(ctx, width, height, editingText, scale) : { left: editingText.x * width, right: editingText.x * width, top: editingText.y * height, bottom: editingText.y * height };
-      textEditorLeft = Math.min(Math.max((b.left + b.right) / 2 - POPOVER_W / 2, 8), Math.max(8, width - POPOVER_W - 8));
-      textEditorTop = b.bottom + 10;
-      if (textEditorTop + POPOVER_H > height - 8) {
-        textEditorTop = Math.max(8, b.top - POPOVER_H - 10);
+      const bLeft = anchorLeft + b.left;
+      const bRight = anchorLeft + b.right;
+      const bTop = anchorTop + b.top;
+      const bBottom = anchorTop + b.bottom;
+      textEditorLeft = Math.min(Math.max((bLeft + bRight) / 2 - POPOVER_W / 2, 8), Math.max(8, window.innerWidth - POPOVER_W - 8));
+      textEditorTop = bBottom + 10;
+      if (textEditorTop + POPOVER_H > window.innerHeight - 8) {
+        textEditorTop = Math.max(8, bTop - POPOVER_H - 10);
       }
     }
 
@@ -1699,8 +1720,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         )}
 
         {/* ── Icon customize popover (tap an icon in Select mode) ── */}
-        {editingIcon && editingIconIndex !== null && (
-          <div className="absolute z-20" style={{ left: editorLeft, top: editorTop }}>
+        {/* Portaled to <body> (position:fixed) so it clamps against the real
+            viewport rather than the canvas's own zoom-scaled coordinate
+            space — see the "Shared popover viewport anchor" comment above. */}
+        {editingIcon && editingIconIndex !== null && createPortal(
+          <div className="fixed z-40" style={{ left: editorLeft, top: editorTop }}>
             <PlayerStyleEditor
               key={editingIconIndex}
               initialLetter={editingIcon.letter}
@@ -1713,12 +1737,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               }}
               onCancel={() => setEditingIconIndex(null)}
             />
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* ── Recolor Route popover (tap a route line in Recolor Route mode) ── */}
-        {editingRouteColorIcon && editingRouteColorPath && editingRouteColorPathIndex !== null && (
-          <div className="absolute z-20" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
+        {editingRouteColorIcon && editingRouteColorPath && editingRouteColorPathIndex !== null && createPortal(
+          <div className="fixed z-40" style={{ left: routeColorEditorLeft, top: routeColorEditorTop }}>
             <RouteColorEditor
               key={editingRouteColorPathIndex}
               initialColor={editingRouteColorPath.color}
@@ -1730,12 +1755,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               }}
               onCancel={() => setEditingRouteColorPathIndex(null)}
             />
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* ── Text box popover (tap a text box in Select mode, or right after placing one) ── */}
-        {editingText && editingTextIndex !== null && (
-          <div className="absolute z-20" style={{ left: textEditorLeft, top: textEditorTop }}>
+        {editingText && editingTextIndex !== null && createPortal(
+          <div className="fixed z-40" style={{ left: textEditorLeft, top: textEditorTop }}>
             <TextBoxEditor
               key={editingTextIndex}
               initialText={editingText.text}
@@ -1748,7 +1774,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
               onDelete={() => deleteTextBox(editingTextIndex)}
               onCancel={() => cancelTextBoxEdit(editingTextIndex)}
             />
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
