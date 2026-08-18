@@ -194,6 +194,11 @@ export function AuthPage() {
                     name="email"
                     type="email"
                     autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    inputMode="email"
+                    enterKeyHint="done"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -218,6 +223,11 @@ export function AuthPage() {
                       id="username"
                       name="username"
                       type="text"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="next"
                       required
                       value={username}
                       onChange={handleUsernameChange}
@@ -250,6 +260,11 @@ export function AuthPage() {
                     name="email"
                     type="email"
                     autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    inputMode="email"
+                    enterKeyHint="next"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -271,7 +286,8 @@ export function AuthPage() {
                     id="password"
                     name="password"
                     type="password"
-                    autoComplete="current-password"
+                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                    enterKeyHint="done"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

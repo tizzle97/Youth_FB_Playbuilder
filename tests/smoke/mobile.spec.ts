@@ -340,3 +340,30 @@ test('Create Post modal: Escape closes it, and the close button survives a keybo
   await page.keyboard.press('Escape');
   await expect(page.getByRole('heading', { name: 'Create Post' })).toHaveCount(0);
 });
+
+/* ── Auth form autofill (B-44) ──────────────────────────────────────────────
+   AuthPage.tsx reused one <input> for both sign-in and sign-up, hardcoded to
+   autoComplete="current-password" — so a password manager offered to *fill*
+   a password on signup instead of *generating* one, since "current-password"
+   tells it this account already exists. The username field carried no
+   autoComplete/autoCapitalize/autoCorrect/spellCheck at all, so iOS
+   capitalized the first letter of every new username. */
+test('signup password field asks for a new password, not the current one', async ({ page }) => {
+  await page.goto('/auth?mode=signup');
+
+  const password = page.locator('#password');
+  await expect(password).toHaveAttribute('autocomplete', 'new-password');
+
+  const username = page.locator('#username');
+  await expect(username).toHaveAttribute('autocomplete', 'username');
+  await expect(username).toHaveAttribute('autocapitalize', 'none');
+  await expect(username).toHaveAttribute('autocorrect', 'off');
+  await expect(username).toHaveAttribute('spellcheck', 'false');
+});
+
+test('sign-in password field still asks for the current password', async ({ page }) => {
+  await page.goto('/auth');
+
+  const password = page.locator('#password');
+  await expect(password).toHaveAttribute('autocomplete', 'current-password');
+});
