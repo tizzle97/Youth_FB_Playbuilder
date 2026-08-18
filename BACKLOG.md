@@ -1,237 +1,49 @@
-# Backlog
+# Backlog — frozen archive
 
-Prioritized work queue for Playbuilder Pro. Both humans and automated agents pull
-from here. Context for the monetization items lives in `CLAUDE.md` (Monetization
-section); schema context lives in `supabase/SCHEMA.md`.
+> **This file is no longer the work queue.** As of **2026-08-17** the queue is
+> **[GitHub issues](https://github.com/tizzle97/Youth_FB_Playbuilder/issues)**.
+> Everything below `## Done` is kept as the historical record — several of those
+> writeups are still load-bearing context. **Nothing new gets appended here.**
 
-## How to work an item (agent rules)
+## Where the work lives now
 
-1. Take the **topmost unblocked item** whose scope fits a single PR. One item per
-   branch/PR — do not bundle.
-2. Run `npm run verify` (build + Playwright smoke suite) before opening the PR.
-   If your change touches the designer or save/load flows, extend the smoke
-   suite in `tests/smoke/` to cover it.
-3. **Never run DB migrations.** If schema changes are needed: add a new
-   idempotent `.sql` file in `supabase/`, update `supabase/SCHEMA.md` in the same
-   PR, and put **"⚠ requires SQL run"** in the PR title/description.
-4. **Stripe / billing / anything touching money or auth:** PR only, flagged for
-   human review. Never commit secrets; reference env var names only.
-5. When an item is finished, move it to **Done** with the date and PR link. If
-   you discover new work, append it to the bottom of Up next — don't reprioritize
-   without a human.
+```sh
+gh issue list --state open --label agent-ok      # the queue
+gh issue edit <N> --add-label in-progress        # claim BEFORE branching
+```
 
-### Two automated lanes — stay in yours
+Labels replace what position in this file used to encode: `agent-ok` /
+`human-only` / `blocked` / `needs-design`, `priority:high|normal|low`, `area:*`.
+PRs carry `Closes #<N>`, so merging closes the issue — "move it to Done" is no
+longer a step anyone can forget.
 
-- **Nightly backlog routine** owns `nightly/*` branches and works this file
-  top-down.
-- **Feedback triage routine** (`docs/automation/feedback-triage.md`) owns
-  `feedback/*` branches and works the `feedback` table.
+The rules that used to sit at the top of this file now live in
+[`CLAUDE.md`](CLAUDE.md) (queue + claim protocol) and the two checked-in routine
+prompts, [`docs/automation/nightly-executor.md`](docs/automation/nightly-executor.md)
+and [`docs/automation/feedback-triage.md`](docs/automation/feedback-triage.md).
 
-Neither touches the other's branches, so either can be paused alone. Items
-prefixed **`[from feedback]`** were filed by the triage routine and are already
-classified — treat them as normal backlog items; don't re-triage them or go
-looking for the original submission.
+## Why it moved
 
-## Up next
+Three actors — the nightly routine, the feedback triage routine, and interactive
+Claude sessions — wrote this one file with no arbitration. Every resulting
+failure was a concurrency failure:
 
-### B-18 · Stripe go-live: swap sandbox → live mode (human)
-The sandbox end-to-end test passed on 2026-07-15 (checkout with test card →
-webhook → `subscriptions` row → Pro badge + billing portal, all verified).
-What's left to accept real money: in the Stripe **live** account (not the
-sandbox), create the $39/yr price and webhook endpoint, then
-`supabase secrets set` the live `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and
-`STRIPE_WEBHOOK_SECRET`, redeploy the three Edge Functions, and run one real
-transaction. **Human task.** Blocked on B-21 (attorney review) by choice.
+- **B-37 and B-38 were each allocated twice**, by different lanes, on branches
+  that lived for days while holding an unpublished id.
+- **B-36 denotes four different things** in the archive below.
+- **B-40 was built twice in one night** by two agents working the same item.
+- **B-39 and B-50 shipped and stayed in "Up next"**, because moving an item was
+  a manual edit.
+- **Nine of twenty items at the top were human-only**, so the nightly routine
+  spent runs rejecting them — it filed issue #22 saying exactly that, and the
+  issue stayed open for three weeks.
 
-### B-21 · Attorney review of legal pages (human)
-`/privacy` and `/terms` (shipped 2026-07-16) are engineering-informed drafts
-matched to actual data practices. Have a licensed attorney review before
-flipping Stripe to live mode. **Human task** — agents skip.
+Issue numbers are assigned by the server, so they cannot collide. A claim is a
+label write, so the collision window is seconds rather than days.
 
-### B-20 · Register DMCA designated agent (human, $6)
-File at dmca.copyright.gov: service provider "Jeremy Knepp" with alternate
-names "Playbuilder Pro" / "playbuilderpro.com", agent email
-support@playbuilderpro.com (live via Zoho as of 2026-07-16). Renew every
-3 years. The ToS §8 takedown channel is already published; registration is
-what secures the §512 safe harbor. **Human task** — agents skip.
-
-### B-8 · Manual QA: defensive play save→reload against real Supabase (human)
-The one untested seam from the defensive-playbook feature: with a real signed-in
-session, save a defensive play with zones, reopen via `/designer?play=<id>`,
-confirm icons/zones/routes reload intact. (The smoke suite covers this flow with
-a mocked backend; this checks the real DB round trip once.) **Human task** —
-agents skip.
-
-### B-12 · Testimonials from real user feedback (human-gated)
-`<Testimonials />` stays disabled until there are real quotes with permission to
-publish (never fabricate — house rule). Human collects quotes; agent then wires
-them in.
-
-### B-28 · Team/staff sharing (design first — money-adjacent, human review)
-11v11 staffs are 3–4 coaches; today the only sharing is public community
-plays, and the ToS/monetization plan already promise "future team sharing"
-as a Pro feature. Needs a design pass before any code: likely a `teams`
-table + membership + playbook-level share grants (RLS mirrors the existing
-ownership patterns), invite-by-email flow, read-only vs. editor roles.
-Rough scope is a multi-PR epic — do NOT pick this up as a single nightly
-item; a human should approve the schema design first.
-
-### B-29b · 5v5 field width (remaining sliver of the field audit) — on hold
-**Not for the nightly routine — do not pick this up until a human takes it
-off hold.** The depth half of this item was resolved 2026-07-23: Jeremy
-chose a universal 17-up/13-down (30-yard) field for every format, styled
-after a printed flag playbook page (see Done), with a full coordinate
-migration of every saved play — so the old "grandfather vs. migrate"
-debate here is moot; migration was chosen and executed. What remains is
-only the width question: the field is full width (160 ft) even for 5v5
-flag, whose real fields are ~30 yards wide. Narrowing it was tried in the
-B-29 pass and reverted — it broke the 5v5 Trips/Twins formation templates
-(`formations.ts`), whose receivers sit at x=0.88–0.90 and land outside
-the narrower drawn sidelines. No coordinate compatibility trap; the only
-blocker is rewriting those templates' receiver X-values to fit. But note
-the direction of travel: Jeremy explicitly wants ONE universal catch-all
-canvas across formats now, which arguably retires this item entirely —
-confirm with him before doing anything here.
-
-### B-31 · Official starter play library (content seeding) — full batch done, awaiting final review
-**Not for the nightly routine — content generation is complete; what's left
-is entirely Jeremy's review/publish call, not agent work.**
-**Status (2026-07-21): all ~35 plays are live in production as private
-drafts under `system@playbook.pro`.** Pilot 6 (2026-07-20) + batch 2 (29
-more, 2026-07-21) = 35 total, split 10 five-a-side / 10 seven-a-side / 15
-eleven-a-side, 26 offense + 9 defense. Batch 2 added the library's first
-defensive content (man + zone coverages with real zone-of-responsibility
-ellipses, blitzes) and 11v11 run games (Iso, Inside/Outside Zone, Counter —
-Counter in particular showcases B-25's block-mode T-caps well: pulling
-guard + kicking fullback both visibly converge on the point of attack).
-Every play verified against source data (metadata, icon/path/zone counts)
-before being reported done; a representative sample across categories was
-also visually inspected. One is worth a look before publishing — **Cover 3
-Zone (11v11)**'s four linebacker zones and the robber safety's zone overlap
-enough to look a little busy; still correct and readable (each position
-group has a distinct color) but the least clean of the batch.
-Jeremy: review at `/plays` → My Plays, or `/designer?play=<id>` per play,
-then flip `is_public` per play (or however many you're comfortable with at
-once) — the Save modal correctly shows each play's real values now, so
-Update-to-publish doesn't touch anything else. Also still sitting from the
-pilot batch, both your call, not touched by batch 2: **Power** (11v11 run)
-is still a private draft — never got flipped when the other 5 pilot plays
-did; and **Y Drag**, a play you drew yourself while logged into the system
-account (real content, blank optional metadata) — rename/fill
-in/publish/delete at your leisure, it's yours, not seeded content.
-Reusable tooling is checked in at `scripts/seed-library/` — `plays.mjs`
-holds the content (`PILOT_BATCH_2026_07_20`, unexported, kept only as a
-reference record since it already shipped; `export const PLAYS` is
-whatever the *next* batch is — replace it before rerunning), `run.mjs` is
-the pipeline (insert as drafts via the service-role key → mint a real
-session for the official account → drive the real designer headlessly to
-save each one, generating its thumbnail through the actual `exportImage()`
-path). `run.mjs` now also respects a per-play `type` field (defaults to
-`'offense'`) so defensive content inserts with the correct DB `type`.
-B-32 can reuse this pipeline directly once it exists.
-A real app bug surfaced and got fixed during the pilot (2026-07-20,
-separate from this item's own scope, full writeup was here — since fixed,
-trimmed): `SavePlayModal` didn't prefill from the play actually being
-edited, so "Update" silently reset metadata to blanks/defaults. Confirmed
-fixed by batch 2's run: `run.mjs`'s save step now just verifies the
-modal's prefill matches instead of re-typing every field, and all 29 saves
-passed with zero manual intervention.
-Original scope, still accurate for any future batch: only original
-renditions of classic public-domain concepts — never trace diagrams from
-commercial playbook products. Tag every play with game format + situation
-+ difficulty in `metadata` so library browsing feels curated.
-
-### B-32 · Play of the Week rider on the weekly blog agent
-The Monday blog agent writes posts that *describe* plays (e.g. the
-4-basic-routes post) without shipping them as plays. Extend the scheduled
-task prompt: each weekly run also inserts the post's featured play(s) as
-official library drafts (same review gate as B-31), and the post links to
-the play in the library (and vice versa via the play description).
-Library grows on autopilot; blog↔library interlinking compounds SEO.
-Requires B-31's generation/thumbnail tooling to exist first.
-
-### B-36 · "Vs. Defense" follow-ups
-The read-only `/vs?play=<id>` view ships offense+defense overlay, defense
-cycling, per-matchup notes, export, and (as of the item below) a community
-deck fallback. Still deferred:
-1. **Quiz/reveal mode** — hide the answer, show a random defense, reveal the
-   read. Blocked on there being no "correct read" data on a play at all.
-
-### B-50 · ~~/vs matchup notes leak between defenses~~ — RESOLVED, was a flaky test
-Filed 2026-08-12 as a data-loss bug. **That diagnosis was wrong**, and the
-correction is worth keeping: `vs-defense.spec.ts:170` failed ~4 runs in 6, but
-the product was behaving correctly the whole time.
-
-Switching defenses takes two renders — the first commits the new defense (so
-the label and `hasNoteForCurrentDefense` are already right), and the effect
-that re-syncs the draft schedules the second. A **single** read of the
-`__PBP_VS_TEST__` bridge can land between them and see the previous defense's
-draft. The DOM assertion on the next line auto-retried and always passed,
-which is the tell.
-
-Verified by capturing the actual writes: typing against one defense and
-immediately switching writes exactly one row, targeting the defense that was
-on screen when the text was typed. Zero writes to the other.
-Fixed by polling the bridge instead of snapshotting it.
-
-**The reusable lesson:** a one-shot read of a debug bridge is a race against
-React's render queue whenever the value it reports is set from an effect.
-Poll it, or assert against the DOM.
-
-### B-42 · Admin on mobile
-`AdminDashboard.tsx:242` is the app's only table. It has an `overflow-x-auto`
-wrapper but the `<table>` is `w-full` with no `min-w-*`, so it compresses to
-~27px columns instead of scrolling. Emails have no `break-all`. The plan
-`<select>` at `:280` is `text-xs`.
-
-### B-43 · Modals on phones
-`SavePlayModal.tsx:198` and `ExportModal.tsx:1013` have non-sticky headers, so
-the 24px `×` scrolls out of reach on a ~1000px-tall form; only the backdrop
-remains as a dismiss, and it isn't a visible affordance. `PostFormModal.tsx:89`
-centers with `min-h-screen` (100vh), which fights the iOS keyboard exactly when
-it's up. Neither handles Escape.
-
-### B-44 · Forms & autofill
-`AuthPage.tsx:274` uses `autoComplete="current-password"` on the **signup** path
-too (same JSX for both modes), so password managers won't offer to generate or
-save. The username input has no `autoComplete`, `autoCapitalize="none"`,
-`autoCorrect="off"` or `spellCheck={false}` — iOS capitalizes the first letter.
-No `inputMode`/`enterKeyHint` anywhere in the app.
-
-### B-45 · PWA & mobile meta
-No `theme-color`, so mobile browser chrome stays light against the dark app.
-No `apple-touch-icon` — iOS "Add to Home Screen" screenshots the page, since
-iOS doesn't use SVG favicons. No manifest. No global
-`-webkit-tap-highlight-color` (every tap flashes the default grey box on a dark
-theme) and no `overscroll-behavior`. PR #67 added `viewport-fit=cover`, so
-safe-area insets now resolve — the remaining fixed surfaces can use them.
-
-### B-46 · Touch drag-and-drop in the designer toolbar
-`PlayerToolbar.tsx:24-63` places players via HTML5 drag-and-drop, which no
-mobile browser synthesizes from touch. On a phone, dragging a chip toward the
-field does nothing (it scrolls the roster row instead), and the custom
-drag-image code runs on a gesture that can never fire. The working path is
-tap-chip-then-tap-field, but nothing says so: `Canvas.tsx:1547-1587`'s
-instruction bar has no branch for `selectedPlayer`.
-
-### B-47 · Sticky navbar + an `xs` breakpoint
-`Navbar.tsx:51` is in normal flow, so there's no nav at all after scrolling any
-long page — and its comment explains why it can't simply get `relative z-50`
-(it would form a stacking context and swallow UserMenu's dropdown), so this
-needs care. Separately `tailwind.config.js` never sets `screens`, so one
-`sm:640` flip governs everything from a 320px SE to a 639px foldable.
-
-### B-48 · `/vs` defense picker is desktop-only
-`VsDefenseView.tsx:493` is `hidden sm:block`, so on a phone a coach with 12
-defenses taps Next up to 11 times. No mobile equivalent.
-
-### B-49 · Blog typography
-`BlogPage.tsx:114` uses `prose prose-invert`, but `@tailwindcss/typography`
-isn't installed (`tailwind.config.js` `plugins: []`) — the class is inert. No
-measure, no heading scale, and no `overflow-wrap`, so a URL in post content
-pushes the article sideways. `formatContent` (`:24`) only splits on `\n\n` and
-renders text, so images/markdown don't render at all. `p-8` inside `px-4`
-leaves a 279px column on a 375px phone.
+The live items from "Up next" were migrated to issues **#82–#101** on
+2026-08-17, keeping their `B-NN` in the title so the history below stays
+searchable.
 
 ## Done
 
