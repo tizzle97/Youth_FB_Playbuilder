@@ -4,6 +4,7 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import { sanitizePostContent } from '../../lib/sanitizeHtml';
 import { RichTextEditor } from './RichTextEditor';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 /** RichTextEditor isn't a native form control, so it gets no HTML5 `required`
  *  validation — an editor holding only an empty paragraph still sanitizes to
@@ -29,6 +30,8 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
   const [content, setContent] = useState(post?.content ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -85,24 +88,23 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
 
-        <div className="inline-block w-full max-w-2xl my-8 overflow-hidden text-left align-middle transition-all transform bg-board-light rounded-lg shadow-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10">
-            <h3 className="text-2xl font-bold text-chalk">{isEditing ? 'Edit Post' : 'Create Post'}</h3>
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="tap-target flex items-center justify-center text-chalk/70 hover:text-chalk transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
+      <div className="relative flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden text-left bg-board-light rounded-lg shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10 flex-shrink-0">
+          <h3 className="text-2xl font-bold text-chalk">{isEditing ? 'Edit Post' : 'Create Post'}</h3>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="tap-target flex items-center justify-center text-chalk/70 hover:text-chalk transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
-          <form onSubmit={handleSubmit} className="p-6">
-            <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-6">
+          <div className="space-y-6">
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-chalk">
                   Title
@@ -154,9 +156,8 @@ export function PostFormModal({ isOpen, onClose, onSaved, post }: PostFormModalP
                   {loading ? (isEditing ? 'Saving...' : 'Creating...') : (isEditing ? 'Save Changes' : 'Create Post')}
                 </button>
               </div>
-            </div>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );

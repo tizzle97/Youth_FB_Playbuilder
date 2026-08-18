@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import type { UserPreferences } from '../../lib/userPreferences';
 import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UsageWarningBanner } from '../UsageWarningBanner';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface Playbook {
   id: string;
@@ -188,26 +189,28 @@ export function SavePlayModal({
     setStep('metadata');
   };
 
+  useEscapeKey(isOpen, onClose);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
 
-        <div className="inline-block w-full max-w-2xl overflow-hidden text-left align-middle transition-all transform bg-board-light rounded-lg shadow-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10">
-            <h3 className="text-2xl font-bold text-chalk">
-              {step === 'metadata' ? 'Save Play' : 'Select Playbook'}
-            </h3>
-            <button
-              onClick={onClose}
-              className="text-chalk/70 hover:text-chalk transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
+      <div className="relative flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden text-left bg-board-light rounded-lg shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10 flex-shrink-0">
+          <h3 className="text-2xl font-bold text-chalk">
+            {step === 'metadata' ? 'Save Play' : 'Select Playbook'}
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-chalk/70 hover:text-chalk transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
+        <div className="overflow-y-auto">
           {step === 'metadata' ? (
             // Step 1: Play metadata with thumbnail preview
             <div className="p-6 space-y-6">

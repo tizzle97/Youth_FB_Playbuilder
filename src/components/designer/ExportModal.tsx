@@ -7,6 +7,7 @@ import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { escapeHtml, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook', 'wristband-playbook']);
 
@@ -52,6 +53,10 @@ export function ExportModal({
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
+
+  // Escape mirrors the header's X button in each view: back out of the
+  // metadata editor rather than closing the whole modal when it's open.
+  useEscapeKey(isOpen, showMetadataEditor ? () => setShowMetadataEditor(false) : onClose);
 
   if (!isOpen) return null;
 
@@ -856,26 +861,25 @@ export function ExportModal({
 
   if (showMetadataEditor) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto">
-        <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-          <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
-          <div className="inline-block w-full max-w-3xl overflow-hidden text-left align-middle transition-all transform bg-board-light rounded-lg shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10">
-              <h3 className="text-xl font-bold text-chalk">
-                {selectedFormat === 'single-play' && 'Single Play Sheet'}
-                {selectedFormat === 'detailed-playbook' && 'Detailed Playbook'}
-                {selectedFormat === 'grid-playbook' && 'Playbook Grid'}
-                {selectedFormat === 'wristband-playbook' && 'Wristband Sheet'}
-              </h3>
-              <button
-                onClick={() => setShowMetadataEditor(false)}
-                className="text-chalk/70 hover:text-chalk transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
+        <div className="relative flex flex-col w-full max-w-3xl max-h-[90vh] overflow-hidden text-left bg-board-light rounded-lg shadow-xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10 flex-shrink-0">
+            <h3 className="text-xl font-bold text-chalk">
+              {selectedFormat === 'single-play' && 'Single Play Sheet'}
+              {selectedFormat === 'detailed-playbook' && 'Detailed Playbook'}
+              {selectedFormat === 'grid-playbook' && 'Playbook Grid'}
+              {selectedFormat === 'wristband-playbook' && 'Wristband Sheet'}
+            </h3>
+            <button
+              onClick={() => setShowMetadataEditor(false)}
+              className="text-chalk/70 hover:text-chalk transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-6 space-y-6">
               {/* Single Play Metadata */}
               {selectedFormat === 'single-play' && (
                 <div className="space-y-4">
@@ -980,26 +984,25 @@ export function ExportModal({
                   )}
                 </div>
               )}
-            </div>
+          </div>
 
-            {/* Print Actions */}
-            <div className="px-6 py-4 border-t border-chalk/10 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowMetadataEditor(false)}
-                className="px-4 py-2 text-sm font-medium text-chalk bg-board border border-chalk/20 rounded-md hover:bg-board-light"
-              >
-                Back
-              </button>
-              
-              <button
-                onClick={handlePrintExport}
-                disabled={selectedFormat === 'single-play' && !metadata.playName?.trim()}
-                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                Print {selectedFormat === 'single-play' ? 'Play' : 'Playbook'}
-              </button>
-            </div>
+          {/* Print Actions */}
+          <div className="flex-shrink-0 px-6 py-4 border-t border-chalk/10 flex justify-end space-x-3">
+            <button
+              onClick={() => setShowMetadataEditor(false)}
+              className="px-4 py-2 text-sm font-medium text-chalk bg-board border border-chalk/20 rounded-md hover:bg-board-light"
+            >
+              Back
+            </button>
+
+            <button
+              onClick={handlePrintExport}
+              disabled={selectedFormat === 'single-play' && !metadata.playName?.trim()}
+              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Print {selectedFormat === 'single-play' ? 'Play' : 'Playbook'}
+            </button>
           </div>
         </div>
       </div>
@@ -1007,58 +1010,56 @@ export function ExportModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
-        <div className="inline-block w-full max-w-md overflow-hidden text-left align-middle transition-all transform bg-board-light rounded-lg shadow-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10">
-            <h3 className="text-xl font-bold text-chalk">Export Play</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
+      <div className="relative flex flex-col w-full max-w-md max-h-[90vh] overflow-hidden text-left bg-board-light rounded-lg shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10 flex-shrink-0">
+          <h3 className="text-xl font-bold text-chalk">Export Play</h3>
+          <button
+            onClick={onClose}
+            className="text-chalk/70 hover:text-chalk transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-6">
+          <p className="text-chalk/70 mb-4">
+            Choose a print format:
+          </p>
+          <div className="space-y-3">
+            {printFormatOptions.map((option) => {
+              const locked = PRO_ONLY_FORMATS.has(option.id) && !entitlementLoading && !isPro;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => handleFormatClick(option.id)}
+                  className="w-full flex items-center p-4 bg-board hover:bg-board-light border border-chalk/10 rounded-lg transition-colors"
+                >
+                  <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md bg-primary/10 text-primary">
+                    <option.icon className="h-6 w-6" />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <h4 className="text-lg font-medium text-chalk flex items-center gap-2">
+                      {option.name}
+                      {locked && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                          <Lock className="h-3 w-3" /> Pro
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-sm text-chalk/70">{option.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-6 flex justify-end">
             <button
               onClick={onClose}
-              className="text-chalk/70 hover:text-chalk transition-colors"
+              className="px-4 py-2 text-sm font-medium text-chalk bg-board border border-chalk/20 rounded-md hover:bg-board-light"
             >
-              <X className="w-6 h-6" />
+              Cancel
             </button>
-          </div>
-          <div className="p-6">
-            <p className="text-chalk/70 mb-4">
-              Choose a print format:
-            </p>
-            <div className="space-y-3">
-              {printFormatOptions.map((option) => {
-                const locked = PRO_ONLY_FORMATS.has(option.id) && !entitlementLoading && !isPro;
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => handleFormatClick(option.id)}
-                    className="w-full flex items-center p-4 bg-board hover:bg-board-light border border-chalk/10 rounded-lg transition-colors"
-                  >
-                    <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md bg-primary/10 text-primary">
-                      <option.icon className="h-6 w-6" />
-                    </div>
-                    <div className="ml-4 text-left">
-                      <h4 className="text-lg font-medium text-chalk flex items-center gap-2">
-                        {option.name}
-                        {locked && (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                            <Lock className="h-3 w-3" /> Pro
-                          </span>
-                        )}
-                      </h4>
-                      <p className="text-sm text-chalk/70">{option.description}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-chalk bg-board border border-chalk/20 rounded-md hover:bg-board-light"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         </div>
       </div>

@@ -1514,6 +1514,105 @@ test('SavePlayModal (B-22): free user one play from the cap sees an early usage 
   await expect(page.getByText('14 of 15 free plays used.')).toBeVisible();
 });
 
+/* ── Modals on phones (B-43) ────────────────────────────────────────────────
+   SavePlayModal/ExportModal/PostFormModal previously had non-sticky headers
+   that scrolled out of reach on a tall form (leaving only the backdrop click
+   as a dismiss, which isn't a visible affordance) and no Escape handling at
+   all. Both are fixed via a shared useEscapeKey hook plus a flex-col/
+   max-h-[90vh] modal shell whose header never enters the scrolling flow. */
+
+async function openSavePlayModal(page: Page) {
+  await page.addInitScript((storageKey) => {
+    const session = {
+      access_token: 'test-access-token',
+      refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user: {
+        id: '11111111-1111-1111-1111-111111111111',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'coach@example.com',
+        app_metadata: {},
+        user_metadata: {},
+        created_at: new Date(0).toISOString(),
+      },
+    };
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }, AUTH_STORAGE_KEY);
+
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
+  await openDesigner(page);
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  await page.locator('button[title="Save play"]:visible').click();
+  await expect(page.getByText('Save Play')).toBeVisible();
+}
+
+test('Escape closes the Save Play modal', async ({ page }) => {
+  await openSavePlayModal(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveCount(0);
+});
+
+test('the Save Play modal close button stays reachable after scrolling a tall form', async ({ page }) => {
+  // Regression: the form (~1039px tall, measured at 1280x900) is taller than
+  // a typical viewport, and the header used to be part of the SAME scrolling
+  // flow as the rest of the card — scrolling down to reach lower fields
+  // carried the header (and its close button) up off-screen with it, leaving
+  // only the backdrop click as a dismiss. The modal shell is now flex-col
+  // with the header pinned outside a max-h-[90vh] scrolling body, so the
+  // header must never move no matter how far the body scrolls.
+  await page.setViewportSize({ width: 500, height: 600 });
+  await openSavePlayModal(page);
+
+  const closeButton = page.locator('button:has(svg.lucide-x):visible').first();
+  const before = (await closeButton.boundingBox())!;
+
+  // Scroll whatever container is scrollable under the pointer — the whole
+  // page in the old layout, just the modal body in the fixed one.
+  await page.mouse.move(300, 300);
+  await page.mouse.wheel(0, 2000);
+  await page.waitForTimeout(200);
+
+  const after = (await closeButton.boundingBox())!;
+  expect(after.y, 'close button moved off its original position after scrolling the form').toBe(before.y);
+  expect(after.y, 'close button should stay within the viewport').toBeGreaterThanOrEqual(0);
+  expect(after.y, 'close button should stay within the viewport').toBeLessThan(600);
+
+  const cx = after.x + after.width / 2;
+  const cy = after.y + after.height / 2;
+  const hitsCloseButton = await page.evaluate(
+    ([x, y]) => Boolean(document.elementFromPoint(x as number, y as number)?.closest('button')),
+    [cx, cy],
+  );
+  expect(hitsCloseButton, 'close button should not be covered by scrolled-over content').toBe(true);
+
+  await closeButton.click();
+  await expect(page.getByPlaceholder('Enter play name...')).toHaveCount(0);
+});
+
+test('Escape steps back out of the Export metadata editor instead of closing the whole modal', async ({ page }) => {
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+  await expect(page.getByText('Choose a print format:')).toBeVisible();
+
+  await page.getByRole('button', { name: /Single Play Sheet/ }).click();
+  await expect(page.getByText('Notes & Execution')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Choose a print format:')).toBeVisible();
+  await expect(page.getByText('Notes & Execution')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Choose a print format:')).toHaveCount(0);
+});
+
 test('account settings page renders for a signed-in user (mocked backend)', async ({ page }) => {
   // Regression test: the page previously rendered blank because a type-only
   // `User` import was used as a JSX component (undefined at runtime), which
