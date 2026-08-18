@@ -306,3 +306,37 @@ test('every interactive control clears 44px under touch', async ({ page }) => {
 
   expect(undersized).toEqual([]);
 });
+
+/* ── Modals on phones (B-43) ────────────────────────────────────────────────
+   PostFormModal centered itself with `min-h-screen` (100vh), which fights the
+   viewport shrink an iOS keyboard causes — the layout kept assuming full
+   viewport height while the visual viewport shrank underneath it — and had no
+   Escape handling. Both are fixed: the modal now centers with real flexbox
+   inside a max-h-[90vh] card instead of a 100vh assumption, and Escape closes
+   it via the shared useEscapeKey hook. */
+test('Create Post modal: Escape closes it, and the close button survives a keyboard-sized viewport', async ({ page }) => {
+  await seedForTapTargets(page);
+  await page.goto('/community', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(700);
+
+  await page.getByRole('button', { name: 'Create Post' }).click();
+  await expect(page.getByRole('heading', { name: 'Create Post' })).toBeVisible();
+
+  // Simulate the visual viewport an iOS keyboard leaves behind — the failure
+  // mode was a 100vh centering assumption that didn't shrink with it.
+  await page.setViewportSize({ width: 375, height: 260 });
+
+  const closeButton = page.getByRole('button', { name: 'Close' });
+  const box = (await closeButton.boundingBox())!;
+  expect(box.y, 'close button should be within the shrunk viewport').toBeGreaterThanOrEqual(0);
+  expect(box.y, 'close button should be within the shrunk viewport').toBeLessThan(260);
+
+  const hitsCloseButton = await page.evaluate(
+    ([x, y]) => Boolean(document.elementFromPoint(x as number, y as number)?.closest('button[aria-label="Close"]')),
+    [box.x + box.width / 2, box.y + box.height / 2],
+  );
+  expect(hitsCloseButton, 'close button should not be covered by scrolled-over content').toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Create Post' })).toHaveCount(0);
+});
