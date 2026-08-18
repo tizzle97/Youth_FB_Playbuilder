@@ -4890,3 +4890,26 @@ test('touch: a small wobble during a tap opens the editor instead of nudging the
   expect(after.x).toBeCloseTo(placed.x, 5);
   expect(after.y).toBeCloseTo(placed.y, 5);
 });
+
+test('selecting a roster chip tells the user to tap the field to place it', async ({ page }) => {
+  // The toolbar's HTML5 drag-and-drop never fires from a touch gesture (no
+  // mobile browser synthesizes it), so tap-chip-then-tap-field is the only
+  // way to place a player on a phone — but nothing said so. Regression check
+  // for the instruction-bar branch added for selectedPlayer.
+  await openDesigner(page);
+
+  await expect(page.getByText('selected · Tap the field to place them', { exact: false })).toHaveCount(0);
+
+  await page.locator('button[title="Player Q"]:visible').first().click();
+  await expect(page.getByText('"Q" selected · Tap the field to place them')).toBeVisible();
+
+  // Placing it clears the instruction (selectedPlayer resets to null).
+  const spot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByText('"Q" selected · Tap the field to place them')).toHaveCount(0);
+
+  // Selecting again and hovering an existing player offers the swap message.
+  await page.locator('button[title="Player R"]:visible').first().click();
+  await page.mouse.move(spot.x, spot.y);
+  await expect(page.getByText('Tap to turn this player into "R"')).toBeVisible();
+});
