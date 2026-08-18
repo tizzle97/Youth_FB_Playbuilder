@@ -367,3 +367,47 @@ test('sign-in password field still asks for the current password', async ({ page
   const password = page.locator('#password');
   await expect(password).toHaveAttribute('autocomplete', 'current-password');
 });
+
+/* ── PWA & mobile meta (B-45) ────────────────────────────────────────────────
+   No theme-color meant mobile browser chrome stayed light against the dark
+   app; no apple-touch-icon meant iOS "Add to Home Screen" fell back to a
+   screenshot of the page (iOS doesn't rasterize SVG favicons); no manifest;
+   no global tap-highlight/overscroll-behavior. */
+test('theme-color and apple-touch-icon are present and resolve', async ({ page, request }) => {
+  await page.goto('/');
+
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#101D2E');
+
+  const iconHref = await page.locator('link[rel="apple-touch-icon"]').getAttribute('href');
+  expect(iconHref).toBeTruthy();
+  const iconRes = await request.get(iconHref!);
+  expect(iconRes.ok()).toBe(true);
+  expect(iconRes.headers()['content-type']).toContain('image/png');
+});
+
+test('the web app manifest is linked and resolves to valid JSON with icons', async ({ page, request }) => {
+  await page.goto('/');
+
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+  expect(manifestHref).toBeTruthy();
+
+  const res = await request.get(manifestHref!);
+  expect(res.ok()).toBe(true);
+  const manifest = await res.json();
+  expect(manifest.theme_color).toBe('#101D2E');
+  expect(manifest.icons?.length).toBeGreaterThanOrEqual(2);
+});
+
+test('taps get no default highlight flash and the page does not rubber-band', async ({ page }) => {
+  await page.goto('/');
+
+  const styles = await page.evaluate(() => ({
+    tapHighlight: getComputedStyle(document.body).webkitTapHighlightColor,
+    overscrollX: getComputedStyle(document.documentElement).overscrollBehaviorX,
+    overscrollY: getComputedStyle(document.documentElement).overscrollBehaviorY,
+  }));
+
+  expect(styles.tapHighlight).toBe('rgba(0, 0, 0, 0)');
+  expect(styles.overscrollX).toBe('none');
+  expect(styles.overscrollY).toBe('none');
+});
