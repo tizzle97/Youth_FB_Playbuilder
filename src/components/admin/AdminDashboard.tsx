@@ -242,7 +242,7 @@ export function AdminDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <table className="w-full">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b border-chalk/10">
                         <th className="px-4 py-2 text-left text-chalk">User</th>
@@ -263,7 +263,7 @@ export function AdminDashboard() {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-chalk">{user.email}</td>
+                          <td className="px-4 py-2 text-chalk break-all">{user.email}</td>
                           <td className="px-4 py-2">
                             {user.is_stripe_backed ? (
                               // Paying subscriber — the server refuses to change these
@@ -280,7 +280,7 @@ export function AdminDashboard() {
                                 value={user.plan}
                                 disabled={savingPlanFor === user.id}
                                 onChange={(e) => handleSetPlan(user, e.target.value as Plan)}
-                                className={`px-2 py-1 rounded-lg border border-chalk/20 bg-board text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 ${PLAN_BADGE[user.plan]}`}
+                                className={`px-2 py-1 rounded-lg border border-chalk/20 bg-board text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 ${PLAN_BADGE[user.plan]}`}
                               >
                                 {ASSIGNABLE_PLANS.map(({ value, label }) => (
                                   <option key={value} value={value}>{label}</option>
@@ -288,7 +288,7 @@ export function AdminDashboard() {
                               </select>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-chalk">
+                          <td className="px-4 py-2 text-chalk whitespace-nowrap">
                             {new Date(user.created_at).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-2 text-right">
