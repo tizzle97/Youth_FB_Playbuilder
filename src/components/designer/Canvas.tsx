@@ -1440,7 +1440,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
       // Hover highlight: show which icon will be the route origin, or which
       // zone will be affected.
-      if ((drawingMode && waypointPoints.length === 0) || zoneMode || deleteZoneMode) {
+      if ((drawingMode && waypointPoints.length === 0) || zoneMode || deleteZoneMode || selectedPlayer) {
         const idx = findIcon(p);
         setHoveredIconIndex(idx >= 0 ? idx : null);
       } else if (hoveredIconIndex !== null) {
@@ -1631,7 +1631,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       ? playerIcons[hoveredPath.startIconIndex]?.letter
       : undefined;
     let instructionText: string | null = null;
-    if (deleteRouteMode) {
+    if (selectedPlayer) {
+      // The toolbar's HTML5 drag-and-drop never fires on touch (no browser
+      // synthesizes it), so tap-chip-then-tap-field is the only way to place
+      // a player on mobile. Nothing said so until this branch existed.
+      instructionText = hoveredIconIndex !== null
+        ? `Tap to turn this player into "${selectedPlayer.letter}"`
+        : `"${selectedPlayer.letter}" selected · Tap the field to place them`;
+    } else if (deleteRouteMode) {
       instructionText = hoveredPath
         ? `Tap to remove ${hoveredPathOriginLetter ? `"${hoveredPathOriginLetter}"'s` : 'this'} route`
         : 'Tap a route to remove it';
