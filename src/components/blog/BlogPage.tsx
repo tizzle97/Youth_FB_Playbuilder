@@ -80,7 +80,7 @@ export function BlogPostPage() {
         </Link>
 
         {loading ? (
-          <div className="bg-board-light rounded-lg p-8 border border-chalk/10 animate-pulse">
+          <div className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 animate-pulse">
             <div className="h-8 bg-chalk/10 rounded w-2/3 mb-6"></div>
             <div className="h-4 bg-chalk/10 rounded w-full mb-3"></div>
             <div className="h-4 bg-chalk/10 rounded w-5/6"></div>
@@ -94,9 +94,9 @@ export function BlogPostPage() {
             <p className="text-chalk/70">This post may have been removed or the link is incorrect.</p>
           </div>
         ) : (
-          <article className="bg-board-light rounded-lg p-8 border border-chalk/10">
+          <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10">
             <header className="mb-8">
-              <h1 className="text-3xl font-bold text-chalk mb-4">{post.title}</h1>
+              <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
               <div className="flex items-center gap-4 text-sm text-chalk/70">
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
@@ -111,7 +111,7 @@ export function BlogPostPage() {
               </div>
             </header>
 
-            <div className="prose prose-invert max-w-none">{formatContent(post.content)}</div>
+            <div className="prose prose-invert break-words">{formatContent(post.content)}</div>
           </article>
         )}
       </div>
@@ -159,7 +159,7 @@ export function BlogPage() {
     <div className="min-h-screen bg-board">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="bg-board-light rounded-lg p-8 mb-8 border border-chalk/10">
+        <div className="bg-board-light rounded-lg p-4 sm:p-8 mb-8 border border-chalk/10">
           <div className="flex items-center gap-3 mb-4">
             <Book className="h-8 w-8 text-primary" />
             <h1 className="text-3xl font-chalk font-bold text-chalk">Blog</h1>
