@@ -30,11 +30,31 @@ Supabase dashboard.
 | # | Step | Status |
 |---|------|--------|
 | 1 | `supabase/feedback_triage.sql` run in the SQL Editor | ✅ 2026-08-05 (per `supabase/SCHEMA.md`) |
-| 2 | `supabase secrets set FEEDBACK_TRIAGE_SECRET=…` | ⬜ not confirmed |
-| 3 | `supabase functions deploy feedback-triage --no-verify-jwt` | ⬜ not confirmed |
+| 2 | `supabase secrets set FEEDBACK_TRIAGE_SECRET=…` | ✅ 2026-08-19 (see the probe below) |
+| 3 | `supabase functions deploy feedback-triage --no-verify-jwt` | ✅ 2026-08-19 (see the probe below) |
 | 4 | Dry run passed (see [the dry run](#before-scheduling-it-the-dry-run)) | ⬜ not run |
 | 5 | Routine created at claude.ai/code/routines, daily | ⬜ not confirmed |
 | 6 | Prompt updated to the intake-only version below (2026-08-17) | ⬜ not confirmed |
+
+**Rows 2 and 3 are confirmed by the endpoint itself**, not by anyone's memory:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "https://<project-ref>.supabase.co/functions/v1/feedback-triage" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+`401` = deployed **and** failing closed on a missing secret, which is both rows
+at once. `404` = not deployed. This is the check that diagnosed the digest
+outage on 2026-08-14: `feedback-notify` was returning 404 for weeks while
+feedback piled up uncollected, and one curl found it after a lot of guessing.
+Prefer it over trusting a tick in this table.
+
+⚠ **Rows 4–6 are what stand between "captured" and "triaged" today.** Feedback
+*is* arriving — rows are visible in `/admin` — but **the routine has never filed
+an issue.** The only `from-feedback` issues in the repo (#100, #101) were
+created by hand while rescuing two stranded proposal branches. Nothing is
+converting submissions into queue items.
 
 Do them **in that order**. Steps 2 and 3 together are what makes the endpoint
 reachable: deploying before the secret is set leaves a live function whose

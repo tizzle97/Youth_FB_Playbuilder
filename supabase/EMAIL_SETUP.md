@@ -101,6 +101,18 @@ unless that changes.
 
 ## 6. Feedback digest (separate from everything above)
 
+> **Status 2026-08-19:** the function is **deployed** — `POST` to
+> `/functions/v1/feedback-notify` returns `401` (deployed, failing closed on a
+> missing secret) rather than `404`. Steps 1–2 below are done.
+> **Not confirmed:** whether `feedback_notify.sql`'s cron block was re-run with
+> its two placeholders filled in. It was originally run *before* the function
+> existed, so unless it was re-run, `cron.job` still POSTs nightly to a literal
+> `<PROJECT-REF>` host and no digest is ever sent. Check with
+> `SELECT command FROM cron.job WHERE jobname = 'feedback-digest';` — a literal
+> `<` in the output means it's still broken. Re-running the file is safe; it
+> unschedules first.
+
+
 Steps 1–5 configure Resend as Supabase **Auth's** SMTP provider — signup
 confirmations and password resets, sent by Supabase itself. The feedback digest
 is a different path: the `feedback-notify` Edge Function calls **Resend's HTTP
