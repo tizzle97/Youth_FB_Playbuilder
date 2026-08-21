@@ -17,8 +17,14 @@
 -- so a dated row lapses correctly on both the server and the client with no
 -- Stripe involvement at all.
 --
--- ⚠ EDIT THIS before running. Nothing else in the file needs changing.
-\set comped_email 'REPLACE_WITH_THE_USER_EMAIL'
+-- ⚠ EDIT THE EMAIL IN ALL THREE PLACES BELOW before running.
+--   Find/replace `coach@example.com` with the real address.
+--
+-- This deliberately does NOT use psql's \set / :'var' syntax. Those are psql
+-- CLIENT meta-commands; the Supabase SQL Editor talks straight to the database
+-- and does not understand them, so a file written that way fails there. Every
+-- other migration in this repo uses a literal you edit by hand (see
+-- feedback_notify.sql's <PROJECT-REF>) for exactly this reason.
 
 -- The sandbox stripe ids are deliberately cleared:
 --   * they point at objects in the sandbox environment that live mode cannot
@@ -35,7 +41,7 @@ SET
   updated_at             = now()
 FROM auth.users u
 WHERE u.id = s.user_id
-  AND lower(u.email) = lower(:'comped_email')
+  AND lower(u.email) = lower('coach@example.com')   -- ⚠ EDIT (1 of 3)
   -- Never clobber a genuine paying subscriber: only a row with no live
   -- subscription, or one already comped by an earlier run, is eligible.
   AND (s.stripe_subscription_id IS NULL OR s.status IS DISTINCT FROM 'active');
@@ -44,13 +50,14 @@ WHERE u.id = s.user_id
 INSERT INTO subscriptions (user_id, plan, status, current_period_end)
 SELECT u.id, 'pro', 'comped', now() + interval '1 year'
 FROM auth.users u
-WHERE lower(u.email) = lower(:'comped_email')
+WHERE lower(u.email) = lower('coach@example.com')   -- ⚠ EDIT (2 of 3)
 ON CONFLICT (user_id) DO NOTHING;
 
 -- Confirm. Expect exactly one row: plan=pro, status=comped, both stripe ids
--- NULL, current_period_end about a year out.
+-- NULL, current_period_end about a year out. NO ROWS means the email didn't
+-- match — check it and re-run; nothing above is destructive.
 SELECT u.email, s.plan, s.status, s.current_period_end,
        s.stripe_customer_id, s.stripe_subscription_id
 FROM subscriptions s
 JOIN auth.users u ON u.id = s.user_id
-WHERE lower(u.email) = lower(:'comped_email');
+WHERE lower(u.email) = lower('coach@example.com');  -- ⚠ EDIT (3 of 3)
