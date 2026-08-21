@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Upload, Save, Trophy, Shield } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, AlertTriangle, Calendar, Trash2, Save, Trophy, Shield } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ImageCropModal } from './ImageCropModal';
@@ -25,6 +25,9 @@ export default function AccountSettings() {
   const [isFoundingMember, setIsFoundingMember] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [plan, setPlan] = useState<Plan>('free');
+  /** True only when there's a real Stripe customer behind this plan. A comped
+   *  Pro account has none, so it must not be offered the billing portal. */
+  const [hasStripeCustomer, setHasStripeCustomer] = useState(false);
   const [isProPlan, setIsProPlan] = useState(false);
   const [playCount, setPlayCount] = useState<number | null>(null);
   const [playbookCount, setPlaybookCount] = useState<number | null>(null);
@@ -74,11 +77,12 @@ export default function AccountSettings() {
       // internal session lock.
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('plan, current_period_end')
+        .select('plan, current_period_end, stripe_customer_id')
         .eq('user_id', currentUser.id)
         .maybeSingle();
       setIsFoundingMember(sub?.plan === 'founding');
       setPlan((sub?.plan as Plan) || 'free');
+      setHasStripeCustomer(Boolean(sub?.stripe_customer_id));
       setIsProPlan(rowIsPro(sub));
 
       checkIsAdmin(currentUser.id).then(setIsAdmin);
@@ -420,9 +424,13 @@ export default function AccountSettings() {
                     {playbookCount ?? 0} {playbookCount === 1 ? 'playbook' : 'playbooks'} — unlimited
                     on your plan.
                   </p>
-                  {/* Stripe Customer Portal (B-3) — paid subscribers only;
-                      Founding Members have no Stripe customer to manage. */}
-                  {BILLING_ENABLED && plan === 'pro' && (
+                  {/* Stripe Customer Portal (B-3) — only for people who
+                      actually have a Stripe customer. Founding Members never
+                      do, and neither does a comped account
+                      (supabase/comp_first_year.sql), so gating on
+                      plan === 'pro' alone showed them a button that could only
+                      ever error. */}
+                  {BILLING_ENABLED && plan === 'pro' && hasStripeCustomer && (
                     <button
                       type="button"
                       onClick={() => openBillingPortal().catch((err) => setError(getSafeErrorMessage(err, 'Could not open the billing portal')))}
