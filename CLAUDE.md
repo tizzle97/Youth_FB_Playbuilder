@@ -225,11 +225,20 @@ as **Founding Members** (free Pro for life; the webhook never downgrades a
 `founding` row).
 
 Status: entitlement plumbing, feature gates, Stripe checkout/portal/webhook and
-the point-of-sale renewal-consent step are all **built and sandbox-verified**
-(2026-07-15). What remains is the live-mode swap (BACKLOG **B-18**), which is
-deliberately **blocked on B-21 (attorney review)** — don't flip
-`VITE_BILLING_ENABLED` or set live Stripe keys until that clears. `B-20` (DMCA
-agent registration) is also still open. Money/billing code needs human review.
+the point-of-sale renewal-consent step are all built and sandbox-verified
+(2026-07-15). **Attorney review (B-21, issue #83) cleared 2026-08-21**, so the
+live-mode swap (issue #82) is unblocked — follow `supabase/STRIPE_SETUP.md` §6.
+`B-20` (DMCA registration, issue #84) is still open. Money/billing code needs
+human review.
+
+⚠ **`VITE_BILLING_ENABLED` is the real switch, not the backlog.** It was set to
+`true` in Netlify while the Stripe keys were still sandbox, which put a working
+Pro button in front of every visitor — one completed checkout with Stripe's
+published test card and was granted Pro for free. Two lessons kept here because
+both were expensive: a valid Stripe **signature proves the event came from
+Stripe, not that money moved** (hence the `livemode` guard in
+`stripe-webhook/livemode.ts`), and **a gate documented in a backlog file gates
+nothing** — the env var bypassed it silently.
 
 ## Conventions & workflow
 - Match the style of surrounding code; reuse the shared Supabase client and the

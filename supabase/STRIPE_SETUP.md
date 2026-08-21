@@ -145,12 +145,19 @@ users get a **Manage billing** portal button on `/account`.
 
 ## 6. Going live (real money) — gated, see BACKLOG.md B-18/B-21
 
-> **Do not start this section until B-21 (attorney review of `/privacy`
-> and `/terms`) is complete.** `BACKLOG.md` tracks B-18 (this go-live swap)
-> as blocked on B-21 by deliberate choice, not oversight — real subscribers
-> start getting charged real money as soon as section 6.4 finishes, so the
-> legal pages need sign-off first. If B-21 isn't checked off in
-> `BACKLOG.md`, stop here.
+> **Gate cleared 2026-08-21.** Attorney review of `/privacy` and `/terms`
+> (B-21, issue #83) is complete, which unblocks this section. It was held
+> deliberately, not by oversight: real subscribers start getting charged real
+> money as soon as 6.4 finishes.
+>
+> ⚠ **Do 6.3 and 6.4 in one sitting.** Between them the app is taking live
+> checkouts while the webhook still verifies against the *test* signing secret,
+> so successful payments would not grant Pro. And be aware of the reverse
+> failure, which already happened once: with `VITE_BILLING_ENABLED=true` and
+> test keys still in place, a visitor completed checkout with Stripe's test
+> card and was granted Pro for free. The `livemode` guard in
+> `stripe-webhook/livemode.ts` now blocks that, but **it only helps once the
+> function is redeployed** — see 6.6.
 
 Once B-21 is cleared, live mode is a **separate Stripe environment** from
 test mode — its own product, price, keys, and webhook. Repeat sections
@@ -182,7 +189,19 @@ its own signing secret:
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...  # the LIVE whsec, from the live webhook
 ```
 
-### 6.5 One real transaction
+### 6.5 Redeploy the webhook — do not skip
+The `livemode` guard is code, so it only takes effect on redeploy. Setting live
+secrets does not update the deployed function.
+```sh
+supabase functions deploy stripe-webhook --no-verify-jwt --project-ref nlfwfbbpcvyfyugxiysz
+```
+Confirm it answers at all (401 = deployed and failing closed, 404 = not there):
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "https://nlfwfbbpcvyfyugxiysz.supabase.co/functions/v1/stripe-webhook" -d '{}'
+```
+
+### 6.6 One real transaction
 Run one real subscription purchase with a real card (yours) to confirm
 checkout → webhook → `subscriptions` row → Pro badge → billing portal all
 work with real money end to end, exactly like the test checklist in

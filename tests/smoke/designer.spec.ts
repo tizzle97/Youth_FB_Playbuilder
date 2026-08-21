@@ -4959,3 +4959,64 @@ test('the sticky navbar stays fully covered by the full-screen /designer view', 
   });
   expect(hitsAppNavbar).toBe(false);
 });
+
+test('account settings: a comped Pro account is not offered the billing portal', async ({ page }) => {
+  // A comped account (supabase/comp_first_year.sql) is plan='pro' with NO
+  // Stripe customer behind it. "Manage billing" used to render for any
+  // plan === 'pro', so it would have shown this user a button that can only
+  // ever error — openBillingPortal() has no customer to open a portal for.
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated', role: 'authenticated', email: 'comped@example.com',
+    app_metadata: {}, user_metadata: { username: 'comped' }, created_at: '2026-08-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 't', refresh_token: 'r',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/user_reputation**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ avatar_type: 'icon', avatar_url: null, avatar_icon_id: null }) }));
+  await page.route('**/rest/v1/user_preferences**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/3', 'access-control-expose-headers': 'content-range' }, body: '' }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({ status: 200, headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }, body: '' }));
+
+  // The comped shape: pro, dated a year out, no stripe ids.
+  const nextYear = new Date(Date.now() + 365 * 864e5).toISOString();
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ plan: 'pro', current_period_end: nextYear, stripe_customer_id: null }),
+    }));
+
+  await page.goto('/account');
+
+  // They ARE Pro…
+  await expect(page.getByText('Pro', { exact: true })).toBeVisible();
+  await expect(page.getByText('unlimited on your plan.', { exact: false })).toBeVisible();
+
+  // The portal button only renders when VITE_BILLING_ENABLED is 'true'. With
+  // billing off it is absent for everyone, so the assertion below would pass
+  // whether or not the stripe_customer_id gate exists — a vacuous green.
+  // Detect that and skip loudly instead of claiming a pass.
+  await page.goto('/');
+  const billingOff = await page.getByRole('button', { name: 'Coming soon' }).count();
+  test.skip(
+    billingOff > 0,
+    'VITE_BILLING_ENABLED is not "true" here, so "Manage billing" never renders ' +
+    'and this test cannot discriminate. Re-run with VITE_BILLING_ENABLED=true.',
+  );
+
+  await page.goto('/account');
+  // …but there is no Stripe customer, so no portal button.
+  await expect(page.getByRole('button', { name: 'Manage billing' })).toHaveCount(0);
+});
