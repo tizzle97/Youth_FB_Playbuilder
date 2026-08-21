@@ -8,6 +8,10 @@
 // Required secrets (supabase secrets set KEY=value):
 //   STRIPE_SECRET_KEY      — sk_live_... / sk_test_...
 //   STRIPE_WEBHOOK_SECRET  — whsec_... from the webhook endpoint config
+// Optional:
+//   STRIPE_ALLOW_TEST_MODE — 'true' lets test-mode events grant entitlements.
+//     OFF by default. A signed test-mode event is a valid request, so without
+//     this guard a Stripe test card buys real Pro for free.
 // (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
 //
 // Webhook endpoint events to subscribe:
@@ -17,6 +21,7 @@
 
 import Stripe from 'npm:stripe@18';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { shouldProcessEvent } from './livemode.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   httpClient: Stripe.createFetchHttpClient(),
@@ -81,6 +86,19 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Webhook signature verification failed:', err);
     return new Response('Invalid signature', { status: 400 });
+  }
+
+  // A valid signature does not mean real money. Test-mode events are signed
+  // too, so entitlement-granting has to gate on livemode explicitly.
+  const gate = shouldProcessEvent(event.livemode, Deno.env.get('STRIPE_ALLOW_TEST_MODE'));
+  if (!gate.process) {
+    console.warn(`Ignoring ${event.type} (${event.id}): ${gate.reason}`);
+    // 200, not an error: this is a correctly-signed event we are deliberately
+    // declining. A non-2xx would make Stripe retry it for days.
+    return new Response(JSON.stringify({ received: true, ignored: gate.reason }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
