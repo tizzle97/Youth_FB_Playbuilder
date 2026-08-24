@@ -83,7 +83,9 @@ export function PlayCard({
   );
 
   return (
-    <div data-testid="play-card" className={shell}>
+    // data-play-id lets a list observe its own cards with an
+    // IntersectionObserver without wrapping each one in an extra element.
+    <div data-testid="play-card" data-play-id={play.id} className={shell}>
       {href ? (
         <Link to={href} className={frame}>
           {thumbnail}
