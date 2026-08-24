@@ -31,6 +31,10 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
   (must be lowercase `true` to enable Stripe UI — `TRUE` silently fails the
   `=== 'true'` check). Those three are the *only* env vars `src/` reads; see
   `.env.example`. `.env` is git-ignored; never commit secrets.
+  **Every secret this project uses — Supabase, Netlify, Stripe, Resend, the
+  cloud routines — is indexed in `supabase/SECRETS.md`**, with where it lives
+  and a command to verify it's actually working rather than just documented.
+  Add a row there in the same change whenever a new secret is introduced.
   **Google Analytics is _not_ hardcoded in `index.html`** — it loads
   conditionally from `src/lib/analytics.ts` only after the visitor accepts the
   cookie consent banner (`ConsentBanner.tsx`); the measurement ID lives in that
