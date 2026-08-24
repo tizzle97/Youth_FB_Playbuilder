@@ -46,6 +46,10 @@ export function PlayDesigner() {
   const [routeColorMode, setRouteColorMode] = useState<'auto' | string>('auto');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [recolorRouteMode, setRecolorRouteMode] = useState(false);
+  const [copyRouteMode, setCopyRouteMode] = useState(false);
+  // Sticky like capStyle/dashed/routeColorMode above — a coach's mirror
+  // preference should survive turning Copy Route off and back on.
+  const [copyRouteMirror, setCopyRouteMirror] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
   const [deleteZoneMode, setDeleteZoneMode] = useState(false);
   const [textMode, setTextMode] = useState(false);
@@ -561,6 +565,10 @@ export function PlayDesigner() {
             setDeleteRouteMode={setDeleteRouteMode}
             recolorRouteMode={recolorRouteMode}
             setRecolorRouteMode={setRecolorRouteMode}
+            copyRouteMode={copyRouteMode}
+            setCopyRouteMode={setCopyRouteMode}
+            copyRouteMirror={copyRouteMirror}
+            setCopyRouteMirror={setCopyRouteMirror}
             zoneMode={zoneMode}
             setZoneMode={setZoneMode}
             deleteZoneMode={deleteZoneMode}
@@ -602,6 +610,8 @@ export function PlayDesigner() {
               routeColorMode={routeColorMode}
               deleteRouteMode={deleteRouteMode}
               recolorRouteMode={recolorRouteMode}
+              copyRouteMode={copyRouteMode}
+              copyRouteMirror={copyRouteMirror}
               zoneMode={zoneMode}
               deleteZoneMode={deleteZoneMode}
               textMode={textMode}
@@ -671,6 +681,10 @@ export function PlayDesigner() {
           setDeleteRouteMode={setDeleteRouteMode}
           recolorRouteMode={recolorRouteMode}
           setRecolorRouteMode={setRecolorRouteMode}
+          copyRouteMode={copyRouteMode}
+          setCopyRouteMode={setCopyRouteMode}
+          copyRouteMirror={copyRouteMirror}
+          setCopyRouteMirror={setCopyRouteMirror}
           zoneMode={zoneMode}
           setZoneMode={setZoneMode}
           deleteZoneMode={deleteZoneMode}
