@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Check, Play as PlayIcon, Search, Filter, Wand2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -12,7 +12,9 @@ type PublicPlay = {
   name: string;
   description: string | null;
   type: 'offense' | 'defense' | 'special_teams';
-  thumbnail: string | null;
+  /** NOT part of the list query — see the select() below. Supplied per card by
+   *  the lazy loader, or fetched directly when copying. */
+  thumbnail?: string | null;
   upvotes: number;
   metadata: { gameType?: string; difficulty?: string; formation?: string } | null;
   user_id: string;
@@ -56,7 +58,13 @@ export function PlayLibrary() {
 
         const { data, error: fetchError } = await supabase
           .from('plays')
-          .select('id, name, description, type, thumbnail, upvotes, metadata, user_id')
+          // `thumbnail` is deliberately NOT selected. It's a base64 data URI averaging
+          // 46 KB, so fetching it for every public play made this one request 2.6 MB
+          // gzipped (measured, 74 plays) and growing linearly with the library. The
+          // rest of the row is 9 KB for the same 74 plays — the images were 99.65% of
+          // it. They're now loaded per card, only once the card is actually on screen
+          // (see the IntersectionObserver below).
+          .select('id, name, description, type, upvotes, metadata, user_id')
           .eq('is_public', true)
           .order('upvotes', { ascending: false })
           .order('created_at', { ascending: false });
@@ -105,10 +113,13 @@ export function PlayLibrary() {
       setCopyingId(play.id);
       setError(null);
 
-      // canvas_data is heavy, so the list query skips it — fetch at copy time.
+      // canvas_data and thumbnail are both heavy, so the list query skips
+      // them — fetch at copy time. `thumbnail` moved here when the list stopped
+      // selecting it; taking it from `play` would have silently copied the play
+      // with no preview image.
       const { data: full, error: fetchError } = await supabase
         .from('plays')
-        .select('canvas_data, formation_id')
+        .select('canvas_data, formation_id, thumbnail')
         .eq('id', play.id)
         .single();
       if (fetchError) throw fetchError;
@@ -120,7 +131,7 @@ export function PlayLibrary() {
         type: play.type,
         canvas_data: full.canvas_data,
         formation_id: full.formation_id,
-        thumbnail: play.thumbnail,
+        thumbnail: full.thumbnail,
         metadata: play.metadata,
         is_public: false,
       });
@@ -165,6 +176,68 @@ export function PlayLibrary() {
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
   }, [plays]);
+
+  // ── Lazy thumbnails ────────────────────────────────────────────────────────
+  // Keyed by play id. undefined = not fetched yet, null = fetched and the play
+  // has none. Filters stay client-side over the full `plays` set, so paginating
+  // was never the answer here — the row data is cheap, the images are not.
+  const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
+  const requestedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (plays.length === 0) return;
+
+    let cancelled = false;
+    let pending: string[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    // Batch ids seen in the same tick into one request rather than firing one
+    // per card — a full screen of cards would otherwise be a dozen round trips.
+    const flush = async () => {
+      timer = null;
+      const ids = pending;
+      pending = [];
+      if (ids.length === 0) return;
+      const { data } = await supabase
+        .from('plays')
+        .select('id, thumbnail')
+        .in('id', ids);
+      if (cancelled) return;
+      setThumbs((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = null;        // resolve even if the row is gone
+        for (const row of data ?? []) next[row.id] = row.thumbnail ?? null;
+        return next;
+      });
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const id = (entry.target as HTMLElement).dataset.playId;
+          if (!id || requestedRef.current.has(id)) continue;
+          requestedRef.current.add(id);
+          pending.push(id);
+          observer.unobserve(entry.target);
+        }
+        if (pending.length > 0 && timer === null) timer = setTimeout(flush, 50);
+      },
+      // Start fetching slightly before a card scrolls into view so the image is
+      // usually there by the time it is.
+      { rootMargin: '300px' },
+    );
+
+    document.querySelectorAll('[data-play-id]').forEach((el) => observer.observe(el));
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      observer.disconnect();
+    };
+    // Re-observe whenever the rendered set changes — filtering swaps which
+    // cards exist in the DOM.
+  }, [plays, search, typeFilter, gameTypeFilter, formationFilter]);
 
   const filtered = plays.filter((p) => {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -279,7 +352,7 @@ export function PlayLibrary() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((play) => (
-            <PlayCard key={play.id} play={play}>
+            <PlayCard key={play.id} play={{ ...play, thumbnail: thumbs[play.id] ?? null }}>
               <>
                 <PlayCardTitle name={play.name} type={play.type} />
                 <p className="text-xs text-chalk/50 mb-3">
