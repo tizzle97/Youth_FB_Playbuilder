@@ -4675,6 +4675,240 @@ test('routes: dragging a player leaves another player\'s route untouched', async
   expect(after.paths[qRouteIdx].points[0].y).toBeGreaterThan(before.paths[qRouteIdx].points[0].y + 0.05);
 });
 
+test('routes: Copy Route pastes a translated copy onto another player', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(2);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+
+  // A dog-leg so a translation bug (offsetting only some points) would be
+  // caught, not just a bug that moves the whole route's bounding box.
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(qPx.x, qPx.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.3, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  const before = await canvasState(page);
+  expect(before.paths).toHaveLength(1);
+  const srcStart = before.paths[0].points[0];
+  const srcPoints = before.paths[0].points;
+  const destIcon = before.playerIcons[1];
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(end.x, end.y); // pick the route (tap near its far end, not the shared origin icon)
+  await page.mouse.click(xPx.x, xPx.y); // paste onto X
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  const pasted = state.paths[1];
+  expect(pasted.startIconIndex).toBe(1);
+  expect(pasted.points).toHaveLength(srcPoints.length);
+  const dx = destIcon.x - srcStart.x;
+  const dy = destIcon.y - srcStart.y;
+  pasted.points.forEach((pt, i) => {
+    expect(pt.x).toBeCloseTo(srcPoints[i].x + dx, 5);
+    expect(pt.y).toBeCloseTo(srcPoints[i].y + dy, 5);
+  });
+
+  // Color matches the destination player, not the source route, and stays
+  // synced (independentColor undefined) rather than being pinned.
+  expect(pasted.color).toBe(destIcon.color);
+  expect(pasted.independentColor).toBeFalsy();
+  // The source route is untouched.
+  expect(state.paths[0].points).toEqual(srcPoints);
+});
+
+test('routes: Copy Route with Mirror reflects the pasted route\'s shape', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  let state = await canvasState(page);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(qPx.x, qPx.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.3, 0.6);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.3, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  const before = await canvasState(page);
+  const srcStart = before.paths[0].points[0];
+  const srcPoints = before.paths[0].points;
+  const destIcon = before.playerIcons[1];
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await btn(page, 'Mirror the pasted route left/right').click();
+  await page.mouse.click(end.x, end.y);
+  await page.mouse.click(xPx.x, xPx.y);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  const pasted = state.paths[1];
+  const dy = destIcon.y - srcStart.y;
+  pasted.points.forEach((pt, i) => {
+    // x is negated relative to the start, y is unaffected.
+    expect(pt.x).toBeCloseTo(destIcon.x - (srcPoints[i].x - srcStart.x), 5);
+    expect(pt.y).toBeCloseTo(srcPoints[i].y + dy, 5);
+  });
+});
+
+test('routes: Copy Route is blocked when the destination already has 2 routes', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  let state = await canvasState(page);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+
+  await drawStraightRoute(page, qPx, await canvasPoint(page, 0.2, 0.3));
+  // Fill X to the 2-route cap.
+  await drawStraightRoute(page, xPx, await canvasPoint(page, 0.6, 0.4));
+  await drawStraightRoute(page, xPx, await canvasPoint(page, 0.8, 0.3));
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(3);
+
+  const qRouteEnd = await canvasPoint(page, 0.2, 0.3);
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(qRouteEnd.x, qRouteEnd.y);
+  await page.mouse.click(xPx.x, xPx.y);
+
+  await expect(page.getByText('This player already has 2 routes', { exact: false })).toBeVisible();
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(3);
+});
+
+test('routes: Copy Route blocks pasting a route back onto its own source player', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  const state = await canvasState(page);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const qEnd = await canvasPoint(page, 0.2, 0.3);
+
+  await drawStraightRoute(page, qPx, qEnd);
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(qEnd.x, qEnd.y);
+  await page.mouse.click(qPx.x, qPx.y);
+
+  await expect(page.getByText('Pick a different player to paste onto', { exact: false })).toBeVisible();
+  const after = await canvasState(page);
+  expect(after.paths).toHaveLength(1);
+});
+
+test('routes: Copy Route paste is a single undo step', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  let state = await canvasState(page);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+  const qEnd = await canvasPoint(page, 0.2, 0.3);
+
+  await drawStraightRoute(page, qPx, qEnd);
+  const before = await canvasState(page);
+  expect(before.paths).toHaveLength(1);
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(qEnd.x, qEnd.y);
+  await page.mouse.click(xPx.x, xPx.y);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+
+  await btn(page, 'Undo').click();
+  const undone = await canvasState(page);
+  expect(undone.paths).toHaveLength(1);
+  expect(undone.paths[0].points).toEqual(before.paths[0].points);
+  expect(undone.paths[0].startIconIndex).toBe(0);
+});
+
+test('routes: Copy Route re-picking a different route swaps which one pastes', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.5, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+  await btn(page, 'Player Z').click();
+  const zSpot = await canvasPoint(page, 0.8, 0.6);
+  await page.mouse.click(zSpot.x, zSpot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(3);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+  const zPx = await canvasPoint(page, state.playerIcons[2].x, state.playerIcons[2].y);
+  const qEnd = await canvasPoint(page, 0.2, 0.3);
+  const xEnd = await canvasPoint(page, 0.5, 0.2);
+
+  await drawStraightRoute(page, qPx, qEnd);
+  await drawStraightRoute(page, xPx, xEnd);
+
+  const before = await canvasState(page);
+  const xRoute = before.paths.find((p) => p.startIconIndex === 1)!;
+  const xStart = xRoute.points[0];
+  const destIcon = before.playerIcons[2];
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(qEnd.x, qEnd.y); // pick Q's route first
+  await page.mouse.click(xEnd.x, xEnd.y); // re-pick X's route instead
+  await page.mouse.click(zPx.x, zPx.y); // paste onto Z
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(3);
+  const pasted = state.paths[2];
+  expect(pasted.startIconIndex).toBe(2);
+  const dx = destIcon.x - xStart.x;
+  const dy = destIcon.y - xStart.y;
+  pasted.points.forEach((pt, i) => {
+    expect(pt.x).toBeCloseTo(xRoute.points[i].x + dx, 5);
+    expect(pt.y).toBeCloseTo(xRoute.points[i].y + dy, 5);
+  });
+});
+
 // A zone's dashed connector to its icon is only meaningful once the icon is
 // visibly outside the zone. It used to be decided by comparing the icon's
 // raw distance from the zone center against a threshold scaled off the

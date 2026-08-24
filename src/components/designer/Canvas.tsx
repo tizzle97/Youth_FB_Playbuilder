@@ -120,6 +120,10 @@ type CanvasProps = {
   deleteRouteMode: boolean;
   /** Tap a player's icon to recolor just their route. */
   recolorRouteMode: boolean;
+  /** Tap a route to pick it up, then tap a player to paste a copy onto them. */
+  copyRouteMode: boolean;
+  /** Mirrors the pasted route's shape left/right relative to its own start point. */
+  copyRouteMirror: boolean;
   zoneMode: boolean;
   deleteZoneMode: boolean;
   textMode: boolean;
@@ -168,7 +172,7 @@ export type CanvasHandle = {
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, capStyle, dashed, routeColorMode, deleteRouteMode, recolorRouteMode, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, capStyle, dashed, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -234,6 +238,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     const [deletedZoneFlash, setDeletedZoneFlash] = useState(false);
     const deletedZoneFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Flash shown when Copy Route's picked route is tapped back onto its own
+    // source icon — pasting onto yourself can't produce anything useful.
+    const [selfPasteFlash, setSelfPasteFlash] = useState(false);
+    const selfPasteFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Drag state. Shared between icons and text boxes — only one gesture is
     // ever in flight (a single pointer-down picks exactly one target), so
     // draggingIndexRef (icon) and draggingTextIndexRef (text box) are never
@@ -270,6 +279,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
      *  — path-indexed, not icon-indexed, so it targets one specific route
      *  when a player has 2. */
     const [editingRouteColorPathIndex, setEditingRouteColorPathIndex] = useState<number | null>(null);
+    // Route (index into `paths`) picked up via Copy Route, waiting for a tap
+    // on a destination player icon.
+    const [copyRoutePickedIndex, setCopyRoutePickedIndex] = useState<number | null>(null);
     // Text box being edited via its popover (Select mode, or immediately
     // after placing a new one in Text mode).
     const [editingTextIndex, setEditingTextIndex] = useState<number | null>(null);
@@ -698,7 +710,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (waypointPoints.length === 0 && hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const hi = toPx(playerIcons[hoveredIconIndex]);
         const hasZone = iconHasZone(hoveredIconIndex);
-        const blocked = (drawingMode && iconRouteCount(hoveredIconIndex) >= MAX_ROUTES_PER_ICON) || (zoneMode && hasZone);
+        const copyRouteBlocked = copyRouteMode && copyRoutePickedIndex !== null && (
+          iconRouteCount(hoveredIconIndex) >= MAX_ROUTES_PER_ICON
+          || hoveredIconIndex === paths[copyRoutePickedIndex]?.startIconIndex
+        );
+        const blocked = (drawingMode && iconRouteCount(hoveredIconIndex) >= MAX_ROUTES_PER_ICON) || (zoneMode && hasZone) || copyRouteBlocked;
         const ringColor = deleteZoneMode
           ? '#f59e0b'
           : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
@@ -727,8 +743,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // specific targeted route's own points, not a ring around the icon,
       // so a coach can tell which of a player's up-to-2 routes is under the
       // pointer (or currently open in the recolor popover).
-      const targetPathIndex = (deleteRouteMode || recolorRouteMode)
-        ? (editingRouteColorPathIndex ?? hoveredPathIndex)
+      const targetPathIndex = (deleteRouteMode || recolorRouteMode || copyRouteMode)
+        ? (editingRouteColorPathIndex ?? copyRoutePickedIndex ?? hoveredPathIndex)
         : null;
       if (targetPathIndex !== null && paths[targetPathIndex]) {
         const highlightColor = deleteRouteMode ? '#f59e0b' : '#ffffff';
@@ -746,7 +762,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.stroke();
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentDashed, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, drawMode, capStyle, dashed, deleteRouteMode, recolorRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentDashed, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, dashed, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone]);
 
     // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
@@ -803,11 +819,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // its own popover right after placement, so it's excluded from closing
     // itself here — see the textMode branch in handlePointerDown).
     useEffect(() => {
-      if (drawingMode || zoneMode || deleteRouteMode || recolorRouteMode || deleteZoneMode || selectedPlayer) {
+      if (drawingMode || zoneMode || deleteRouteMode || recolorRouteMode || copyRouteMode || deleteZoneMode || selectedPlayer) {
         setEditingIconIndex(null);
         setEditingTextIndex(null);
       }
-    }, [drawingMode, zoneMode, deleteRouteMode, recolorRouteMode, deleteZoneMode, selectedPlayer]);
+    }, [drawingMode, zoneMode, deleteRouteMode, recolorRouteMode, copyRouteMode, deleteZoneMode, selectedPlayer]);
 
     // Switching into text mode dismisses the icon popover (they're mutually
     // exclusive tools); leaving text mode dismisses the text popover.
@@ -823,6 +839,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     useEffect(() => {
       if (!recolorRouteMode) setEditingRouteColorPathIndex(null);
     }, [recolorRouteMode]);
+
+    // The picked-up route for Copy Route only makes sense while that mode is
+    // active — same reasoning as the Recolor Route popover above.
+    useEffect(() => {
+      if (!copyRouteMode) setCopyRoutePickedIndex(null);
+    }, [copyRouteMode]);
 
     // ------------------------------------------
     // Imperative handle
@@ -1146,6 +1168,60 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         return;
       }
 
+      // Copy-route mode — tap a route to pick it up, then tap a player to
+      // paste a translated copy onto them. Stays picked after a paste
+      // (stamp-like), so the same route can be stamped onto several players
+      // without re-picking it each time.
+      if (copyRouteMode) {
+        if (copyRoutePickedIndex === null) {
+          const pathHit = findPathAt(p);
+          if (pathHit >= 0) setCopyRoutePickedIndex(pathHit);
+          setHoveredPathIndex(null);
+          return;
+        }
+        if (clicked >= 0) {
+          const srcPath = paths[copyRoutePickedIndex];
+          if (clicked === srcPath.startIconIndex) {
+            if (selfPasteFlashTimerRef.current) clearTimeout(selfPasteFlashTimerRef.current);
+            setSelfPasteFlash(true);
+            selfPasteFlashTimerRef.current = setTimeout(() => setSelfPasteFlash(false), 2500);
+            return;
+          }
+          if (iconRouteCount(clicked) >= MAX_ROUTES_PER_ICON) {
+            if (conflictFlashTimerRef.current) clearTimeout(conflictFlashTimerRef.current);
+            setConflictFlash(true);
+            conflictFlashTimerRef.current = setTimeout(() => setConflictFlash(false), 2500);
+            return;
+          }
+          const srcStart = srcPath.points[0];
+          const destIcon = playerIcons[clicked];
+          const newPoints = srcPath.points.map((pt) => {
+            const offX = copyRouteMirror ? -(pt.x - srcStart.x) : pt.x - srcStart.x;
+            return { x: destIcon.x + offX, y: destIcon.y + (pt.y - srcStart.y) };
+          });
+          pushSnapshot();
+          setPaths((prev) => [...prev, {
+            ...srcPath,
+            points: newPoints,
+            startIconIndex: clicked,
+            // Color intentionally NOT cloned from srcPath — matches destIcon's
+            // color and stays synced to it going forward, exactly like a
+            // route freshly drawn on this icon in routeColorMode 'auto'.
+            // The source's own color/independentColor (even if it was
+            // custom-recolored) is deliberately discarded.
+            color: destIcon.color,
+            independentColor: undefined,
+            segmentDashed: srcPath.segmentDashed ? [...srcPath.segmentDashed] : undefined,
+          }]);
+          return;
+        }
+        // No icon hit — allow re-picking a different route instead of no-op.
+        const pathHit = findPathAt(p);
+        if (pathHit >= 0) setCopyRoutePickedIndex(pathHit);
+        setHoveredPathIndex(null);
+        return;
+      }
+
       // Delete-zone mode — tap a zone (or its player) to remove it
       if (deleteZoneMode) {
         let zoneIdx = clicked >= 0 ? findZoneByIcon(clicked) : -1;
@@ -1440,17 +1516,18 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
       // Hover highlight: show which icon will be the route origin, or which
       // zone will be affected.
-      if ((drawingMode && waypointPoints.length === 0) || zoneMode || deleteZoneMode || selectedPlayer) {
+      if ((drawingMode && waypointPoints.length === 0) || zoneMode || deleteZoneMode || selectedPlayer || (copyRouteMode && copyRoutePickedIndex !== null)) {
         const idx = findIcon(p);
         setHoveredIconIndex(idx >= 0 ? idx : null);
       } else if (hoveredIconIndex !== null) {
         setHoveredIconIndex(null);
       }
 
-      // Delete/Recolor Route hover which specific route LINE is under the
-      // pointer (an icon can have 2 routes, so icon-based hover can't tell
-      // them apart — see findPathAt).
-      if (deleteRouteMode || recolorRouteMode) {
+      // Delete/Recolor/Copy Route hover which specific route LINE is under
+      // the pointer (an icon can have 2 routes, so icon-based hover can't
+      // tell them apart — see findPathAt). Copy Route only hovers routes
+      // while nothing is picked yet — once picked, hovering targets icons.
+      if (deleteRouteMode || recolorRouteMode || (copyRouteMode && copyRoutePickedIndex === null)) {
         const idx = findPathAt(p);
         setHoveredPathIndex(idx >= 0 ? idx : null);
       } else if (hoveredPathIndex !== null) {
@@ -1646,6 +1723,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       instructionText = hoveredPath
         ? `Tap to recolor ${hoveredPathOriginLetter ? `"${hoveredPathOriginLetter}"'s` : 'this'} route`
         : 'Tap a route to recolor it';
+    } else if (copyRouteMode) {
+      instructionText = copyRoutePickedIndex === null
+        ? (hoveredPath ? `Tap to copy ${hoveredPathOriginLetter ? `"${hoveredPathOriginLetter}"'s` : 'this'} route` : 'Tap a route to copy it')
+        : (copyRouteMirror ? 'Tap a player to paste the mirrored route' : 'Tap a player to paste the route');
     } else if (deleteZoneMode) {
       if (hoveredIconIndex !== null && playerIcons[hoveredIconIndex]) {
         const ltr = playerIcons[hoveredIconIndex].letter;
@@ -1706,13 +1787,13 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         />
 
         {/* ── Contextual instruction bar (top of canvas) ── */}
-        {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || deletedZoneFlash || instructionText) && (
+        {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || deletedZoneFlash || selfPasteFlash || instructionText) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
                 savedFlash ? 'bg-green-600'
                 : (deletedFlash || deletedZoneFlash) ? 'bg-amber-600'
-                : (conflictFlash || finishFirstFlash) ? 'bg-red-600'
+                : (conflictFlash || finishFirstFlash || selfPasteFlash) ? 'bg-red-600'
                 : 'bg-black/65 backdrop-blur-sm'
               }`}
             >
@@ -1721,6 +1802,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 : deletedZoneFlash ? '✓ Zone removed'
                 : finishFirstFlash ? 'Finish or cancel the current route first'
                 : conflictFlash ? 'This player already has 2 routes · Use Remove Route to clear one'
+                : selfPasteFlash ? 'Pick a different player to paste onto'
                 : instructionText}
             </div>
           </div>

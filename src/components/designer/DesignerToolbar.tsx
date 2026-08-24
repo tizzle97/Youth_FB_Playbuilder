@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight, Palette } from 'lucide-react';
+import { MousePointer, Undo, Redo, Eraser, Minus, GitBranch, RouteOff, Circle, CircleOff, Magnet, Shield, Type, ArrowUpRight, Palette, Copy, FlipHorizontal } from 'lucide-react';
 import { PlayerToolbar } from './PlayerToolbar';
 import { resolveRoster, type CustomRoster } from './rosters';
 import { FormationMenu } from './FormationMenu';
@@ -39,6 +39,15 @@ interface DesignerToolbarProps {
    *  sticky default above and any other route. */
   recolorRouteMode: boolean;
   setRecolorRouteMode: (mode: boolean) => void;
+  /** Tap a route to pick it up, then tap a player to paste a copy onto them —
+   *  translated to start at that player's position. Stays picked after one
+   *  paste so a coach can stamp the same route onto several players. */
+  copyRouteMode: boolean;
+  setCopyRouteMode: (mode: boolean) => void;
+  /** Sticky like capStyle/dashed above: reflects the pasted route's shape
+   *  left/right relative to its own start point. */
+  copyRouteMirror: boolean;
+  setCopyRouteMirror: (mirror: boolean) => void;
   zoneMode: boolean;
   setZoneMode: (mode: boolean) => void;
   deleteZoneMode: boolean;
@@ -87,6 +96,10 @@ export function DesignerToolbar({
   setDeleteRouteMode,
   recolorRouteMode,
   setRecolorRouteMode,
+  copyRouteMode,
+  setCopyRouteMode,
+  copyRouteMirror,
+  setCopyRouteMirror,
   zoneMode,
   setZoneMode,
   deleteZoneMode,
@@ -120,6 +133,7 @@ export function DesignerToolbar({
     setDrawingMode(false);
     setDeleteRouteMode(false);
     setRecolorRouteMode(false);
+    setCopyRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
     setTextMode(false);
@@ -130,6 +144,7 @@ export function DesignerToolbar({
     setDrawingMode(true);
     setDeleteRouteMode(false);
     setRecolorRouteMode(false);
+    setCopyRouteMode(false);
     setZoneMode(false);
     setDeleteZoneMode(false);
     setTextMode(false);
@@ -140,31 +155,37 @@ export function DesignerToolbar({
   const toggleDeleteRouteMode = () => {
     const next = !deleteRouteMode;
     setDeleteRouteMode(next);
-    if (next) { setDrawingMode(false); setRecolorRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setRecolorRouteMode(false); setCopyRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleRecolorRouteMode = () => {
     const next = !recolorRouteMode;
     setRecolorRouteMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setCopyRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+  };
+
+  const toggleCopyRouteMode = () => {
+    const next = !copyRouteMode;
+    setCopyRouteMode(next);
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleZoneMode = () => {
     const next = !zoneMode;
     setZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setCopyRouteMode(false); setDeleteZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleDeleteZoneMode = () => {
     const next = !deleteZoneMode;
     setDeleteZoneMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setCopyRouteMode(false); setZoneMode(false); setTextMode(false); onSelectPlayer(null); }
   };
 
   const toggleTextMode = () => {
     const next = !textMode;
     setTextMode(next);
-    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
+    if (next) { setDrawingMode(false); setDeleteRouteMode(false); setRecolorRouteMode(false); setCopyRouteMode(false); setZoneMode(false); setDeleteZoneMode(false); onSelectPlayer(null); }
   };
 
   const handlePlayerSelect = (player: { letter: string; color: string; isSquare?: boolean; shape?: IconShape } | null) => {
@@ -172,6 +193,7 @@ export function DesignerToolbar({
       setDrawingMode(false);
       setDeleteRouteMode(false);
       setRecolorRouteMode(false);
+      setCopyRouteMode(false);
       setZoneMode(false);
       setDeleteZoneMode(false);
       setTextMode(false);
@@ -336,6 +358,35 @@ export function DesignerToolbar({
           <span className={label}>Recolor Route</span>
         </button>
 
+        {/* Copy Route: tap a route to pick it up, then tap a player to paste
+            a copy onto them — translated to start at that player's position,
+            same math the drag-a-player-carries-their-route behavior already
+            uses. Stays picked after a paste, so one route can be stamped onto
+            several players without re-picking it each time. */}
+        <button
+          onClick={toggleCopyRouteMode}
+          title="Copy a route (tap the route, then tap a player)"
+          className={`${tool} ${copyRouteMode ? active : inactive}`}
+        >
+          <Copy className="h-4 w-4" />
+          <span className={label}>Copy Route</span>
+        </button>
+
+        {/* Mirror is only relevant while Copy Route is active — hidden the
+            rest of the time to keep the bar uncluttered. The setting itself
+            is sticky (see the prop doc comment), so it survives toggling
+            Copy Route off and back on. */}
+        {copyRouteMode && (
+          <button
+            onClick={() => setCopyRouteMirror(!copyRouteMirror)}
+            title="Mirror the pasted route left/right"
+            className={`${vertical ? tool : iconOnly} ${copyRouteMirror ? active : inactive}`}
+          >
+            <FlipHorizontal className="h-4 w-4" />
+            {vertical && <span className={label}>Mirror</span>}
+          </button>
+        )}
+
         {playType === 'offense' && (
           <>
             <div className={divider} />
@@ -440,16 +491,17 @@ export function DesignerToolbar({
       </div>
 
       {/* Active mode label */}
-      {(activeDraw || deleteRouteMode || recolorRouteMode || zoneMode || deleteZoneMode || textMode) && (
+      {(activeDraw || deleteRouteMode || recolorRouteMode || copyRouteMode || zoneMode || deleteZoneMode || textMode) && (
         <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className={`font-semibold ${(deleteRouteMode || deleteZoneMode) ? 'text-amber-400' : 'text-primary'}`}>
             {deleteRouteMode && 'Remove route mode'}
             {recolorRouteMode && 'Recolor route mode'}
+            {copyRouteMode && 'Copy route mode'}
             {deleteZoneMode && 'Remove zone mode'}
             {zoneMode && 'Zone mode'}
             {textMode && 'Text mode'}
-            {!deleteRouteMode && !recolorRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
-            {!deleteRouteMode && !recolorRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
+            {!deleteRouteMode && !recolorRouteMode && !copyRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'straight' && 'Straight line mode'}
+            {!deleteRouteMode && !recolorRouteMode && !copyRouteMode && !deleteZoneMode && !zoneMode && !textMode && activeDraw === 'waypoint' && 'Curved route mode'}
           </span>
           {activeDraw && (
             <span>
