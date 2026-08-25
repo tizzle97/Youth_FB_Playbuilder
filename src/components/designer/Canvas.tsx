@@ -1702,6 +1702,23 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     // ── Instruction text for the canvas overlay ──────────────────
     const originIcon = waypointIconIndex !== null ? playerIcons[waypointIconIndex] : null;
+
+    // Keep the Finish/Cancel bar from sitting on top of the icon the
+    // in-progress route started from — that's the icon a coach's eye/thumb is
+    // on while drawing, and the one guaranteed to be near the bar when the
+    // origin is placed deep (e.g. a safety near the bottom of the field).
+    const ACTION_BAR_DEFAULT_BOTTOM = 16; // matches the old bottom-4
+    const ACTION_BAR_EST_HEIGHT = 56;
+    let actionBarBottom = ACTION_BAR_DEFAULT_BOTTOM;
+    if (originIcon) {
+      const iconScreenY = originIcon.y * height;
+      const clearZoneStart = height - (ACTION_BAR_DEFAULT_BOTTOM + ACTION_BAR_EST_HEIGHT);
+      if (iconScreenY + iconRadiusPx >= clearZoneStart) {
+        const desiredBottom = height - (iconScreenY - iconRadiusPx - 10);
+        actionBarBottom = Math.max(ACTION_BAR_DEFAULT_BOTTOM, Math.min(desiredBottom, height - ACTION_BAR_EST_HEIGHT - 8));
+      }
+    }
+
     const hoveredHasZone = hoveredIconIndex !== null && iconHasZone(hoveredIconIndex);
     const hoveredPath = hoveredPathIndex !== null ? paths[hoveredPathIndex] : null;
     const hoveredPathOriginLetter = hoveredPath?.startIconIndex !== undefined
@@ -1872,7 +1889,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
         {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 1 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
+          <div
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 z-10"
+            style={{ bottom: actionBarBottom }}
+          >
             {waypointPoints.length >= 2 && (
               <button
                 onPointerDown={(e) => { e.stopPropagation(); finishWaypoint(); }}
