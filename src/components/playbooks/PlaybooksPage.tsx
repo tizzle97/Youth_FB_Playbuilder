@@ -63,6 +63,12 @@ export function PlaybooksPage() {
   // own playbooks. Mirrors PlaysPage.tsx's ?tab=community pattern.
   const tab: 'mine' | 'packs' = searchParams.get('tab') === 'packs' ? 'packs' : 'mine';
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null);
+  // Distinct from `loading` (which tracks the playbooks fetch below): this
+  // tracks whether the auth.getUser() call itself has resolved yet, so the
+  // "Sign In Required" guard doesn't fire for a signed-in user during the
+  // brief window before we know who they are. `user === null` is ambiguous
+  // between "not checked yet" and "checked, signed out" — this disambiguates.
+  const [authChecked, setAuthChecked] = useState(false);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
   const [playsInPlaybook, setPlaysInPlaybook] = useState<PlayInPlaybook[]>([]);
@@ -93,6 +99,7 @@ export function PlaybooksPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      setAuthChecked(true);
     });
   }, []);
 
@@ -1154,7 +1161,9 @@ export function PlaybooksPage() {
 
   // My Playbooks requires sign-in; Starter Packs is public to browse (cloning
   // still requires sign-in + Pro, handled inside PlaybookPackLibrary).
-  if (!user && tab === 'mine') {
+  // Gated on authChecked so a signed-in coach never sees this flash before
+  // getUser() resolves — see the authChecked declaration above.
+  if (authChecked && !user && tab === 'mine') {
     return (
       <div className="min-h-screen bg-board flex items-center justify-center">
         <div className="text-center">
