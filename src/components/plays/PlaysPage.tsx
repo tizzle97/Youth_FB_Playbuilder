@@ -20,13 +20,9 @@ interface Play {
   id: string;
   name: string;
   type: 'offense' | 'defense' | 'special_teams';
-  canvas_data: string;
-  description: string;
   thumbnail?: string;
-  user_id: string;
   is_public: boolean;
   upvotes?: number;
-  metadata?: any;
   profiles?: {
     username: string;
     avatar_url?: string;
@@ -79,9 +75,13 @@ export function PlaysPage() {
             .maybeSingle()
             .then(({ data }) => setIsPro(rowIsPro(data)));
 
+          // The card grid only ever reads these columns — canvas_data (the
+          // committed play JSON) and description/metadata are dead weight
+          // here; PlayDesigner's own load is the one place that needs
+          // canvas_data (see issue #120).
           let query = supabase
             .from('plays')
-            .select('*')
+            .select('id, name, type, thumbnail, is_public, upvotes')
             .eq('user_id', currentUser.id)
             .order('created_at', { ascending: false });
 
