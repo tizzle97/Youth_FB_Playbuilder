@@ -220,7 +220,17 @@ export function PlayDesigner() {
   // fits the container. Locking the on-screen aspect ratio to the export's
   // keeps shapes WYSIWYG — a circular zone used to print as a squished
   // ellipse because radii are stored normalized per-axis.
-  useEffect(() => {
+  //
+  // useLayoutEffect + a synchronous initial call (not requestAnimationFrame)
+  // so the fitted size is measured and committed before the browser paints —
+  // the sidebar/main flex layout is already resolved by the time this runs,
+  // so there's nothing to "wait a frame" for. Skipping that frame means
+  // visitors never see the canvas at its hardcoded 600x480 fallback size
+  // before it snaps to the real one (a real, guaranteed-every-load CLS hit,
+  // confirmed via the Cloudflare Web Vitals report 2026-08-25 — the flagged
+  // element traced exactly to this container). ResizeObserver still handles
+  // later window/orientation changes, which aren't first-paint CLS.
+  useLayoutEffect(() => {
     const update = () => {
       const el = canvasContainerRef.current;
       if (!el) return;
@@ -230,10 +240,10 @@ export function PlayDesigner() {
       const w = Math.min(maxW, maxH * ratio);
       setCanvasSize({ width: w, height: w / ratio });
     };
-    const frame = requestAnimationFrame(update);
+    update();
     const ro = new ResizeObserver(update);
     if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
-    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
+    return () => ro.disconnect();
   }, []);
 
   // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS) —
