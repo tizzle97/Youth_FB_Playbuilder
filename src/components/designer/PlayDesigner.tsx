@@ -163,7 +163,7 @@ export function PlayDesigner() {
       try {
         const { data, error: fetchError } = await supabase
           .from('plays')
-          .select('*')
+          .select('id, name, type, canvas_data, metadata, is_public')
           .eq('id', sourceId)
           .single();
         if (fetchError) throw fetchError;
