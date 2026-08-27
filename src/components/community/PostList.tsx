@@ -131,9 +131,9 @@ export function PostList({ posts, loading, timeRange: _timeRange, searchQuery, c
               </div>
 
               {/* Content */}
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-wrap">
                     <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden shrink-0">
                       {post.author?.avatar_url ? (
                         <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />

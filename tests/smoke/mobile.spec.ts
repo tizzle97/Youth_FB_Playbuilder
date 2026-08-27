@@ -208,6 +208,56 @@ test('no page scrolls sideways at phone width', async ({ page }) => {
   }
 });
 
+test('community post card: edit/delete buttons stay inside the card with a long username', async ({ page }) => {
+  // Regression: PostList's byline row (avatar/"Posted by"/username/"•") was
+  // all shrink-0 except the trailing timestamp, and its flex-1 content
+  // column was missing min-w-0 — so a long username could force the whole
+  // header wider than the card, spilling the delete button's red highlight
+  // past the card's own rounded border. See PostList.tsx.
+  const userJson = {
+    id: '44444444-4444-4444-4444-444444444444',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 't', refresh_token: 'r',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+
+  // Catch-all first — see the sideways-scroll test's note above on why.
+  await page.route('**/rest/v1/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/auth/v1/user**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/posts**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      {
+        id: 'post-1', user_id: userJson.id, title: 'Best blitz package for 5v5?',
+        content: 'What do you all run on 3rd and long', upvotes: 3, downvotes: 0,
+        created_at: '2025-09-01T00:00:00Z', updated_at: '2025-09-01T00:00:00Z',
+      },
+    ]) }));
+  await page.route('**/rest/v1/rpc/get_community_authors**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      { id: userJson.id, username: 'GoodtimeCharlieAndTheGang2026', avatar_url: null },
+    ]) }));
+  await page.route('**/rest/v1/comments**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+
+  await page.goto('/community', { waitUntil: 'domcontentloaded' });
+  const deleteButton = page.getByTitle('Delete Post');
+  await expect(deleteButton).toBeVisible();
+  const card = page.locator('article').first();
+
+  const cardBox = await card.boundingBox();
+  const buttonBox = await deleteButton.boundingBox();
+  if (!cardBox || !buttonBox) throw new Error('Expected both the card and delete button to have a layout box');
+
+  expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+});
+
 test('navigating to a new route scrolls back to the top', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => window.scrollTo(0, 600));
