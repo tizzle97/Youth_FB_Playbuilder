@@ -1719,6 +1719,25 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       }
     }
 
+    // Keep the top instruction bar from sitting on top of a player icon
+    // placed near the canvas's top edge — defense's own boundary (17 yards
+    // above the LOS maps toward y=0, same direction offense almost never
+    // reaches), so a coach placing a deep defensive back routinely ends up
+    // under this bar. Unlike the Finish/Cancel bar above, this isn't tied to
+    // one icon (the instruction bar shows in nearly every mode) — check all
+    // of them, and push down below whichever one(s) actually intrude.
+    const TOP_BAR_DEFAULT_TOP = 12; // matches the old top-3
+    const TOP_BAR_EST_HEIGHT = 56; // generous — this pill can wrap to two lines
+    let instructionBarTop = TOP_BAR_DEFAULT_TOP;
+    for (const icon of playerIcons) {
+      const iconScreenY = icon.y * height;
+      const iconTopEdge = iconScreenY - iconRadiusPx;
+      if (iconTopEdge <= TOP_BAR_DEFAULT_TOP + TOP_BAR_EST_HEIGHT) {
+        const desiredTop = iconScreenY + iconRadiusPx + 10;
+        instructionBarTop = Math.max(instructionBarTop, Math.min(desiredTop, height - TOP_BAR_EST_HEIGHT - 8));
+      }
+    }
+
     const hoveredHasZone = hoveredIconIndex !== null && iconHasZone(hoveredIconIndex);
     const hoveredPath = hoveredPathIndex !== null ? paths[hoveredPathIndex] : null;
     const hoveredPathOriginLetter = hoveredPath?.startIconIndex !== undefined
@@ -1805,7 +1824,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
         {/* ── Contextual instruction bar (top of canvas) ── */}
         {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || deletedZoneFlash || selfPasteFlash || instructionText) && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm">
+          <div
+            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm"
+            style={{ top: instructionBarTop }}
+          >
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
                 savedFlash ? 'bg-green-600'
