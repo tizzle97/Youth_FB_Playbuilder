@@ -43,6 +43,11 @@ type PlayerStyleEditorProps = {
   applyLabel: string;
   onApply: (letter: string, color: string, shape: IconShape) => void;
   onCancel: () => void;
+  /** Removes the icon this editor is open for. Only meaningful when editing
+   *  an already-placed icon — omitted when this editor is defining a new
+   *  toolbar chip (PlayerToolbar.tsx), since there's nothing on the canvas
+   *  to delete yet. */
+  onDelete?: () => void;
 };
 
 /**
@@ -51,7 +56,7 @@ type PlayerStyleEditorProps = {
  * toolbar's "Custom" chip that defines a new player before placing it.
  * Positioning/backdrop is the parent's job — this renders only the card.
  */
-export function PlayerStyleEditor({ initialLetter, initialColor, initialShape = 'circle', applyLabel, onApply, onCancel }: PlayerStyleEditorProps) {
+export function PlayerStyleEditor({ initialLetter, initialColor, initialShape = 'circle', applyLabel, onApply, onCancel, onDelete }: PlayerStyleEditorProps) {
   const [letter, setLetter] = useState(initialLetter);
   const [color, setColor] = useState(initialColor);
   const [shape, setShape] = useState<IconShape>(initialShape);
@@ -141,20 +146,31 @@ export function PlayerStyleEditor({ initialLetter, initialColor, initialShape = 
         More colors…
       </label>
 
-      <div className="flex justify-end gap-2">
-        <button
-          onClick={onCancel}
-          className="px-3 py-1.5 text-xs font-medium text-chalk/70 hover:text-chalk rounded-lg hover:bg-white/10 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={apply}
-          disabled={!canApply}
-          className="px-3 py-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {applyLabel}
-        </button>
+      <div className={`flex items-center gap-2 ${onDelete ? 'justify-between' : 'justify-end'}`}>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            title="Delete Player"
+            className="px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+          >
+            Delete
+          </button>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-chalk/70 hover:text-chalk rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={apply}
+            disabled={!canApply}
+            className="px-3 py-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {applyLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
