@@ -346,6 +346,31 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       setZones((prev) => prev.map((z) => (z.iconIndex === idx ? { ...z, color } : z)));
     }, [pushSnapshot]);
 
+    /** Removes a player icon entirely, along with its route(s) and zone (if
+     *  any) — no confirmation, Undo is this designer's safety net for every
+     *  destructive action, same as Delete Route/Delete Zone/Clear All.
+     *
+     *  `startIconIndex`/`iconIndex` are positions in `playerIcons`, not
+     *  stable ids, so removing one element shifts every later icon down by
+     *  one — every reference to an icon AFTER `idx` must shift with it, not
+     *  just the removed icon's own route/zone be dropped. Nothing else in
+     *  this file has ever removed a playerIcons entry (only appended or
+     *  restyled in place), so there's no existing precedent to lean on. */
+    const removeIcon = useCallback((idx: number) => {
+      pushSnapshot();
+      setPaths((prev) => prev
+        .filter((p) => p.startIconIndex !== idx)
+        .map((p) => (p.startIconIndex !== undefined && p.startIconIndex > idx
+          ? { ...p, startIconIndex: p.startIconIndex - 1 }
+          : p)));
+      setZones((prev) => prev
+        .filter((z) => z.iconIndex !== idx)
+        .map((z) => (z.iconIndex > idx ? { ...z, iconIndex: z.iconIndex - 1 } : z)));
+      setPlayerIcons((prev) => prev.filter((_, i) => i !== idx));
+      setSelectedZoneIndex(null);
+      setHoveredIconIndex(null);
+    }, [pushSnapshot]);
+
     /** Recolor one specific route by its index into `paths` — a player can
      *  have 2 independent routes, each recolored on its own. Picking "Auto"
      *  reverts to the icon's current color and clears the override, which is
@@ -1869,6 +1894,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
                 setEditingIconIndex(null);
               }}
               onCancel={() => setEditingIconIndex(null)}
+              onDelete={() => {
+                removeIcon(editingIconIndex);
+                setEditingIconIndex(null);
+              }}
             />
           </div>,
           document.body,

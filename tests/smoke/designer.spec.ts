@@ -1085,6 +1085,98 @@ test('defense: place a safety and drag a zone of responsibility', async ({ page 
   expect(state.zones[0].color).toBe('#8B5CF6');
 });
 
+test('player icon: Delete in the edit popover removes the icon and its own route in one undo step', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.6);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+
+  await btn(page, 'Straight Line Route').click();
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.4, 0.3);
+  await page.mouse.click(end.x, end.y);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  const before = await canvasState(page);
+  expect(before.playerIcons).toHaveLength(1);
+  expect(before.paths).toHaveLength(1);
+
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(icon.x, icon.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(0);
+  expect(state.paths).toHaveLength(0);
+  await expect(page.getByLabel('Player label')).not.toBeVisible();
+
+  await btn(page, 'Undo').click();
+  const undone = await canvasState(page);
+  expect(undone.playerIcons).toHaveLength(1);
+  expect(undone.paths).toHaveLength(1);
+});
+
+test('player icon: deleting one icon re-targets later icons\' routes and zones instead of orphaning them', async ({ page }) => {
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'defense', exact: true }).click();
+
+  // Three icons at indices 0, 1, 2 — deleting index 0 must shift every
+  // reference to 1 and 2 down by one, not just drop icon 0's own stuff.
+  await btn(page, 'Player D').click();
+  const aSpot = await canvasPoint(page, 0.2, 0.5);
+  await page.mouse.click(aSpot.x, aSpot.y);
+  await btn(page, 'Player LB').click();
+  const bSpot = await canvasPoint(page, 0.5, 0.5);
+  await page.mouse.click(bSpot.x, bSpot.y);
+  await btn(page, 'Player S').click();
+  const cSpot = await canvasPoint(page, 0.8, 0.5);
+  await page.mouse.click(cSpot.x, cSpot.y);
+
+  let state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(3);
+  const aPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const bPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+
+  // A route from icon 1 (B) and a zone on icon 2 (C).
+  await drawStraightRoute(page, bPx, await canvasPoint(page, 0.5, 0.3));
+  await btn(page, 'Draw a zone of responsibility (drag from a player)').click();
+  const cPx = await canvasPoint(page, state.playerIcons[2].x, state.playerIcons[2].y);
+  await page.mouse.move(cPx.x, cPx.y);
+  await page.mouse.down();
+  await page.mouse.move(cPx.x + 90, cPx.y + 60, { steps: 8 });
+  await page.mouse.up();
+
+  const before = await canvasState(page);
+  expect(before.paths[0].startIconIndex).toBe(1);
+  expect(before.zones[0].iconIndex).toBe(2);
+
+  // Delete icon 0 (A) via its edit popover.
+  await btn(page, 'Select / Move').click();
+  await page.mouse.click(aPx.x, aPx.y);
+  await expect(page.getByLabel('Player label')).toBeVisible();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+  state = await canvasState(page);
+  expect(state.playerIcons).toHaveLength(2);
+  // B and C shifted down to indices 0 and 1 — their route/zone must follow.
+  expect(state.playerIcons[0].letter).toBe('LB');
+  expect(state.playerIcons[1].letter).toBe('S');
+  expect(state.paths[0].startIconIndex).toBe(0);
+  expect(state.zones[0].iconIndex).toBe(1);
+
+  // Undo restores the original 3-icon layout with the original indices.
+  await btn(page, 'Undo').click();
+  const undone = await canvasState(page);
+  expect(undone.playerIcons).toHaveLength(3);
+  expect(undone.paths[0].startIconIndex).toBe(1);
+  expect(undone.zones[0].iconIndex).toBe(2);
+});
+
 // B-27: special teams gets its own roster (K/P, LS, RET, COV) and the
 // zone tool (coverage lanes), but not the offense-only Formation menu.
 test('special teams: roster swaps, zone tool available, formation menu is not', async ({ page }) => {
