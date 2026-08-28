@@ -4909,6 +4909,46 @@ test('routes: Copy Route re-picking a different route swaps which one pastes', a
   });
 });
 
+test('routes: Copy Route respects a non-Auto sticky route color instead of always matching the destination icon', async ({ page }) => {
+  await openDesigner(page);
+
+  // Set the sticky default to a fixed color before drawing/copying — this is
+  // the regression: pasting used to hardcode destIcon.color regardless of
+  // routeColorMode, so a coach who'd set a fixed color would still get the
+  // destination player's own color on every pasted route.
+  await btn(page, ROUTE_COLOR_TRIGGER).click();
+  await page.getByLabel('Color #000000').click();
+  await page.getByRole('button', { name: 'Set' }).click();
+
+  await btn(page, 'Player Q').click();
+  const qSpot = await canvasPoint(page, 0.2, 0.6);
+  await page.mouse.click(qSpot.x, qSpot.y);
+  await btn(page, 'Player X').click();
+  const xSpot = await canvasPoint(page, 0.6, 0.6);
+  await page.mouse.click(xSpot.x, xSpot.y);
+
+  let state = await canvasState(page);
+  const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
+  const qEnd = await canvasPoint(page, 0.2, 0.3);
+
+  await drawStraightRoute(page, qPx, qEnd);
+  const before = await canvasState(page);
+  expect(before.paths[0].color).toBe('#000000');
+  const destIcon = before.playerIcons[1];
+  expect(destIcon.color).not.toBe('#000000'); // X's own default color, for contrast
+
+  await btn(page, 'Copy a route (tap the route, then tap a player)').click();
+  await page.mouse.click(qEnd.x, qEnd.y);
+  await page.mouse.click(xPx.x, xPx.y);
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(2);
+  const pasted = state.paths[1];
+  expect(pasted.color).toBe('#000000');
+  expect(pasted.independentColor).toBe(true);
+});
+
 // A zone's dashed connector to its icon is only meaningful once the icon is
 // visibly outside the zone. It used to be decided by comparing the icon's
 // raw distance from the zone center against a threshold scaled off the

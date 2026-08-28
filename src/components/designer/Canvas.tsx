@@ -1204,13 +1204,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             ...srcPath,
             points: newPoints,
             startIconIndex: clicked,
-            // Color intentionally NOT cloned from srcPath — matches destIcon's
-            // color and stays synced to it going forward, exactly like a
-            // route freshly drawn on this icon in routeColorMode 'auto'.
+            // Color intentionally NOT cloned from srcPath — the paste
+            // behaves exactly like a route freshly drawn on this icon under
+            // the CURRENT routeColorMode (same resolution as finishRoute's
+            // caller, e.g. line ~1283): 'auto' syncs to destIcon's color
+            // going forward, a fixed color pins it independent of the icon.
             // The source's own color/independentColor (even if it was
-            // custom-recolored) is deliberately discarded.
-            color: destIcon.color,
-            independentColor: undefined,
+            // custom-recolored) is deliberately discarded either way.
+            color: routeColorMode === 'auto' ? destIcon.color : routeColorMode,
+            independentColor: routeColorMode !== 'auto' ? true : undefined,
             segmentDashed: srcPath.segmentDashed ? [...srcPath.segmentDashed] : undefined,
           }]);
           return;
