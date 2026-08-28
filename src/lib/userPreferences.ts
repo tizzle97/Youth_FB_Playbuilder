@@ -83,16 +83,38 @@ export const escapeHtml = (s: string) =>
 
 /** Team name + logo header snippet for the print/export HTML documents
  *  (single-play sheet, playbook PDFs). Empty string when the user has no
- *  team identity configured, so exports look exactly as before. */
+ *  team identity configured, so exports look exactly as before.
+ *
+ *  Styled as a small tracked-out caption (a "kicker" line) that sits above
+ *  playTitleHTML()'s bigger headline below it — these two are meant to be
+ *  read as one pairing, not two independent headers. Georgia is a system
+ *  font available on every platform this prints from (macOS/Windows/iOS/
+ *  Android); these are window.open()+print documents with no <link>/
+ *  @font-face anywhere and nothing waiting on document.fonts.ready, so a
+ *  real web font would be a real risk here, not just unnecessary. */
 export function teamBrandHTML(prefs: Pick<UserPreferences, 'team_name' | 'team_logo_url'> | null): string {
   if (!prefs || (!prefs.team_name && !prefs.team_logo_url)) return '';
   const logo = prefs.team_logo_url
     ? `<img src="${escapeHtml(prefs.team_logo_url)}" alt="Team logo" style="height:42px;width:auto;" />`
     : '';
   const name = prefs.team_name
-    ? `<div style="font-size:13pt;font-weight:bold;color:#1e40af;letter-spacing:0.5px;">${escapeHtml(prefs.team_name)}</div>`
+    ? `<div style="font-family: Georgia, 'Times New Roman', serif; font-size:10pt; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; color:#64748b;">${escapeHtml(prefs.team_name)}</div>`
     : '';
   return `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">${logo}${name}</div>`;
+}
+
+/** A play's name as the centered headline in an export document, paired
+ *  with teamBrandHTML() above it. Always centers itself regardless of what
+ *  flex row it's dropped into — callers whose title used to share a
+ *  `justify-content: space-between` row with metadata need to stack that
+ *  metadata below instead, since a centered title can't share a row with
+ *  right-aligned text the way the old left-aligned title could.
+ *
+ *  `fontSize` lets each export format keep its own existing relative
+ *  hierarchy (a single-play sheet's title has always been bigger than a
+ *  grid-view thumbnail's) instead of flattening every format to one size. */
+export function playTitleHTML(name: string, fontSize = '26pt'): string {
+  return `<div style="text-align:center; font-family: Georgia, 'Times New Roman', serif; font-size:${fontSize}; font-weight:700; color:#1e40af; letter-spacing:0.5px;">${escapeHtml(name)}</div>`;
 }
 
 /** CSS @page size value for the user's paper preference (B-15). */
