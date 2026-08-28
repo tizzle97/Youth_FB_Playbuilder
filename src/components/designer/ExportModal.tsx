@@ -5,7 +5,7 @@ import { X, FileText, Printer, BookOpen, Grid3X3, Lock, Watch } from 'lucide-rea
 import type { PlayMetadata } from '../../types/play';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
-import { escapeHtml, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
+import { escapeHtml, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
@@ -112,28 +112,16 @@ export function ExportModal({
     }
     
     .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
       margin-bottom: 30px;
       padding-bottom: 15px;
       border-bottom: 2px solid #2563eb;
     }
-    
-    .play-title {
-      font-size: 28pt;
-      font-weight: bold;
-      color: #1e40af;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      flex: 1;
-    }
-    
+
     .play-info {
-      text-align: right;
+      text-align: center;
+      margin-top: 10px;
       font-size: 11pt;
       color: #64748b;
-      max-width: 200px;
     }
     
     .main-content {
@@ -208,7 +196,7 @@ export function ExportModal({
   <div class="page">
     ${teamBrandHTML(preferences)}
     <div class="header">
-      <div class="play-title">${playData.metadata.playName || 'Untitled Play'}</div>
+      ${playTitleHTML(playData.metadata.playName || 'Untitled Play', '28pt')}
       <div class="play-info">
         ${playData.metadata.formation ? `<div class="metadata-row"><span class="metadata-label">Formation:</span> ${playData.metadata.formation}</div>` : ''}
         ${playData.metadata.playType ? `<div class="metadata-row"><span class="metadata-label">Type:</span> ${playData.metadata.playType}</div>` : ''}
@@ -243,7 +231,7 @@ export function ExportModal({
     const playPages = plays.map(play => `
       <div class="play-page">
         <div class="play-header">
-          <h2 class="play-name">${play.metadata.playName || 'Untitled Play'}</h2>
+          ${playTitleHTML(play.metadata.playName || 'Untitled Play', '16pt')}
           <div class="play-meta">
             ${play.metadata.formation ? `<span>Formation: ${play.metadata.formation}</span>` : ''}
             ${play.metadata.playType ? `<span>Type: ${play.metadata.playType}</span>` : ''}
@@ -320,27 +308,20 @@ export function ExportModal({
     }
     
     .play-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       margin-bottom: 15px;
       padding-bottom: 10px;
       border-bottom: 1px solid #d1d5db;
     }
-    
-    .play-name {
-      font-size: 16pt;
-      font-weight: bold;
-      color: #1e40af;
-    }
-    
+
     .play-meta {
+      text-align: center;
+      margin-top: 6px;
       font-size: 9pt;
       color: #6b7280;
     }
-    
+
     .play-meta span {
-      margin-left: 15px;
+      margin: 0 8px;
     }
     
     .play-content {
@@ -406,7 +387,7 @@ export function ExportModal({
   const generatePlaybookGridHTML = (plays: PlayData[]): string => {
     const playItems = plays.map(play => `
       <div class="grid-item">
-        <div class="grid-play-name">${play.metadata.playName || 'Untitled'}</div>
+        <div class="grid-play-name">${playTitleHTML(play.metadata.playName || 'Untitled', '11pt')}</div>
         <div class="grid-play-image">
           <img src="${play.canvasDataURL}" alt="${play.metadata.playName}" />
         </div>
@@ -479,9 +460,6 @@ export function ExportModal({
     }
     
     .grid-play-name {
-      font-size: 11pt;
-      font-weight: bold;
-      color: #1e40af;
       margin-bottom: 8px;
       min-height: 30px;
       display: flex;

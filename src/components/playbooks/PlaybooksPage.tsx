@@ -30,7 +30,7 @@ import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { PlayCard } from '../plays/PlayCard';
-import { getUserPreferences, paperPageSize, teamBrandHTML, type UserPreferences } from '../../lib/userPreferences';
+import { getUserPreferences, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
 import { usePageMeta } from '../../lib/seo';
 import { PlaybookPackLibrary } from './PlaybookPackLibrary';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
@@ -426,14 +426,9 @@ export function PlaybooksPage() {
     }
     
     .play-title {
-      font-size: 32pt;
-      font-weight: bold;
-      color: #1e40af;
-      text-transform: uppercase;
-      letter-spacing: 2px;
       margin-bottom: 40px;
     }
-    
+
     .diagram-container {
       flex: 1;
       display: flex;
@@ -459,7 +454,7 @@ export function PlaybooksPage() {
 <body>
   <div class="page">
     ${teamBrandHTML(prefs)}
-    <div class="play-title">${play.name}</div>
+    <div class="play-title">${playTitleHTML(play.name, '32pt')}</div>
     <div class="diagram-container">
       ${play.thumbnail ? 
         `<img src="${play.thumbnail}" alt="${play.name}" class="diagram-image" />` :
@@ -511,14 +506,9 @@ export function PlaybooksPage() {
     }
     
     .play-title {
-      font-size: 28pt;
-      font-weight: bold;
-      color: #1e40af;
-      text-transform: uppercase;
-      letter-spacing: 1px;
       margin-bottom: 10px;
     }
-    
+
     .play-type {
       font-size: 14pt;
       color: #64748b;
@@ -603,7 +593,7 @@ export function PlaybooksPage() {
   <div class="page">
     ${teamBrandHTML(prefs)}
     <div class="header">
-      <div class="play-title">${play.name}</div>
+      <div class="play-title">${playTitleHTML(play.name, '28pt')}</div>
       <div class="play-type">${play.type} Play</div>
     </div>
     
@@ -681,7 +671,7 @@ export function PlaybooksPage() {
   const generateGridPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string): string => {
     const playItems = plays.map(play => `
       <div class="grid-item">
-        <div class="grid-play-name">${play.name}</div>
+        <div class="grid-play-name">${playTitleHTML(play.name, '11pt')}</div>
         <div class="grid-play-image">
           ${play.thumbnail ? 
             `<img src="${play.thumbnail}" alt="${play.name}" />` :
@@ -757,17 +747,13 @@ export function PlaybooksPage() {
     }
     
     .grid-play-name {
-      font-size: 11pt;
-      font-weight: bold;
-      color: #1e40af;
       margin-bottom: 8px;
       min-height: 30px;
       display: flex;
       align-items: center;
       justify-content: center;
-      text-align: center;
     }
-    
+
     .grid-play-image {
       margin-bottom: 8px;
       background: white;
