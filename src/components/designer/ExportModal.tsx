@@ -531,16 +531,14 @@ export function ExportModal({
     const PLAYS_PER_INSERT = 8;
     const INSERTS_PER_BAND = 3;
 
-    // Text-only mode is a genuinely different, denser layout (a two-column
-    // table of #+name rows), not the same 8 image cells with the picture
-    // removed — confirmed against a photo of a real text-only wristband
-    // insert. Rows take far less room than a diagram cell, so an insert
-    // holds many more plays. ROWS_PER_COLUMN_TEXT is an estimate (no way to
-    // physically print-test in this environment) — needs a real print check
-    // before trusting the exact count; easy to retune afterward.
-    const ROWS_PER_COLUMN_TEXT = 14;
-    const COLUMNS_PER_INSERT_TEXT = 2;
-    const PLAYS_PER_INSERT_TEXT = ROWS_PER_COLUMN_TEXT * COLUMNS_PER_INSERT_TEXT;
+    // Text-only mode is a fixed 4-column x 10-row template (columns 1-2 are
+    // one #+name pair, columns 3-4 are the next 10 plays' #+name pair,
+    // continuing the numbering) — always this exact shape regardless of how
+    // many plays are populated, like a blank grid you fill in, not a list
+    // that shrinks to fit. Confirmed against a photo of a real text-only
+    // wristband insert, then refined to this precise spec.
+    const ROWS_PER_INSERT_TEXT = 10;
+    const PLAYS_PER_INSERT_TEXT = ROWS_PER_INSERT_TEXT * 2; // 20
     const perInsert = textOnly ? PLAYS_PER_INSERT_TEXT : PLAYS_PER_INSERT;
 
     const insertGroups: PlayData[][] = [];
@@ -554,24 +552,25 @@ export function ExportModal({
       const insertLabel = `Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}`;
 
       if (textOnly) {
-        const rows = group.map((play, i) => {
-          const playNumber = groupIndex * perInsert + i + 1;
-          return { playNumber, name: play.metadata.playName || 'Untitled' };
-        });
-        const mid = Math.ceil(rows.length / 2);
-        const columnHtml = (col: typeof rows) => `
-          <table class="wb-text-col"><tbody>
-            ${col.map((r) => `
-            <tr><td class="wb-num">${r.playNumber}</td><td class="wb-play-name">${r.name}</td></tr>`).join('')}
-          </tbody></table>`;
+        // Always exactly ROWS_PER_INSERT_TEXT rows — blank cells (no number,
+        // no name) when this insert has fewer than a full 20 plays, so the
+        // template's shape never changes.
+        const cell = (play: PlayData | undefined, num: number | '') => `
+            <td class="wb-num">${num}</td><td class="wb-play-name">${play ? (play.metadata.playName || 'Untitled') : ''}</td>`;
+        const rowsHtml = Array.from({ length: ROWS_PER_INSERT_TEXT }, (_, r) => {
+          const left = group[r];
+          const right = group[r + ROWS_PER_INSERT_TEXT];
+          const leftNum = left ? groupIndex * perInsert + r + 1 : '';
+          const rightNum = right ? groupIndex * perInsert + r + ROWS_PER_INSERT_TEXT + 1 : '';
+          return `
+            <tr>${cell(left, leftNum)}${cell(right, rightNum)}</tr>`;
+        }).join('');
 
         return `
       <div class="wb-insert wb-insert-text">
         <div class="wb-insert-label">${insertLabel}</div>
-        <div class="wb-text-columns">
-          ${columnHtml(rows.slice(0, mid))}
-          ${columnHtml(rows.slice(mid))}
-        </div>
+        <table class="wb-text-table"><tbody>${rowsHtml}
+        </tbody></table>
       </div>`;
       }
 
@@ -741,25 +740,26 @@ export function ExportModal({
       max-height: 100%;
     }
 
-    .wb-text-columns {
+    /* Fixed 4-column x 10-row grid, styled like an Excel table — full cell
+       borders on every row including blank ones, so the template's shape
+       reads the same whether it's fully populated or mostly empty. */
+    .wb-text-table {
       flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.15in;
-      min-height: 0;
-    }
-
-    .wb-text-col {
       width: 100%;
+      height: 100%;
       border-collapse: collapse;
       table-layout: fixed;
     }
 
-    .wb-text-col td {
+    .wb-text-table tr {
+      height: 10%; /* 10 fixed rows, evenly filling the insert */
+    }
+
+    .wb-text-table td {
+      border: 1px solid #9ca3af;
       padding: 0.01in 0.03in;
       font-size: 8pt;
       line-height: 1.3;
-      border-bottom: 1px solid #e5e7eb;
     }
 
     .wb-num {
@@ -770,6 +770,7 @@ export function ExportModal({
     }
 
     .wb-play-name {
+      width: 1.7in;
       text-align: left;
       white-space: nowrap;
       overflow: hidden;
