@@ -569,7 +569,11 @@ export function ExportModal({
         return `
       <div class="wb-insert wb-insert-text">
         <div class="wb-insert-label">${insertLabel}</div>
-        <table class="wb-text-table"><tbody>${rowsHtml}
+        <table class="wb-text-table">
+          <colgroup>
+            <col class="col-num" /><col class="col-name" /><col class="col-num" /><col class="col-name" />
+          </colgroup>
+          <tbody>${rowsHtml}
         </tbody></table>
       </div>`;
       }
@@ -762,15 +766,28 @@ export function ExportModal({
       line-height: 1.3;
     }
 
+    /* Column widths are set here, on <colgroup>'s <col> elements — the
+       authoritative, unambiguous way to size a table-layout:fixed table.
+       Setting width on the repeated .wb-num/.wb-play-name TD classes was
+       unreliable (the name column rendered far too narrow and truncated
+       aggressively — reported with a screenshot), since table-layout:fixed
+       only reads the first row's cells to fix column widths, easy to get
+       inconsistent results from cell-level CSS across 4 repeating columns. */
+    .col-num {
+      width: 10%;
+    }
+
+    .col-name {
+      width: 40%;
+    }
+
     .wb-num {
-      width: 0.28in;
       font-weight: bold;
       color: #1e40af;
       text-align: right;
     }
 
     .wb-play-name {
-      width: 1.7in;
       text-align: left;
       white-space: nowrap;
       overflow: hidden;
