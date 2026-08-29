@@ -826,7 +826,7 @@ export function PlaybooksPage() {
 </html>`;
   };
 
-  const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string): string => {
+  const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string, textOnly = false): string => {
     // 4.5in x 2.2in matches the play window on Wristband Interactive Y23-style
     // QB wristbands, which hold 3 cut inserts arranged as a 4x2 grid of
     // numbered plays (8 per insert) — same layout as the printed inserts
@@ -834,14 +834,52 @@ export function PlaybooksPage() {
     const PLAYS_PER_INSERT = 8;
     const INSERTS_PER_BAND = 3;
 
+    // Text-only mode is a genuinely different, denser layout (a two-column
+    // table of #+name rows), not the same 8 image cells with the picture
+    // removed — confirmed against a photo of a real text-only wristband
+    // insert. Rows take far less room than a diagram cell, so an insert
+    // holds many more plays. ROWS_PER_COLUMN_TEXT is an estimate (no way to
+    // physically print-test in this environment) — needs a real print check
+    // before trusting the exact count; easy to retune afterward.
+    const ROWS_PER_COLUMN_TEXT = 14;
+    const COLUMNS_PER_INSERT_TEXT = 2;
+    const PLAYS_PER_INSERT_TEXT = ROWS_PER_COLUMN_TEXT * COLUMNS_PER_INSERT_TEXT;
+    const perInsert = textOnly ? PLAYS_PER_INSERT_TEXT : PLAYS_PER_INSERT;
+
     const insertGroups: PlayInPlaybook[][] = [];
-    for (let i = 0; i < plays.length; i += PLAYS_PER_INSERT) {
-      insertGroups.push(plays.slice(i, i + PLAYS_PER_INSERT));
+    for (let i = 0; i < plays.length; i += perInsert) {
+      insertGroups.push(plays.slice(i, i + perInsert));
     }
 
     const inserts = insertGroups.map((group, groupIndex) => {
+      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
+      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
+      const insertLabel = `Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}`;
+
+      if (textOnly) {
+        const rows = group.map((play, i) => {
+          const playNumber = groupIndex * perInsert + i + 1;
+          return { playNumber, name: play.name };
+        });
+        const mid = Math.ceil(rows.length / 2);
+        const columnHtml = (col: typeof rows) => `
+          <table class="wb-text-col"><tbody>
+            ${col.map((r) => `
+            <tr><td class="wb-num">${r.playNumber}</td><td class="wb-play-name">${r.name}</td></tr>`).join('')}
+          </tbody></table>`;
+
+        return `
+      <div class="wb-insert wb-insert-text">
+        <div class="wb-insert-label">${insertLabel}</div>
+        <div class="wb-text-columns">
+          ${columnHtml(rows.slice(0, mid))}
+          ${columnHtml(rows.slice(mid))}
+        </div>
+      </div>`;
+      }
+
       const cells = group.map((play, i) => {
-        const playNumber = groupIndex * PLAYS_PER_INSERT + i + 1;
+        const playNumber = groupIndex * perInsert + i + 1;
         return `
         <div class="wb-cell">
           <div class="wb-cell-header">
@@ -857,12 +895,9 @@ export function PlaybooksPage() {
         </div>`;
       }).join('');
 
-      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
-      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
-
       return `
       <div class="wb-insert">
-        <div class="wb-insert-label">Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}</div>
+        <div class="wb-insert-label">${insertLabel}</div>
         <div class="wb-cells">${cells}</div>
       </div>`;
     }).join('');
@@ -1019,6 +1054,42 @@ export function PlaybooksPage() {
       font-size: 7pt;
     }
 
+    .wb-text-columns {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.15in;
+      min-height: 0;
+    }
+
+    .wb-text-col {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .wb-text-col td {
+      padding: 0.01in 0.03in;
+      font-size: 8pt;
+      line-height: 1.3;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .wb-num {
+      width: 0.28in;
+      font-weight: bold;
+      color: #1e40af;
+      text-align: right;
+    }
+
+    .wb-play-name {
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 0; /* forces overflow/ellipsis to respect the table column width */
+    }
+
     .footer {
       margin-top: 0.15in;
       text-align: center;
@@ -1053,7 +1124,7 @@ export function PlaybooksPage() {
 </html>`;
   };
 
-  const handleExportPDF = async (format: 'simple' | 'detailed' | 'grid' | 'wristband') => {
+  const handleExportPDF = async (format: 'simple' | 'detailed' | 'grid' | 'wristband', wristbandTextOnly = false) => {
     if (!selectedPlaybook || playsInPlaybook.length === 0) {
       alert('Please select a playbook with plays to export.');
       return;
@@ -1069,7 +1140,7 @@ export function PlaybooksPage() {
       let htmlContent = '';
 
       if (format === 'wristband') {
-        htmlContent = generateWristbandPlaybookHTML(playsInPlaybook, selectedPlaybook.name);
+        htmlContent = generateWristbandPlaybookHTML(playsInPlaybook, selectedPlaybook.name, wristbandTextOnly);
       } else if (format === 'grid') {
         htmlContent = generateGridPlaybookHTML(playsInPlaybook, selectedPlaybook.name);
       } else {
@@ -1442,6 +1513,23 @@ export function PlaybooksPage() {
                                       )}
                                     </div>
                                     <div className="text-xs text-chalk/70">Sized for a 4.5"x2.2" QB wristband insert, cut and slide in</div>
+                                  </div>
+                                </button>
+                                <button
+                                  onClick={() => handleExportPDF('wristband', true)}
+                                  className="w-full flex items-center gap-3 px-4 py-2 text-left text-chalk hover:bg-board transition-colors"
+                                >
+                                  <Watch className="h-4 w-4 text-primary" />
+                                  <div className="flex-1">
+                                    <div className="font-medium flex items-center gap-2">
+                                      Wristband Sheet (Text Only)
+                                      {!entitlementLoading && !isPro && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                          <Lock className="h-3 w-3" /> Pro
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-chalk/70">Play number + name only, no diagrams — fits more plays per insert</div>
                                   </div>
                                 </button>
                                 <div className="px-4 pt-1 pb-2" onClick={(e) => e.stopPropagation()}>

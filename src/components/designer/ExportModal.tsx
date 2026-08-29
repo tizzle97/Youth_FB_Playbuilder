@@ -50,6 +50,9 @@ export function ExportModal({
 }: ExportModalProps) {
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'single-play' | 'detailed-playbook' | 'grid-playbook' | 'wristband-playbook'>('single-play');
+  // Wristband-only option: a dense #+name table instead of image cells —
+  // see generateWristbandPlaybookHTML's textOnly branch.
+  const [wristbandTextOnly, setWristbandTextOnly] = useState(false);
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
@@ -520,7 +523,7 @@ export function ExportModal({
 </html>`;
   };
 
-  const generateWristbandPlaybookHTML = (plays: PlayData[]): string => {
+  const generateWristbandPlaybookHTML = (plays: PlayData[], textOnly = false): string => {
     // 4.5in x 2.2in matches the play window on Wristband Interactive Y23-style
     // QB wristbands, which hold 3 cut inserts arranged as a 4x2 grid of
     // numbered plays (8 per insert) — same layout as the printed inserts
@@ -528,14 +531,52 @@ export function ExportModal({
     const PLAYS_PER_INSERT = 8;
     const INSERTS_PER_BAND = 3;
 
+    // Text-only mode is a genuinely different, denser layout (a two-column
+    // table of #+name rows), not the same 8 image cells with the picture
+    // removed — confirmed against a photo of a real text-only wristband
+    // insert. Rows take far less room than a diagram cell, so an insert
+    // holds many more plays. ROWS_PER_COLUMN_TEXT is an estimate (no way to
+    // physically print-test in this environment) — needs a real print check
+    // before trusting the exact count; easy to retune afterward.
+    const ROWS_PER_COLUMN_TEXT = 14;
+    const COLUMNS_PER_INSERT_TEXT = 2;
+    const PLAYS_PER_INSERT_TEXT = ROWS_PER_COLUMN_TEXT * COLUMNS_PER_INSERT_TEXT;
+    const perInsert = textOnly ? PLAYS_PER_INSERT_TEXT : PLAYS_PER_INSERT;
+
     const insertGroups: PlayData[][] = [];
-    for (let i = 0; i < plays.length; i += PLAYS_PER_INSERT) {
-      insertGroups.push(plays.slice(i, i + PLAYS_PER_INSERT));
+    for (let i = 0; i < plays.length; i += perInsert) {
+      insertGroups.push(plays.slice(i, i + perInsert));
     }
 
     const inserts = insertGroups.map((group, groupIndex) => {
+      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
+      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
+      const insertLabel = `Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}`;
+
+      if (textOnly) {
+        const rows = group.map((play, i) => {
+          const playNumber = groupIndex * perInsert + i + 1;
+          return { playNumber, name: play.metadata.playName || 'Untitled' };
+        });
+        const mid = Math.ceil(rows.length / 2);
+        const columnHtml = (col: typeof rows) => `
+          <table class="wb-text-col"><tbody>
+            ${col.map((r) => `
+            <tr><td class="wb-num">${r.playNumber}</td><td class="wb-play-name">${r.name}</td></tr>`).join('')}
+          </tbody></table>`;
+
+        return `
+      <div class="wb-insert wb-insert-text">
+        <div class="wb-insert-label">${insertLabel}</div>
+        <div class="wb-text-columns">
+          ${columnHtml(rows.slice(0, mid))}
+          ${columnHtml(rows.slice(mid))}
+        </div>
+      </div>`;
+      }
+
       const cells = group.map((play, i) => {
-        const playNumber = groupIndex * PLAYS_PER_INSERT + i + 1;
+        const playNumber = groupIndex * perInsert + i + 1;
         return `
         <div class="wb-cell">
           <div class="wb-cell-header">
@@ -546,12 +587,9 @@ export function ExportModal({
         </div>`;
       }).join('');
 
-      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
-      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
-
       return `
       <div class="wb-insert">
-        <div class="wb-insert-label">Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}</div>
+        <div class="wb-insert-label">${insertLabel}</div>
         <div class="wb-cells">${cells}</div>
       </div>`;
     }).join('');
@@ -703,6 +741,42 @@ export function ExportModal({
       max-height: 100%;
     }
 
+    .wb-text-columns {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.15in;
+      min-height: 0;
+    }
+
+    .wb-text-col {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .wb-text-col td {
+      padding: 0.01in 0.03in;
+      font-size: 8pt;
+      line-height: 1.3;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .wb-num {
+      width: 0.28in;
+      font-weight: bold;
+      color: #1e40af;
+      text-align: right;
+    }
+
+    .wb-play-name {
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 0; /* forces overflow/ellipsis to respect the table column width */
+    }
+
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
       .wb-insert { page-break-inside: avoid; }
@@ -772,7 +846,7 @@ export function ExportModal({
         if (selectedFormat === 'detailed-playbook') {
           htmlContent = generatePlaybookDetailedHTML(plays);
         } else if (selectedFormat === 'wristband-playbook') {
-          htmlContent = generateWristbandPlaybookHTML(plays);
+          htmlContent = generateWristbandPlaybookHTML(plays, wristbandTextOnly);
         } else {
           htmlContent = generatePlaybookGridHTML(plays);
         }
@@ -939,6 +1013,18 @@ export function ExportModal({
                     </div>
                   </div>
                 </div>
+              )}
+
+              {selectedFormat === 'wristband-playbook' && (
+                <label className="flex items-center gap-2 mb-3 text-sm text-chalk cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={wristbandTextOnly}
+                    onChange={(e) => setWristbandTextOnly(e.target.checked)}
+                    className="rounded border-chalk/30"
+                  />
+                  Text only (no play diagrams) — fits more plays per insert
+                </label>
               )}
 
               {selectedFormat === 'wristband-playbook' && (
