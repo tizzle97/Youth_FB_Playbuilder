@@ -34,20 +34,50 @@ start failing almost immediately.
 
 ## 2. Point Supabase at Resend's SMTP
 
+⚠ **2026-08-28: verification emails were landing in junk.** DNS shows Resend
+was verified against the subdomain `send.playbuilderpro.com` (SPF/DKIM/MX all
+live there — `dig TXT send.playbuilderpro.com` shows an SPF include for
+`amazonses.com`), but Supabase's configured sender address was
+`noreply@playbuilderpro.com` — the **root** domain, which has no SPF record
+at all (`dig TXT playbuilderpro.com` returns only a Zoho domain-verification
+string). Sending "from" a domain that isn't the one actually authorized to
+send is exactly what SPF/DKIM alignment is checking for, and receiving
+mail servers treat the mismatch as a signal to junk it. The `send.`
+subdomain's own SPF record was *also* malformed — two terminating `~all`
+mechanisms in one record (`... ~all include:zohomail.com ~all`), which is
+invalid SPF syntax and can itself cause a permanent SPF error. **Fixed by
+sending from the subdomain that's actually verified, not the root.**
+
 1. Supabase Dashboard → **Project Settings → Authentication → SMTP Settings**
    (sometimes listed under Auth → Settings → "Enable Custom SMTP").
 2. Toggle **Enable Custom SMTP** on, then fill in:
-   - **Sender email:** `noreply@playbuilderpro.com` (a dedicated send-only
-     address keeps this cleanly separate from the `support@` inbox Zoho
-     already handles — no one should ever reply to it, so nothing needs to
-     receive there)
+   - **Sender email:** `noreply@send.playbuilderpro.com` — **not**
+     `noreply@playbuilderpro.com`. This must match the domain Resend actually
+     verified (check the Resend dashboard's Domains page for the exact
+     domain/subdomain marked **Verified** if this ever changes again).
    - **Sender name:** `Playbuilder Pro`
    - **Host:** `smtp.resend.com`
    - **Port:** `465`
    - **Username:** `resend` (literally that string, not your email)
    - **Password:** the API key from step 1
-3. Save, then use Supabase's "Send test email" button if it offers one —
-   confirm it actually lands in an inbox before moving on.
+3. **Fix the malformed SPF record** on `send.playbuilderpro.com` at whatever
+   DNS provider hosts it (nameservers are `*.p06.nsone.net` — NS1, not
+   Netlify DNS) — replace the current TXT value with a single valid record:
+   ```
+   v=spf1 include:amazonses.com ~all
+   ```
+   (Drop `include:zohomail.com` and the second `~all` — Zoho doesn't send
+   from this subdomain, only Resend/SES does; that Zoho include was almost
+   certainly copy-pasted from what was intended for the root domain.)
+4. In the Resend dashboard, re-check the Domains page for `send.playbuilderpro.com`
+   and confirm DKIM shows **Verified** too, not just SPF — copy the exact
+   DKIM CNAME record(s) shown there if any are still pending; they weren't
+   findable by guessing common selector names from outside the dashboard.
+5. Save, then use Supabase's "Send test email" button if it offers one —
+   confirm it actually lands in an inbox before moving on. Once real mail is
+   flowing, check the message headers (Gmail: **Show original**) for
+   `spf=pass`, `dkim=pass`, `dmarc=pass` against `send.playbuilderpro.com` —
+   don't just trust that it landed in the inbox once.
 
 ## 3. Turn on "Confirm email"
 
@@ -148,6 +178,21 @@ The digest **does** include the submitter's email address. That's the opposite
 of the `feedback-triage` function, which withholds it deliberately — triage
 output lands in public PRs, this goes to one admin inbox and the whole point is
 knowing who to follow up with.
+
+## Follow-up: tighten DMARC once the sender fix is confirmed
+
+`_dmarc.playbuilderpro.com` is currently `v=DMARC1; p=none;` — monitor-only,
+takes no enforcement action either way. Not the cause of the junk-folder
+issue by itself, but a `p=none` policy also doesn't help inbox placement at
+providers (like Gmail) that favor senders with a real, aligned DMARC policy.
+**Don't tighten this yet** — do it only after confirming real signups are
+landing in the inbox with SPF/DKIM/DMARC all passing (see step 5 above).
+Move to `p=quarantine` first (mail that fails alignment goes to spam instead
+of being delivered normally, but nothing bounces), watch for a while, then
+consider `p=reject` once confident nothing legitimate is failing alignment.
+Jumping straight to `p=reject` before confirming alignment is solid risks
+real signup/reset emails being silently dropped by receiving servers instead
+of just landing in spam — a worse failure mode than the one being fixed here.
 
 ## Notes / design decisions
 
