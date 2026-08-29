@@ -43,7 +43,7 @@ supabase secrets set KEY=value --project-ref nlfwfbbpcvyfyugxiysz
 | `SITE_URL` | `create-checkout-session/index.ts:19`, `create-portal-session/index.ts:15` | Where Stripe redirects after checkout/portal. Falls back to `https://playbuilderpro.com` if unset. | `STRIPE_SETUP.md` §2d |
 | `FEEDBACK_TRIAGE_SECRET` | `feedback-triage/index.ts:22` | Auth for the triage intake endpoint (`x-triage-secret` header). Must match the value entered in the cloud routine's environment — see §3 below. | `docs/automation/feedback-triage.md` §Setup |
 | `FEEDBACK_NOTIFY_SECRET` | `feedback-notify/index.ts:46` | Auth for the digest-send endpoint (`x-notify-secret` header), and also embedded in the `pg_cron` job body in `feedback_notify.sql` — two places that must agree, which is exactly the mismatch that broke the digest on 2026-08-19. | `EMAIL_SETUP.md` §6 |
-| `RESEND_API_KEY` | `feedback-notify/index.ts:47` | Resend's HTTP API, for the digest email. **Not the same credential** as Auth's SMTP password (below) — different Resend key, different transport. | `EMAIL_SETUP.md` §6 |
+| `RESEND_API_KEY` | `feedback-notify/index.ts:47`, `feedback-reply-notify/index.ts:23` | Resend's HTTP API, for the digest email and the reply-notification email. **Not the same credential** as Auth's SMTP password (below) — different Resend key, different transport. `feedback-reply-notify` needs no separate secret of its own; it's JWT-verified and checks `is_admin()` on the caller instead of a shared secret. | `EMAIL_SETUP.md` §6 |
 | `FEEDBACK_DIGEST_TO` | `feedback-notify/index.ts:48` | Single recipient address for the daily digest. | `EMAIL_SETUP.md` §6 |
 
 **Platform-injected — do not `secrets set` these by hand.** Supabase provides
@@ -52,9 +52,9 @@ have no manual-set step in any doc, which is correct, not a gap.
 
 | Secret | Consumed at |
 |---|---|
-| `SUPABASE_URL` | `stripe-webhook/index.ts:34`, `feedback-notify/index.ts:51`, `feedback-triage/index.ts:25`, `create-checkout-session/index.ts:22,31`, `create-portal-session/index.ts:18,26`, `sitemap/index.ts:15` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `stripe-webhook/index.ts:35`, `feedback-notify/index.ts:52`, `feedback-triage/index.ts:26`, `create-checkout-session/index.ts:23`, `create-portal-session/index.ts:19` |
-| `SUPABASE_ANON_KEY` | `create-checkout-session/index.ts:32`, `create-portal-session/index.ts:27`, `sitemap/index.ts:16` |
+| `SUPABASE_URL` | `stripe-webhook/index.ts:34`, `feedback-notify/index.ts:51`, `feedback-triage/index.ts:25`, `create-checkout-session/index.ts:22,31`, `create-portal-session/index.ts:18,26`, `sitemap/index.ts:15`, `feedback-reply-notify/index.ts:24,29` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `stripe-webhook/index.ts:35`, `feedback-notify/index.ts:52`, `feedback-triage/index.ts:26`, `create-checkout-session/index.ts:23`, `create-portal-session/index.ts:19`, `feedback-reply-notify/index.ts:25` |
+| `SUPABASE_ANON_KEY` | `create-checkout-session/index.ts:32`, `create-portal-session/index.ts:27`, `sitemap/index.ts:16`, `feedback-reply-notify/index.ts:79` |
 
 ### Verify a function is actually live, not just deployed
 
@@ -75,6 +75,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/<function>" \
 | `feedback-notify` | **401** | Same pattern as triage. (This exact check is what found the 2026-08-14 outage — it had been returning 404.) | 401 ✓ |
 | `create-checkout-session` | **401** | Requires a signed-in user's JWT; a bare request is unauthorized. | 401 ✓ |
 | `create-portal-session` | **401** | Same as above. | 401 ✓ |
+| `feedback-reply-notify` | **401** | Requires a signed-in user's JWT (default verify-jwt, no `--no-verify-jwt` flag), same as the two above. A valid non-admin JWT gets **403** from the in-function `is_admin()` check instead. | not yet deployed |
 | `sitemap` | **200** | Public, no auth required. | 200 ✓ |
 
 All six matched their expected code when this file was written — no live

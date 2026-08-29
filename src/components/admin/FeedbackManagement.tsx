@@ -91,6 +91,9 @@ export function FeedbackManagement() {
     // otherwise the submitter sees a blank "we replied" block.
     const reply = trimmed || null;
     const replied_at = reply ? new Date().toISOString() : null;
+    // Only a genuinely new reply should email the submitter — not an edit to
+    // an existing one, and not clearing it back to null.
+    const isNewReply = !previous.find((f) => f.id === id)?.admin_reply && reply !== null;
 
     setSavingReply(true);
     setItems((prev) => prev.map((f) => (f.id === id ? { ...f, admin_reply: reply, replied_at } : f)));
@@ -106,6 +109,15 @@ export function FeedbackManagement() {
       return;
     }
     setReplyDraft(null);
+
+    if (isNewReply) {
+      // Fire-and-forget: the reply itself already saved, so a notification
+      // failure shouldn't block or roll back the UI.
+      supabase.functions.invoke('feedback-reply-notify', { body: { feedbackId: id } })
+        .then(({ error: notifyError }) => {
+          if (notifyError) console.warn('Failed to send reply notification email:', notifyError);
+        });
+    }
   };
 
   const filtered = items.filter(
