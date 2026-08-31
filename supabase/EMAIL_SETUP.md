@@ -149,8 +149,9 @@ is a different path: the `feedback-notify` Edge Function calls **Resend's HTTP
 API** directly, because app code can't reach Supabase's SMTP config.
 
 That means it needs an **API key**, not the SMTP credential. Same Resend
-account, same verified `playbuilderpro.com` domain, same
-`noreply@playbuilderpro.com` sender — just a second key.
+account, same verified `send.playbuilderpro.com` subdomain, same
+`noreply@send.playbuilderpro.com` sender (via the shared `FEEDBACK_FROM`
+constant in `supabase/functions/_shared/email.ts`) — just a second key.
 
 1. **Resend → API Keys → Create API Key.** Sending permission is enough.
 2. Set the three secrets and deploy:
@@ -178,6 +179,32 @@ The digest **does** include the submitter's email address. That's the opposite
 of the `feedback-triage` function, which withholds it deliberately — triage
 output lands in public PRs, this goes to one admin inbox and the whole point is
 knowing who to follow up with.
+
+## 7. Reply notification (separate from the digest above)
+
+When an admin replies to a piece of feedback in `/admin`, the submitter gets a
+branded email — `feedback-reply-notify`, called directly from
+`FeedbackManagement.tsx` right after the reply saves (only on a genuinely new
+reply, not an edit or a clear). No new secret to set: it reuses
+`RESEND_API_KEY` from step 6, and auth is the caller's own JWT (checked
+against `is_admin()`) rather than a shared secret, since the caller is an
+admin's browser session, not `pg_cron`.
+
+Deploy it **with** JWT verification on (the default — no `--no-verify-jwt`,
+unlike `feedback-notify`):
+```sh
+supabase functions deploy feedback-reply-notify
+```
+
+Smoke-test:
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "https://<project-ref>.supabase.co/functions/v1/feedback-reply-notify" \
+  -H 'Content-Type: application/json' -d '{}'
+# → 401 with no Authorization header (JWT verification rejects it first)
+```
+A signed-in non-admin JWT gets **403** from the in-function `is_admin()`
+check instead of 401 — see `supabase/SECRETS.md`'s verification table.
 
 ## Follow-up: tighten DMARC once the sender fix is confirmed
 

@@ -2,6 +2,8 @@
 // exercised without a Deno runtime or a live Resend key. No Deno globals and
 // no npm imports in this file — that's the whole point of it existing.
 
+import { FEEDBACK_FROM } from '../_shared/email.ts';
+
 /** Cap the batch so one spam burst can't produce a megabyte email. Anything
  *  beyond this stays unnotified and rolls into tomorrow's digest. */
 export const MAX_ITEMS = 50;
@@ -10,7 +12,7 @@ export const MAX_ITEMS = 50;
  *  /admin, and a digest is a prompt to go look, not a replacement for looking. */
 export const MAX_EXCERPT = 500;
 
-const FROM = 'Playbuilder Pro <noreply@playbuilderpro.com>';
+const FROM = FEEDBACK_FROM;
 const SITE = 'https://playbuilderpro.com';
 
 export interface Row {
