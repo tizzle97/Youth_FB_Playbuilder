@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 type TopPlay = {
   id: string;
   name: string;
-  description: string | null;
   type: 'offense' | 'defense' | 'special_teams';
   upvotes: number;
   metadata: { difficulty?: string } | null;
@@ -26,7 +25,7 @@ export function TopPlays() {
     (async () => {
       const { data, error } = await supabase
         .from('plays')
-        .select('id, name, description, type, upvotes, metadata')
+        .select('id, name, type, upvotes, metadata')
         .eq('is_public', true)
         .gt('upvotes', 0)
         .order('upvotes', { ascending: false })
@@ -64,30 +63,23 @@ export function TopPlays() {
           </a>
         </div>
 
-        {/* Podium sizing — rank is real information here, so #1 gets a
-            visibly bigger card instead of three identical peers. */}
-        <div className="grid gap-6 lg:grid-cols-3 lg:grid-rows-2">
-          {plays.map((play, i) => (
+        {/* Equal-sized cards — descriptions are user-submitted and often
+            thin or missing, so nothing here depends on that text being any
+            good; a bigger "lead" card just left dead space when it wasn't. */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {plays.map((play) => (
             <div
               key={play.id}
-              className={`bg-board-light rounded-xl border border-chalk/10 hover:border-primary/30 transition-colors ${
-                i === 0 ? 'lg:col-span-2 lg:row-span-2 p-8' : 'p-6'
-              }`}
+              className="bg-board-light rounded-xl border border-chalk/10 hover:border-primary/30 transition-colors p-6"
             >
-              <div className="flex justify-between items-start mb-4 gap-3">
-                <h3 className={i === 0 ? 'font-display text-2xl text-chalk' : 'text-lg font-bold text-chalk'}>
-                  {play.name}
-                </h3>
+              <div className="flex justify-between items-start gap-3">
+                <h3 className="text-lg font-bold text-chalk">{play.name}</h3>
                 <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm capitalize shrink-0">
                   {difficultyLabel(play)}
                 </span>
               </div>
 
-              <p className={`text-chalk/70 mb-6 ${i === 0 ? 'text-lg max-w-md' : 'text-sm'}`}>
-                {play.description || 'A community-shared play.'}
-              </p>
-
-              <div className="flex items-center text-sm text-chalk/70">
+              <div className="mt-4 flex items-center text-sm text-chalk/70">
                 <ThumbsUp className="h-4 w-4 mr-2 text-primary" />
                 {play.upvotes} {play.upvotes === 1 ? 'upvote' : 'upvotes'}
               </div>
