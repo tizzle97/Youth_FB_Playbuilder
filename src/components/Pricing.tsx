@@ -7,11 +7,10 @@ import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
 import { getSafeErrorMessage } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { UpgradeConsentModal } from './billing/UpgradeConsentModal';
+import { StatDigit } from './StatDigit';
 
 const freeFeatures = [
   'All Play Designer tools',
-  `Up to ${FREE_LIMITS.plays} saved plays`,
-  `${FREE_LIMITS.playbooks} playbooks`,
   'Single-play PDF export',
   'Browse & publish community plays',
 ];
@@ -79,11 +78,14 @@ export function Pricing() {
           {/* Free */}
           <div className="relative bg-board rounded-2xl shadow-xl border border-chalk/10 p-8">
             <h3 className="text-xl font-bold text-chalk">Free</h3>
-            <div className="mt-4 flex items-baseline text-chalk">
-              <span className="text-4xl font-bold tracking-tight">$0</span>
-              <span className="ml-2 text-chalk/70">always</span>
+            <div className="mt-4">
+              <StatDigit value="$0" label="Always" tone="dark" />
             </div>
             <p className="mt-6 text-chalk/70">Everything you need to design and share plays.</p>
+            <div className="mt-6 flex gap-8">
+              <StatDigit value={String(FREE_LIMITS.plays)} label="Saved Plays" tone="dark" />
+              <StatDigit value={String(FREE_LIMITS.playbooks)} label="Playbooks" tone="dark" />
+            </div>
             <ul className="mt-6 space-y-4">
               {freeFeatures.map((f) => (
                 <li key={f} className="flex text-chalk/90">
@@ -121,9 +123,8 @@ export function Pricing() {
               </div>
             )}
             <h3 className="text-xl font-bold text-chalk">Pro</h3>
-            <div className="mt-4 flex items-baseline text-chalk">
-              <span className="text-4xl font-bold tracking-tight">$39</span>
-              <span className="ml-2 text-chalk/70">/ year</span>
+            <div className="mt-4">
+              <StatDigit value="$39" label="Per Year" tone="dark" />
             </div>
             <p className="mt-6 text-chalk/70">For coaches running a full team and game-day printing.</p>
             <ul className="mt-6 space-y-4">

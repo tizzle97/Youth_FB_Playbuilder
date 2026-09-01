@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Link } from 'react-router-dom';
 import { HeroPlayCard } from './HeroPlayCard';
+import { StatDigit } from './StatDigit';
 import { supabase } from '../lib/supabase';
 
 /** Faint graph-paper grid, like a coach's printed play sheet. */
@@ -77,7 +78,12 @@ export function Hero() {
                   Playbuilder Pro is the play designer for youth and flag football coaches — draw routes
                   on a real field, organize by situation, and print what your players need on game day.
                 </p>
-                <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
+                <div className="mt-8 flex flex-wrap justify-center gap-8 sm:gap-12 lg:justify-start">
+                  <StatDigit value="2 MIN" label="To Draw a Play" />
+                  <StatDigit value="15" label="Free Saved Plays" />
+                  <StatDigit value="$39/yr" label="Unlimited Pro" />
+                </div>
+                <div className="mt-8 sm:flex sm:justify-center lg:justify-start">
                   {user ? (
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Link to="/plays" className="flex items-center justify-center px-8 py-3 border border-transparent text-base font-bold rounded-md text-white bg-primary hover:bg-primary-dark md:py-4 md:text-lg md:px-10">
