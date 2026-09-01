@@ -2549,6 +2549,64 @@ test('My Plays: card shows a "Use as Template" link to /designer?template=<id>',
   await expect(page.locator('a[href="/designer?template=my-play-1"]')).toBeVisible();
 });
 
+// Regression test: the compact "Add to Playbook" trigger always anchored its
+// dropdown to grow leftward (right-0) with no check for available space. The
+// grid's leftmost card sits right against the panel's own overflow-hidden
+// edge (PlaysPage.tsx wraps the grid in a narrower-than-viewport panel), so
+// growing 288px further left ran the dropdown past that edge and clipped its
+// text — reported live via a screenshot on playbuilderpro.com/plays.
+test('My Plays: leftmost card\'s Add to Playbook dropdown does not clip past the panel edge', async ({ page }) => {
+  const userJson = {
+    id: '77777777-7777-7777-7777-777777777777',
+    aud: 'authenticated', role: 'authenticated', email: 'coach@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/admin_users**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+  await page.route('**/rest/v1/playbooks**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'pb-1', name: 'Offense', user_id: userJson.id, created_at: '', updated_at: '' }]),
+    }));
+  await page.route('**/rest/v1/playbook_plays**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.route('**/rest/v1/plays**', (route) => {
+    if (route.request().method() === 'HEAD') {
+      return route.fulfill({ status: 200, headers: { 'content-range': '*/6', 'access-control-expose-headers': 'content-range' }, body: '' });
+    }
+    const plays = Array.from({ length: 6 }, (_, i) => ({
+      id: `play-${i}`, name: `Play ${i}`, type: 'offense', thumbnail: null, is_public: false, upvotes: 0,
+    }));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(plays) });
+  });
+
+  await page.setViewportSize({ width: 2000, height: 1180 });
+  await page.goto('/plays');
+  await expect(page.getByText('Play 0')).toBeVisible();
+
+  const panel = page.locator('div.bg-board-light.rounded-xl.border.overflow-hidden').first();
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+
+  await page.locator('button[title="Add to Playbook"]').first().click();
+  const dropdown = page.getByText('Select Playbook').locator('..').locator('..');
+  await expect(dropdown).toBeVisible();
+  const dropdownBox = await dropdown.boundingBox();
+  expect(dropdownBox).not.toBeNull();
+
+  expect(dropdownBox!.x).toBeGreaterThanOrEqual(panelBox!.x - 1);
+});
+
 test('My Plays: a non-admin owner can delete their own play', async ({ page }) => {
   // Regression test: "Delete Play" used to be gated on isAdmin instead of
   // ownership, so a regular coach had no way to delete a play they made —

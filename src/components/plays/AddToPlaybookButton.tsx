@@ -9,6 +9,11 @@ import { supabase } from '../../lib/supabase';
 // Used to decide whether it fits below the button or needs to open upward.
 const DROPDOWN_MAX_HEIGHT_PX = 320;
 
+// Widest the dropdown gets (w-72, see the JSX below — the empty-state panel
+// is narrower at w-64, but sizing off the wider case only makes the flip
+// trigger a little earlier, never too late).
+const DROPDOWN_WIDTH_PX = 288;
+
 // Playbook interface
 interface Playbook {
   id: string;
@@ -42,6 +47,9 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
   const [openUpward, setOpenUpward] = useState(false);
+  // Compact triggers default to right-0 (grows leftward, see below);
+  // recomputed on open against actual viewport space.
+  const [anchorRight, setAnchorRight] = useState(compact);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch user's playbooks when dropdown opens
@@ -56,16 +64,46 @@ export const AddToPlaybookButton: React.FC<AddToPlaybookButtonProps> = ({
       // Flip upward when there isn't room below (e.g. bottom-row cards in a
       // grid) — otherwise the dropdown renders past the viewport edge and
       // becomes unreachable.
-      const spaceBelow = window.innerHeight - containerRef.current.getBoundingClientRect().bottom;
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
       setOpenUpward(spaceBelow < DROPDOWN_MAX_HEIGHT_PX);
+
+      // The real horizontal boundary isn't the browser viewport — PlaysPage
+      // wraps the whole grid in an `overflow-hidden` panel narrower than the
+      // window (`max-w-7xl mx-auto px-4`), and that's what actually clips
+      // the dropdown. Walk up to the nearest overflow-hidden ancestor (found
+      // generically, not by page-specific selector, since this component
+      // could end up reused elsewhere) and measure against its bounds,
+      // falling back to the viewport if there isn't one.
+      let node = containerRef.current.parentElement;
+      let clipBounds = { left: 0, right: window.innerWidth };
+      while (node) {
+        const { overflowX, overflow } = window.getComputedStyle(node);
+        if (overflowX === 'hidden' || overflow === 'hidden') {
+          clipBounds = node.getBoundingClientRect();
+          break;
+        }
+        node = node.parentElement;
+      }
+
+      // Compact triggers sit at the right end of a card's action cluster, so
+      // they default to growing leftward (anchored to the trigger's right
+      // edge) — anchored left it would run past the card and get clipped
+      // by the ancestor above. Non-compact triggers default the other way.
+      // Either default flips when it would instead run off the opposite
+      // edge of the clip boundary — e.g. a compact trigger on the leftmost
+      // card in a grid, which has no room to its left before that boundary.
+      const fitsGrowingLeft = rect.right - clipBounds.left >= DROPDOWN_WIDTH_PX;
+      const fitsGrowingRight = clipBounds.right - rect.left >= DROPDOWN_WIDTH_PX;
+      let nextAnchorRight = compact;
+      if (compact && !fitsGrowingLeft && fitsGrowingRight) nextAnchorRight = false;
+      if (!compact && !fitsGrowingRight && fitsGrowingLeft) nextAnchorRight = true;
+      setAnchorRight(nextAnchorRight);
     }
     setIsOpen((prev) => !prev);
   };
 
-  // Compact triggers sit at the right end of a card's action cluster, so the
-  // panel has to grow leftward — anchored left it would run past the card and
-  // be clipped by the page panel's overflow-hidden.
-  const horizontalAnchor = compact ? 'right-0' : 'left-0';
+  const horizontalAnchor = anchorRight ? 'right-0' : 'left-0';
   const dropdownPositionClass = openUpward
     ? `bottom-full ${horizontalAnchor} mb-2`
     : `top-full ${horizontalAnchor} mt-2`;
