@@ -25,11 +25,19 @@ export default {
           DEFAULT: '#101D2E', // Deep navy (brand)
           light: '#16283D',
         },
+        // Stadium floodlight amber — ambient/mood color only (glows,
+        // gradients, dividers). Never used on interactive elements; primary
+        // green stays the only clickable color so the two accents don't
+        // compete for the same job.
+        stadium: '#E8A33D',
       },
       fontFamily: {
         sans: ['Inter var', 'sans-serif'],
         display: ['Anton', 'sans-serif'],
         label: ['"JetBrains Mono"', 'monospace'],
+        // Marketing-copy body face for the homepage only — everywhere else
+        // (designer, dashboards, forms) stays on `font-sans` (Inter var).
+        editorial: ['Fraunces', 'Georgia', 'serif'],
       },
     },
   },
