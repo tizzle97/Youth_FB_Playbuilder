@@ -100,7 +100,16 @@ function sliceByProgress(points: Pt[], t: number): Pt[] {
 
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
-export function HeroPlayCard() {
+const CARD_FADE_MS = 500;
+
+type HeroPlayCardProps = {
+  /** Delay before the card itself fades in ("lights on"). Routes start
+   *  drawing CARD_FADE_MS after that, once the card has fully appeared —
+   *  part of Hero's load choreography. */
+  revealDelayMs?: number;
+};
+
+export function HeroPlayCard({ revealDelayMs = 0 }: HeroPlayCardProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -114,21 +123,32 @@ export function HeroPlayCard() {
       return;
     }
 
-    let start = 0;
     let frame = 0;
-    const tick = (now: number) => {
-      if (!start) start = now;
-      const t = easeOut(Math.min(1, (now - start) / DRAW_MS));
-      const animatedPaths = DEMO_PATHS.map((p) => ({ ...p, points: sliceByProgress(p.points, t) }));
-      renderScene(ctx, CANVAS_W, CANVAS_H, animatedPaths, DEMO_ICONS);
-      if (t < 1) frame = requestAnimationFrame(tick);
+    let cancelled = false;
+    const startDrawing = () => {
+      let start = 0;
+      const tick = (now: number) => {
+        if (!start) start = now;
+        const t = easeOut(Math.min(1, (now - start) / DRAW_MS));
+        const animatedPaths = DEMO_PATHS.map((p) => ({ ...p, points: sliceByProgress(p.points, t) }));
+        renderScene(ctx, CANVAS_W, CANVAS_H, animatedPaths, DEMO_ICONS);
+        if (t < 1) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
+
+    // Render the field + standing icons immediately (no routes yet) so the
+    // card isn't blank while it waits out its reveal + start delay.
+    renderScene(ctx, CANVAS_W, CANVAS_H, DEMO_PATHS.map((p) => ({ ...p, points: sliceByProgress(p.points, 0) })), DEMO_ICONS);
+    const timeout = window.setTimeout(() => { if (!cancelled) startDrawing(); }, revealDelayMs + CARD_FADE_MS);
+    return () => { cancelled = true; window.clearTimeout(timeout); cancelAnimationFrame(frame); };
+  }, [revealDelayMs]);
 
   return (
-    <div className="rounded-xl border-2 border-board/15 bg-white shadow-xl p-3">
+    <div
+      className="card-lights-on rounded-xl border-2 border-board/15 bg-white shadow-xl p-3"
+      style={{ '--reveal-delay': `${revealDelayMs}ms` } as React.CSSProperties}
+    >
       <p className="font-label text-xs tracking-widest uppercase text-board/50 mb-2 px-1">
         Trips Rt &middot; Flood
       </p>

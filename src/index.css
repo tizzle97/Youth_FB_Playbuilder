@@ -89,6 +89,41 @@ body {
   }
 }
 
+/* Hero page-load choreography: floodlights on (.card-lights-on) → routes draw
+   (HeroPlayCard's own rAF loop) → copy settles in (.reveal), each timed via
+   an inline --reveal-delay so the sequence reads as one moment, not scattered
+   effects. Both skip straight to the end state under reduced motion. */
+@keyframes lights-on {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.card-lights-on {
+  opacity: 0;
+  animation: lights-on 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--reveal-delay, 0s);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reveal {
+  opacity: 0;
+  animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--reveal-delay, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-lights-on,
+  .reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Community post rich text (RichTextEditor.tsx / PostList.tsx). Tailwind's
    preflight strips default list styling and no typography plugin is
    installed, so bullets/paragraph spacing need to be spelled out explicitly

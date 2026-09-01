@@ -47,7 +47,7 @@ export function TopPlays() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-3xl font-chalk font-bold text-chalk flex items-center gap-3">
+            <h2 className="font-display text-3xl text-chalk flex items-center gap-3">
               <Trophy className="h-8 w-8 text-primary" />
               Top Ranked Plays
             </h2>
@@ -64,20 +64,26 @@ export function TopPlays() {
           </a>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          {plays.map((play) => (
+        {/* Podium sizing — rank is real information here, so #1 gets a
+            visibly bigger card instead of three identical peers. */}
+        <div className="grid gap-6 lg:grid-cols-3 lg:grid-rows-2">
+          {plays.map((play, i) => (
             <div
               key={play.id}
-              className="bg-board-light rounded-xl p-6 border border-chalk/10 hover:border-primary/30 transition-colors"
+              className={`bg-board-light rounded-xl border border-chalk/10 hover:border-primary/30 transition-colors ${
+                i === 0 ? 'lg:col-span-2 lg:row-span-2 p-8' : 'p-6'
+              }`}
             >
               <div className="flex justify-between items-start mb-4 gap-3">
-                <h3 className="text-xl font-bold text-chalk">{play.name}</h3>
+                <h3 className={i === 0 ? 'font-display text-2xl text-chalk' : 'text-lg font-bold text-chalk'}>
+                  {play.name}
+                </h3>
                 <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm capitalize shrink-0">
                   {difficultyLabel(play)}
                 </span>
               </div>
 
-              <p className="text-chalk/70 mb-6">
+              <p className={`text-chalk/70 mb-6 ${i === 0 ? 'text-lg max-w-md' : 'text-sm'}`}>
                 {play.description || 'A community-shared play.'}
               </p>
 

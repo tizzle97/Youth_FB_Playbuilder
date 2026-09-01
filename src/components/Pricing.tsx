@@ -75,36 +75,38 @@ export function Pricing() {
           </div>
         )}
 
-        <div className="mt-12 grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+        {/* Pro sits larger and elevated — the plan this page wants chosen —
+            Free sits smaller and quieter beside it, not an equal A/B pair. */}
+        <div className="mt-12 flex flex-col-reverse gap-8 max-w-4xl mx-auto lg:flex-row lg:items-center">
           {/* Free */}
-          <div className="relative bg-board rounded-2xl shadow-xl border border-chalk/10 p-8">
-            <h3 className="text-xl font-bold text-chalk">Free</h3>
-            <div className="mt-4 flex items-baseline text-chalk">
-              <span className="text-4xl font-bold tracking-tight">$0</span>
-              <span className="ml-2 text-chalk/70">always</span>
+          <div className="lg:w-[38%] shrink-0 p-6">
+            <h3 className="font-label text-xs tracking-widest text-chalk/50 uppercase">Free</h3>
+            <div className="mt-2 flex items-baseline gap-2 text-chalk">
+              <span className="font-display text-3xl">$0</span>
+              <span className="text-chalk/50 text-sm">always</span>
             </div>
-            <p className="mt-6 text-chalk/70">Everything you need to design and share plays.</p>
-            <ul className="mt-6 space-y-4">
+            <p className="mt-4 text-sm text-chalk/60">Everything you need to design and share plays.</p>
+            <ul className="mt-5 space-y-3">
               {freeFeatures.map((f) => (
-                <li key={f} className="flex text-chalk/90">
-                  <Check className="h-6 w-6 text-primary shrink-0" />
-                  <span className="ml-3">{f}</span>
+                <li key={f} className="flex text-sm text-chalk/70">
+                  <Check className="h-4 w-4 text-chalk/40 shrink-0 mt-0.5" />
+                  <span className="ml-2">{f}</span>
                 </li>
               ))}
             </ul>
             {user ? (
-              <div className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk/70">
+              <div className="mt-6 text-sm text-chalk/50">
                 {isPro ? 'Included in your plan' : 'Your current plan'}
               </div>
             ) : (
               <>
                 <button
                   onClick={() => navigate('/auth?mode=signup')}
-                  className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-board-light border border-chalk/20 text-chalk hover:border-primary/50 hover:text-primary transition-colors"
+                  className="mt-6 text-sm font-medium text-chalk/70 underline decoration-chalk/30 underline-offset-4 hover:text-chalk hover:decoration-chalk transition-colors"
                 >
-                  Sign up free
+                  Sign up free →
                 </button>
-                <p className="mt-3 text-xs text-chalk/50 text-center">
+                <p className="mt-3 text-xs text-chalk/40">
                   A free account is required to save plays and playbooks.
                 </p>
               </>
@@ -112,7 +114,7 @@ export function Pricing() {
           </div>
 
           {/* Pro — live checkout once billing is enabled (B-3), otherwise coming soon */}
-          <div className="relative bg-board rounded-2xl shadow-xl border border-primary p-8">
+          <div className="relative flex-1 bg-board rounded-2xl shadow-2xl border border-primary p-8 lg:p-10 lg:scale-105">
             {!BILLING_ENABLED && (
               <div className="absolute -top-4 inset-x-0 flex justify-center">
                 <div className="inline-block bg-primary px-4 py-1 rounded-full text-sm font-semibold text-white">
@@ -120,17 +122,17 @@ export function Pricing() {
                 </div>
               </div>
             )}
-            <h3 className="text-xl font-bold text-chalk">Pro</h3>
-            <div className="mt-4 flex items-baseline text-chalk">
-              <span className="text-4xl font-bold tracking-tight">$39</span>
-              <span className="ml-2 text-chalk/70">/ year</span>
+            <h3 className="font-label text-xs tracking-widest text-primary uppercase">Pro</h3>
+            <div className="mt-2 flex items-baseline gap-2 text-chalk">
+              <span className="font-display text-5xl">$39</span>
+              <span className="text-chalk/60">/ year</span>
             </div>
-            <p className="mt-6 text-chalk/70">For coaches running a full team and game-day printing.</p>
-            <ul className="mt-6 space-y-4">
+            <p className="mt-4 text-chalk/70">For coaches running a full team and game-day printing.</p>
+            <ul className="mt-6 grid gap-3 sm:grid-cols-2">
               {proFeatures.map((f) => (
                 <li key={f} className="flex text-chalk/90">
-                  <Check className="h-6 w-6 text-primary shrink-0" />
-                  <span className="ml-3">{f}</span>
+                  <Check className="h-5 w-5 text-primary shrink-0" />
+                  <span className="ml-2.5">{f}</span>
                 </li>
               ))}
             </ul>
