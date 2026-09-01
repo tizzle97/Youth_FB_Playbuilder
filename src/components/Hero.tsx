@@ -49,12 +49,14 @@ export function Hero() {
       <div className="absolute inset-0 pointer-events-none" style={floodlights} aria-hidden="true"></div>
       <div className="absolute inset-0 pointer-events-none" style={gridPaper} aria-hidden="true"></div>
 
-      {/* Route doodle, echoing the logo's curl route, flanking the headline */}
+      {/* Route doodle, echoing the logo's curl route — tucked into the gap
+          above the headline (not beside it) so it can't be wide enough to
+          collide with the text at any width the container actually reaches. */}
       <svg
         className="absolute pointer-events-none hidden lg:block"
-        style={{ left: '2%', top: '90px' }}
-        width="190"
-        height="240"
+        style={{ left: '24px', top: '4px' }}
+        width="66"
+        height="84"
         viewBox="0 0 120 150"
         aria-hidden="true"
       >
@@ -69,7 +71,10 @@ export function Hero() {
           strokeWidth="5"
           strokeLinecap="round"
         />
-        <path d="M92 26 L72 16 L72 36 Z" fill="#1FA75D" fillOpacity="0.7" />
+        {/* Fades in right as the line above finishes drawing, instead of
+            sitting fully visible the whole time waiting for the line to
+            "catch up" to it. */}
+        <path className="arrow-in" d="M92 26 L72 16 L72 36 Z" fill="#1FA75D" fillOpacity="0.7" />
       </svg>
 
       <div className="max-w-7xl mx-auto">
