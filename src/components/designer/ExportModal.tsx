@@ -19,7 +19,6 @@ interface PlayData {
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport?: (format: 'single' | 'multiple' | 'wristband') => void;
   canvasRef?: React.RefObject<any>;
   playMetadata?: PlayMetadata;
   onUpdateMetadata?: (metadata: PlayMetadata) => void;
