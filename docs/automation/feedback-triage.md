@@ -1,5 +1,17 @@
 # Feedback triage routine
 
+> ## ⚠ DORMANT — this routine has never filed an issue (confirmed 2026-09-03)
+> Steps 4–6 below were never completed: the SQL ran and the Edge Function
+> deployed, but the routine itself was never created in the cloud UI. The two
+> `from-feedback` issues that exist (#100, #101) were filed by hand.
+>
+> **User feedback is currently not being triaged by anything** — it sits in the
+> `feedback` table until someone opens `/admin`. The replacement plan is
+> `docs/proposals/feedback-triage-v2.md`; its first step is switching on the
+> daily digest that `supabase/feedback_notify.sql` already defines. Keep this
+> file for its classification taxonomy and its injection-guard rules, which
+> carry over.
+
 The prompt and runbook for the scheduled agent that turns user-submitted
 feedback into **GitHub issues**. It is an intake routine: it classifies, files,
 and stops. It does not branch, does not open PRs, and does not write code.

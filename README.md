@@ -41,17 +41,21 @@ A modern web application for designing and managing football plays.
    npm run dev
    ```
 
-### Build
+### Scripts
 
-```bash
-npm run build
-```
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build. Note: `vite build` does **not** type-check. |
+| `npm run preview` | Serve the built output |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | eslint (passes; ~59 non-blocking warnings) |
+| `npm run smoke` | Playwright smoke suite against the real app |
+| `npm run verify` | typecheck + lint + build + smoke — **run before every commit/PR** |
 
-### Preview
-
-```bash
-npm run preview
-```
+> Working on this repo with an AI agent? Read `CLAUDE.md` — it carries the
+> conventions, the schema/migration workflow, and a set of expensive lessons
+> this README doesn't repeat.
 
 ## Deployment
 
@@ -86,7 +90,16 @@ src/
 │   ├── blog/         # Blog
 │   ├── auth/         # Auth & account settings
 │   ├── admin/        # Admin dashboard
+│   ├── billing/      # Stripe checkout / upgrade consent
+│   ├── feedback/     # In-app feedback capture
+│   ├── legal/        # Privacy policy, terms, contact
+│   ├── vs/           # "vs Defense" matchup view
 │   └── *.tsx         # Landing-page sections (Navbar, Hero, Pricing, …)
 ├── lib/              # Shared Supabase client, entitlements, errors, analytics
+├── hooks/            # Shared React hooks
 └── types/            # TypeScript type definitions
 ```
+
+Also: `supabase/` (SQL + Edge Functions + setup docs — start with `SCHEMA.md`),
+`tests/smoke/` (Playwright), `docs/` (automation runbooks, proposals, archive),
+`scripts/` (seed library, one-off migrations).
