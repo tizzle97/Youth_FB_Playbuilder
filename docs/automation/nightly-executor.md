@@ -1,5 +1,16 @@
 # Nightly executor routine
 
+> ## ⚠ DORMANT — this routine has never run (confirmed 2026-09-03)
+> Step 3 below was never done: the prompt in the cloud UI was never replaced,
+> so the routine still reads `BACKLOG.md`'s Up-next section, which is now
+> empty. It has produced no PRs. The stale `origin/nightly/*` branches predate
+> the 2026-08-17 move to GitHub issues.
+>
+> **Nothing is turning issues into PRs today.** Keep this file as the design
+> record and as the prompt to use if it's ever revived — but do not read it as
+> a description of a running system. See `docs/proposals/feedback-triage-v2.md`
+> for why the "config lives in a cloud UI" pattern failed here, twice.
+
 The prompt and runbook for the scheduled agent that turns queued GitHub issues
 into pull requests.
 
