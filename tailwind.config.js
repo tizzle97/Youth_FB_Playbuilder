@@ -39,6 +39,14 @@ export default {
         // (designer, dashboards, forms) stays on `font-sans` (Inter var).
         editorial: ['Fraunces', 'Georgia', 'serif'],
       },
+      aspectRatio: {
+        // Matches EXPORT_WIDTH/EXPORT_HEIGHT (1650x1275) in
+        // renderPlayScene.ts — reduces to 22/17. Every stored play thumbnail
+        // is rendered at this ratio; a mismatched container pillarboxes the
+        // diagram and the gap reads as an unstyled white margin. Keep this in
+        // sync if the export size ever changes.
+        play: '22 / 17',
+      },
     },
   },
   plugins: [typography],

@@ -64,7 +64,7 @@ export function PlayCard({
 
   // White ground: stored thumbnails are exported on white, so anything else
   // shows as a border around the image.
-  const frame = `relative block aspect-video bg-white border-b border-chalk/10 ${clip ? '' : 'rounded-t-lg overflow-hidden'}`;
+  const frame = `relative block aspect-play bg-white border-b border-chalk/10 ${clip ? '' : 'rounded-t-lg overflow-hidden'}`;
 
   const thumbnail = play.thumbnail ? (
     <img

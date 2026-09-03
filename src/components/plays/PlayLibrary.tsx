@@ -321,7 +321,7 @@ export function PlayLibrary() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-board-light rounded-lg border border-chalk/10 overflow-hidden animate-pulse">
-              <div className="aspect-video bg-chalk/10"></div>
+              <div className="aspect-play bg-chalk/10"></div>
               <div className="p-4">
                 <div className="h-5 bg-chalk/10 rounded w-2/3 mb-2"></div>
                 <div className="h-4 bg-chalk/10 rounded w-1/3"></div>
