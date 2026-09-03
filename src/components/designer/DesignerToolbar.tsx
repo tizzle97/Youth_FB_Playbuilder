@@ -21,7 +21,7 @@ interface DesignerToolbarProps {
   setDrawingMode: (mode: boolean) => void;
   drawMode: DrawMode;
   setDrawMode: (mode: DrawMode) => void;
-  /** Terminal decoration for the next route finished in Straight or Route
+  /** Terminal decoration for the next route finished in Straight or Curved
    *  mode — sticky until changed, independent of shape. */
   capStyle: CapStyle;
   setCapStyle: (style: CapStyle) => void;
@@ -296,13 +296,13 @@ export function DesignerToolbar({
           className={`${tool} ${activeDraw === 'waypoint' ? active : inactive}`}
         >
           <GitBranch className="h-4 w-4" />
-          <span className={label}>Route</span>
+          <span className={label}>Curved</span>
         </button>
 
         <div className={divider} />
 
         {/* Ending style: click to flip between arrowhead and a perpendicular
-            block cap. Independent of shape (Straight/Route above) — a route
+            block cap. Independent of shape (Straight/Curved above) — a route
             can now be curved AND end in a block cap, which wasn't possible
             when Block was its own separate mode. Sticky until changed, like
             drawMode. A single toggle button (rather than a two-button pill)
