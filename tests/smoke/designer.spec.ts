@@ -2335,6 +2335,53 @@ test('export gates (B-2): playbook PDF formats are Pro-locked, single-play stays
   await expect(page.getByRole('button', { name: /Print Play/ })).toBeVisible();
 });
 
+test('single-play export prints via a generated window, pulling in no PDF library', async ({ page }) => {
+  // Every export path — including the free single-play sheet — builds HTML and
+  // hands it to window.print(). It does NOT generate the PDF in-app.
+  //
+  // This is a regression guard for a real trap: PlayDesigner carried a
+  // jsPDF-based `handleExportToPDF` from the original scaffold that was passed
+  // to ExportModal as `onExport` and never once called, in any commit. It kept
+  // jspdf + html2canvas (~590KB) in the dependency tree, and a security audit
+  // read it as the live export path and mis-scored a critical jsPDF CVE as
+  // reachable. Dead code that *looks* load-bearing is worse than no code, so
+  // assert the real mechanism rather than trusting the imports.
+  const opened: string[] = [];
+  await page.exposeFunction('__recordPrintDoc', (html: string) => { opened.push(html); });
+  await page.addInitScript(() => {
+    window.open = () => {
+      let buf = '';
+      return {
+        document: {
+          open() {}, close() {},
+          write(html: string) {
+            buf += html;
+            (window as unknown as { __recordPrintDoc: (h: string) => void }).__recordPrintDoc(buf);
+          },
+        },
+        focus() {}, print() {}, closed: false,
+      } as unknown as Window;
+    };
+  });
+
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+  await page.getByText('Single Play Sheet').click();
+  await page.getByRole('button', { name: /Print Play/ }).first().click();
+
+  // The print document is real, generated HTML — not a PDF blob.
+  await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
+  expect(opened.join('')).toContain('@media print');
+
+  // No PDF/canvas-rasterizing library may be pulled into this flow.
+  const heavy = await page.evaluate(() =>
+    performance.getEntriesByType('resource')
+      .map((e) => e.name)
+      .filter((n) => /jspdf|html2canvas/i.test(n)),
+  );
+  expect(heavy).toEqual([]);
+});
+
 test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ page }) => {
   const userJson = {
     id: '22222222-2222-2222-2222-222222222222',

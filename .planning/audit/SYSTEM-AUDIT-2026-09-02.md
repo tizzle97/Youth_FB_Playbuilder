@@ -270,11 +270,20 @@ Owner decisions and what was executed on branch `chore/system-audit-cleanup`.
 | L-1/L-2 clutter | **Fixed.** Parent dir is now `project/` + `archive/` (with a README). `MARKETING.md` and `LEGAL_REVIEW_PACKET.md` → `docs/archive/` with dated names. README refreshed. |
 | Q-2 tsconfig, Q-3 staleness, Q-4 size | **Deferred** (see non-goals / open decision). |
 
-**Open decision — the last 4 vulnerabilities.** Both fixes are breaking:
-- `jspdf` 2.5.2 → 4.2.1 (two majors) — clears the **critical** and the nested dompurify. Touches single-play PDF, playbook PDF (detailed + grid), and wristband export: the Pro feature set. Needs real export testing, not just smoke.
-- `react-router-dom` 6.29 → 7.18 — clears 2 moderates, one of which (`deserializeErrors()` SSR hydration) **cannot apply** to this client-only SPA. The other (open redirect via backslash in `<Link>`/`useNavigate`) can.
+**RESOLVED 2026-09-03 — jspdf: removed, not upgraded.** ✅
 
-*Recommendation:* do jspdf first and alone, with manual verification of every export path; treat react-router as lower priority given the reduced real-world applicability.
+Investigating the upgrade showed the premise was wrong twice over, so the fix changed shape:
+
+1. **jsPDF never touched the Pro features.** Playbook PDFs (detailed + grid) and wristband export build HTML with `@media print` and call `window.open()` + `printWindow.print()` (`ExportModal.tsx:873-894`). They never imported jsPDF. My "touches the Pro feature set" claim was wrong.
+2. **jsPDF was never reachable at all.** Its only consumer was `handleExportToPDF` in `PlayDesigner.tsx`, passed to `ExportModal` as `onExport` — a prop that is declared in the interface but **never destructured and never called in any commit in repo history** (`git log --all -S "onExport("` → empty). It dates to the original Bolt scaffold commit `a44be90`. Confirmed empirically: a full single-play export fires `window.open()` and fetches **zero** jspdf/html2canvas chunks.
+
+So the critical CVE was never exploitable here — the vulnerable code could not execute. Rather than a two-major upgrade of an unused library, the dead code and both dependencies (`jspdf`, `html2canvas` — the latter imported by nothing in `src/`) were **deleted outright**. That removes the CVE permanently instead of deferring it to the next advisory, and drops ~590KB from the build.
+
+**Result: production vulnerabilities 9 → 2**, both moderate, both `react-router`. Guarded by a new smoke test asserting the export path prints via generated HTML and pulls in no PDF library.
+
+**Still open — `react-router-dom` 6.29 → 7.18.** Clears the last 2 moderates. One (`deserializeErrors()` SSR hydration) **cannot apply** to this client-only SPA; the other (open redirect via backslash in `<Link>`/`useNavigate`) can. A router major touches every route in the app, so it deserves its own change and its own testing pass.
+
+*Lesson worth keeping:* dead code that looks load-bearing is worse than no code — it cost this audit a mis-scored critical and nearly cost a needless major-version migration of a library the app doesn't use.
 
 ---
 *Audit performed 2026-09-02 by Claude Code (three parallel read-only discovery agents + synthesis); remediation 2026-09-03. All `path:line` citations verified at discovery time. One finding (S-1 blast radius) was found wrong on execution and is corrected in place above rather than silently removed.*

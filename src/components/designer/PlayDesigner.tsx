@@ -461,27 +461,6 @@ export function PlayDesigner() {
     }
   }, [user, editingPlayId, playType, searchParams, navigate]);
 
-  const handleExportToPDF = useCallback(async (_format: 'single' | 'multiple' | 'wristband') => {
-    try {
-      // Fixed-resolution render (1650x1275) so every play prints identically
-      // regardless of the screen it was designed on
-      const imgData = canvasRef.current?.exportImage?.();
-      if (!imgData) return;
-      // Loaded on demand — jsPDF only matters at export time, not for every
-      // visit to the designer.
-      const { jsPDF } = await import('jspdf');
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm' });
-      const pw = pdf.internal.pageSize.getWidth();
-      const ph = (1275 * pw) / 1650;
-      pdf.addImage(imgData, 'PNG', 0, 0, pw, ph);
-      pdf.save(`${currentPlayMetadata.playName || 'play'}.pdf`);
-      setShowExportModal(false);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to export PDF.');
-    }
-  }, [currentPlayMetadata.playName]);
-
   if (loading) return (
     <div className="min-h-screen bg-board flex items-center justify-center">
       <div className="text-chalk">Loading…</div>
@@ -721,7 +700,6 @@ export function PlayDesigner() {
         <ExportModal
           isOpen={showExportModal}
           onClose={() => setShowExportModal(false)}
-          onExport={handleExportToPDF}
           canvasRef={canvasRef}
           playMetadata={currentPlayMetadata}
           onUpdateMetadata={setCurrentPlayMetadata}
