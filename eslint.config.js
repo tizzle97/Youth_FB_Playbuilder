@@ -9,6 +9,21 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plain-JS Node scripts: seed-library, one-off migrations, the Edge
+    // Function *.check.mjs guards. Without Node globals declared, every
+    // `process`/`console`/`URL` reference is a `no-undef` error — that was
+    // 56 of the repo's 57 lint errors and the reason `npm run verify` could
+    // never pass. TS files don't need this: typescript-eslint turns
+    // `no-undef` off there because tsc already checks it.
+    // Browser globals are included alongside Node's because the seed-library
+    // scripts drive headless Chromium: code inside `page.evaluate()` callbacks
+    // runs in the page, so `window`/`localStorage` there are real, not typos.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,

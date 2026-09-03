@@ -41,6 +41,7 @@ const zone = (iconIndex, cx, cyYardsUp, rx, ry, color) => ({ iconIndex, cx, cy: 
 // Batch 1 (2026-07-20 pilot, shipped and live — kept here for reference so
 // the file stays a full record of the library; NOT exported, so re-running
 // the pipeline never re-inserts it. run.mjs only ever inserts `PLAYS` below.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- unused on purpose; see above
 const PILOT_BATCH_2026_07_20 = [
   // ---------------------------------------------------------------
   // Flag (5v5 / 7v7)
