@@ -258,7 +258,7 @@ export function PlaysPage() {
                     key={i}
                     className="animate-pulse bg-board-light rounded-lg border border-chalk/10"
                   >
-                    <div className="bg-board rounded-t-lg aspect-video"></div>
+                    <div className="bg-board rounded-t-lg aspect-play"></div>
                     <div className="p-4">
                       <div className="h-4 bg-board rounded w-2/3 mb-3"></div>
                       <div className="h-9 bg-board rounded w-1/2 ml-auto"></div>
