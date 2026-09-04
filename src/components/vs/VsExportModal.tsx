@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Download, Printer, Layers } from 'lucide-react';
 import { renderOverlayScene, EXPORT_WIDTH, EXPORT_HEIGHT, type SceneLayer } from '../../lib/renderPlayScene';
 import { paperPageSize, escapeHtml } from '../../lib/userPreferences';
+import { EXPORT_ACCENT_RULE, EXPORT_INK, EXPORT_HAIRLINE } from '../../lib/exportStyles';
 
 // ---------------------------------------------
 // Export options for the read-only "vs. defense" view (B-36 follow-up #1):
@@ -71,7 +72,7 @@ function buildPrintHTML(pagesHTML: string, docTitle: string): string {
   <style>
     @page { size: ${paperPageSize('letter')}; margin: 0.5in; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; color: #000; background: white; }
+    body { font-family: Arial, sans-serif; color: ${EXPORT_INK}; background: white; }
     .matchup-page {
       min-height: 9.5in;
       display: flex;
@@ -84,21 +85,21 @@ function buildPrintHTML(pagesHTML: string, docTitle: string): string {
       text-align: center;
       margin-bottom: 20px;
       padding-bottom: 12px;
-      border-bottom: 2px solid #2563eb;
+      border-bottom: ${EXPORT_ACCENT_RULE};
     }
     .matchup-title {
       font-size: 22pt;
       font-weight: bold;
-      color: #1e40af;
+      color: ${EXPORT_INK};
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    .matchup-subtitle { font-size: 13pt; color: #64748b; margin-top: 4px; }
+    .matchup-subtitle { font-size: 13pt; color: #555; margin-top: 4px; }
     .matchup-image { flex: 1; display: flex; align-items: center; justify-content: center; }
     .matchup-image img {
       max-width: 100%;
       max-height: 100%;
-      border: 2px solid #e5e7eb;
+      border: 1px solid ${EXPORT_HAIRLINE};
       border-radius: 8px;
     }
     @media print {

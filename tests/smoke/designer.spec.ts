@@ -2385,6 +2385,94 @@ test('single-play export prints via a generated window, pulling in no PDF librar
   expect(heavy).toEqual([]);
 });
 
+test('single-play export: multi-line notes survive as <br>, no leftover theme color', async ({ page }) => {
+  // Every export generator used to interpolate the coach's notes raw — no
+  // escaping, no newline handling — so a multi-line description collapsed
+  // into one run-on line. Also guards the black/white chrome unification:
+  // every generator used to hand-roll its own shade of blue (#2563eb /
+  // #1e40af); they now share exportStyles.ts's tokens.
+  const opened: string[] = [];
+  await page.exposeFunction('__recordExportHTML', (html: string) => { opened.push(html); });
+  await page.addInitScript(() => {
+    window.open = () => ({
+      document: {
+        open() {}, close() {},
+        write(html: string) { (window as unknown as { __recordExportHTML: (h: string) => void }).__recordExportHTML(html); },
+      },
+      focus() {}, print() {}, closed: false,
+    } as unknown as Window);
+  });
+
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+  await page.getByText('Single Play Sheet').click();
+  await page.getByPlaceholder('Enter play name...').fill('Trips Right Flood');
+  await page.getByPlaceholder('Describe the play execution, reads, coaching points...').fill(
+    'Read the flat defender.\nIf he sits, throw the out.',
+  );
+  await page.getByRole('button', { name: /Print Play/ }).first().click();
+
+  await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
+  const html = opened.join('');
+  expect(html).toContain('Read the flat defender.<br>If he sits, throw the out.');
+  expect(html).not.toMatch(/#2563eb|#1e40af|#f59e0b/i);
+});
+
+test('wristband text-only: black header row, alternating stripes, bold outer border', async ({ page }) => {
+  // Matches a supplied reference coach-sheet: black "Play #"/"Play" header,
+  // bold 3px outer border, alternating grey/white row shading, and numbers
+  // rendered with a trailing period ("1.") — none of which existed before
+  // this styling pass (the table previously had no header row at all).
+  // Wristband is a Pro-only format, so this needs a Pro session — same
+  // pattern as the "Pro accounts see playbook formats unlocked" test below.
+  const userJson = {
+    id: '33333333-3333-3333-3333-333333333333',
+    aud: 'authenticated', role: 'authenticated', email: 'pro-coach-2@example.com',
+    app_metadata: {}, user_metadata: {}, created_at: '2025-09-01T00:00:00Z',
+  };
+  await page.addInitScript(({ user, storageKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'test-access-token', refresh_token: 'test-refresh-token',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600,
+      token_type: 'bearer', user,
+    }));
+  }, { user: userJson, storageKey: AUTH_STORAGE_KEY });
+  await page.route('**/auth/v1/user**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
+  await page.route('**/rest/v1/subscriptions**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'pro', current_period_end: null }) }));
+
+  const opened: string[] = [];
+  await page.exposeFunction('__recordWristbandHTML', (html: string) => { opened.push(html); });
+  await page.addInitScript(() => {
+    window.open = () => ({
+      document: {
+        open() {}, close() {},
+        write(html: string) { (window as unknown as { __recordWristbandHTML: (h: string) => void }).__recordWristbandHTML(html); },
+      },
+      focus() {}, print() {}, closed: false,
+    } as unknown as Window);
+  });
+
+  await openDesigner(page);
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+
+  await page.getByRole('button', { name: 'Export' }).click();
+  await page.getByText('Wristband Sheet').click();
+  await page.getByText('Text only').click();
+  await page.getByRole('button', { name: /Print Playbook/ }).click();
+
+  await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
+  const html = opened.join('');
+  expect(html).toContain('<thead>');
+  expect(html).toContain('Play #');
+  expect(html).toMatch(/border:\s*3px solid #000/);
+  expect(html).toMatch(/tbody tr:nth-child\(odd\) td\s*\{\s*background:\s*#d9d9d9/);
+  expect(html).toMatch(/class="wb-num">1\.</);
+});
+
 test('export gates (B-2): Pro accounts see playbook formats unlocked', async ({ page }) => {
   const userJson = {
     id: '22222222-2222-2222-2222-222222222222',
