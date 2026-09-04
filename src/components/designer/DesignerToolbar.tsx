@@ -279,10 +279,14 @@ export function DesignerToolbar({
 
         <div className={divider} />
 
-        {/* Straight */}
+        {/* Straight — both this and Curved below are multi-segment: tap or
+            drag to place any number of points, double-tap to finish. The
+            only difference is how each turn is drawn (sharp vs. smoothed),
+            so both titles spell that interaction out identically and only
+            the corner description differs. */}
         <button
           onClick={() => pickDraw('straight')}
-          title="Straight Line Route"
+          title="Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)"
           className={`${tool} ${activeDraw === 'straight' ? active : inactive}`}
         >
           <Minus className="h-4 w-4" />
@@ -292,7 +296,7 @@ export function DesignerToolbar({
         {/* Waypoint / multi-segment */}
         <button
           onClick={() => pickDraw('waypoint')}
-          title="Multi-Segment Route (drag or tap to place points, double-tap to finish)"
+          title="Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)"
           className={`${tool} ${activeDraw === 'waypoint' ? active : inactive}`}
         >
           <GitBranch className="h-4 w-4" />
@@ -308,14 +312,17 @@ export function DesignerToolbar({
             drawMode. A single toggle button (rather than a two-button pill)
             keeps the mobile toolbar's scrollable width from growing enough
             to push the Formation trigger out of view — see FormationMenu's
-            close-on-scroll effect. */}
+            close-on-scroll effect.
+            Labeled Arrow/Block, never Route — Route already names the two
+            shape buttons above (Straight/Curved draw a route); reusing it
+            here for the ending too was the original source of confusion. */}
         <button
           onClick={() => setCapStyle(capStyle === 'arrow' ? 'block' : 'arrow')}
-          title="Ending style: Route (arrow) / Block (perpendicular cap)"
+          title="Ending style: Arrow / Block (perpendicular cap)"
           className={`${tool} ${capStyle === 'block' ? active : inactive}`}
         >
           {capStyle === 'block' ? <Shield className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
-          <span className={label}>{capStyle === 'block' ? 'Block' : 'Route'}</span>
+          <span className={label}>{capStyle === 'block' ? 'Block' : 'Arrow'}</span>
         </button>
 
         {/* Line style: click to flip between solid and dotted stroke. */}
@@ -505,7 +512,7 @@ export function DesignerToolbar({
           </span>
           {activeDraw && (
             <span>
-              — {capStyle === 'block' ? 'block ending' : 'route ending'}, {dashed ? 'dotted' : 'solid'}
+              — {capStyle === 'block' ? 'block ending' : 'arrow ending'}, {dashed ? 'dotted' : 'solid'}
             </span>
           )}
           <span>· See field for instructions</span>
