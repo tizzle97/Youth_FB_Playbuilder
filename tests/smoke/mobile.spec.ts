@@ -136,6 +136,36 @@ test('the mobile nav toggle is labelled, reports state, and closes on navigation
   await expect(page.locator('#mobile-menu')).toHaveCount(0);
 });
 
+/* ── iOS home-screen safe area ────────────────────────────────────────────
+   Added to the home screen, the app runs standalone with
+   apple-mobile-web-app-status-bar-style: black-translucent (index.html) —
+   the page draws UNDER the iPhone status bar in that mode, unlike a normal
+   Safari tab where the browser chrome already reserves that space. Navbar
+   had a top-0 sticky bar with no top inset at all, so the hamburger button
+   rendered directly under the status bar/notch: reported as blocked and
+   unusable. `viewport-fit=cover` (also index.html) is what makes
+   env(safe-area-inset-top) resolve to a real value instead of 0 in that
+   mode; CDP's Emulation.setSafeAreaInsetsOverride simulates that value here
+   since Chromium has no real notch to report one from on its own. */
+test('mobile nav toggle clears the iOS status bar when the site is a home-screen app', async ({ page }) => {
+  const client = await page.context().newCDPSession(page);
+  await client.send('Emulation.setSafeAreaInsetsOverride', {
+    insets: { top: 59, topMax: 59, bottom: 34, bottomMax: 34, left: 0, leftMax: 0, right: 0, rightMax: 0 },
+  });
+
+  await page.goto('/');
+  const toggle = page.getByRole('button', { name: 'Open menu' });
+  const box = (await toggle.boundingBox())!;
+
+  // The button's own top edge must clear the simulated 59px status bar —
+  // this is the exact regression: the button used to sit at y < 59.
+  expect(box.y, 'menu button rendered under the simulated status bar').toBeGreaterThanOrEqual(59);
+
+  // And it must still actually work, not just be positioned correctly.
+  await toggle.click();
+  await expect(page.locator('#mobile-menu')).toBeVisible();
+});
+
 test('Escape closes the mobile nav menu', async ({ page }) => {
   await page.goto('/');
 

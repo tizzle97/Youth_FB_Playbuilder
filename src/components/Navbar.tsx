@@ -68,8 +68,19 @@ export function Navbar() {
   // own — without it, a z-40 positioned nav would float above their z-auto container and
   // swallow clicks on their toolbar, which is the failure mode this used to avoid by
   // keeping the nav non-positioned. Check both spots before changing this z-index.
+  //
+  // pt-[env(safe-area-inset-top)]: in a normal browser tab this resolves to 0
+  // (Safari's own chrome already reserves the status-bar area) so it's a
+  // no-op there. It only matters once the site is added to the iOS home
+  // screen — apple-mobile-web-app-status-bar-style is "black-translucent"
+  // (index.html), which makes the page draw *under* the status bar in that
+  // standalone mode, and this nav had no top inset at all. That put the
+  // hamburger button directly under the status bar/notch, reported as
+  // blocked and unusable. The background still fills the inset area; only
+  // the row of actual content (logo, links, the menu button) gets pushed
+  // down below it.
   return (
-    <nav className="sticky top-0 z-40 bg-board-light border-b border-chalk/10">
+    <nav className="sticky top-0 z-40 bg-board-light border-b border-chalk/10 pt-[env(safe-area-inset-top)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
