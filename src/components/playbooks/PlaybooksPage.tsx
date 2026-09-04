@@ -30,10 +30,14 @@ import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { PlayCard } from '../plays/PlayCard';
-import { getUserPreferences, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
+import { getUserPreferences, escapeHtml, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
+import {
+  EXPORT_ACCENT_RULE, EXPORT_INK, EXPORT_HAIRLINE, EXPORT_WASH, UNTITLED_PLAY,
+  formatPlayType, exportFooterHTML, NOTES_BLOCK_CSS, notesBlockHTML, generateWristbandHTML,
+} from '../../lib/exportStyles';
 import { usePageMeta } from '../../lib/seo';
 import { PlaybookPackLibrary } from './PlaybookPackLibrary';
-import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
+import { WRISTBAND_PRODUCT_NAME, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
 
 interface Playbook {
   id: string;
@@ -396,25 +400,27 @@ export function PlaybooksPage() {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${play.name}</title>
+  <title>${escapeHtml(play.name || UNTITLED_PLAY)}</title>
   <style>
     @page {
       size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: Arial, sans-serif;
+      font-size: 12pt;
+      line-height: 1.4;
       background: white;
-      color: #000;
+      color: ${EXPORT_INK};
     }
-    
+
     .page {
       width: 100%;
       min-height: 9.5in;
@@ -424,7 +430,7 @@ export function PlaybooksPage() {
       justify-content: center;
       text-align: center;
     }
-    
+
     .play-title {
       margin-bottom: 40px;
     }
@@ -436,16 +442,15 @@ export function PlaybooksPage() {
       justify-content: center;
       margin: 20px 0;
     }
-    
+
     .diagram-image {
       max-width: 100%;
       max-height: 600px;
       height: auto;
-      border: 2px solid #e5e7eb;
+      border: 1px solid ${EXPORT_HAIRLINE};
       border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    
+
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
     }
@@ -454,11 +459,11 @@ export function PlaybooksPage() {
 <body>
   <div class="page">
     ${teamBrandHTML(prefs)}
-    <div class="play-title">${playTitleHTML(play.name, '32pt')}</div>
+    <div class="play-title">${playTitleHTML(play.name || UNTITLED_PLAY, '28pt')}</div>
     <div class="diagram-container">
-      ${play.thumbnail ? 
-        `<img src="${play.thumbnail}" alt="${play.name}" class="diagram-image" />` :
-        `<div style="width: 400px; height: 300px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #666;">No diagram available</div>`
+      ${play.thumbnail ?
+        `<img src="${play.thumbnail}" alt="${escapeHtml(play.name || UNTITLED_PLAY)}" class="diagram-image" />` :
+        `<div style="width: 400px; height: 300px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; color: #666;">No diagram available</div>`
       }
     </div>
   </div>
@@ -472,118 +477,92 @@ export function PlaybooksPage() {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${play.name}</title>
+  <title>${escapeHtml(play.name || UNTITLED_PLAY)}</title>
   <style>
     @page {
       size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.75in;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: Arial, sans-serif;
       font-size: 12pt;
       line-height: 1.4;
-      color: #000;
+      color: ${EXPORT_INK};
       background: white;
     }
-    
+
     .page {
       width: 100%;
       min-height: 9.5in;
     }
-    
+
     .header {
       text-align: center;
       margin-bottom: 30px;
       padding-bottom: 20px;
-      border-bottom: 3px solid #2563eb;
+      border-bottom: ${EXPORT_ACCENT_RULE};
     }
-    
+
     .play-title {
       margin-bottom: 10px;
     }
 
-    .play-type {
-      font-size: 14pt;
-      color: #64748b;
-      text-transform: capitalize;
-    }
-    
     .content {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 30px;
       margin-bottom: 30px;
     }
-    
+
     .diagram-section {
       text-align: center;
     }
-    
+
     .diagram-image {
       max-width: 100%;
       height: auto;
       max-height: 350px;
-      border: 2px solid #e5e7eb;
+      border: 1px solid ${EXPORT_HAIRLINE};
       border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    
+
     .metadata-section {
       padding: 20px;
-      background: #f8fafc;
+      background: ${EXPORT_WASH};
       border-radius: 8px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #ccc;
     }
-    
+
     .metadata-title {
       font-size: 16pt;
       font-weight: bold;
-      color: #1e293b;
+      color: ${EXPORT_INK};
       margin-bottom: 15px;
     }
-    
+
     .metadata-item {
       margin-bottom: 12px;
     }
-    
+
     .metadata-label {
       font-weight: bold;
-      color: #475569;
+      color: ${EXPORT_INK};
       display: block;
       margin-bottom: 3px;
     }
-    
+
     .metadata-value {
-      color: #1e293b;
+      color: ${EXPORT_INK};
     }
-    
-    .description-section {
-      margin-top: 30px;
-      padding: 20px;
-      background: #fffbeb;
-      border-left: 4px solid #f59e0b;
-      border-radius: 0 8px 8px 0;
-    }
-    
-    .description-title {
-      font-weight: bold;
-      font-size: 14pt;
-      color: #92400e;
-      margin-bottom: 10px;
-    }
-    
-    .description-text {
-      color: #451a03;
-      line-height: 1.6;
-    }
-    
+    ${NOTES_BLOCK_CSS}
+
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
     }
@@ -593,76 +572,75 @@ export function PlaybooksPage() {
   <div class="page">
     ${teamBrandHTML(prefs)}
     <div class="header">
-      <div class="play-title">${playTitleHTML(play.name, '28pt')}</div>
-      <div class="play-type">${play.type} Play</div>
+      <div class="play-title">${playTitleHTML(play.name || UNTITLED_PLAY, '28pt')}</div>
     </div>
-    
+
     <div class="content">
       <div class="diagram-section">
-        ${play.thumbnail ? 
-          `<img src="${play.thumbnail}" alt="${play.name}" class="diagram-image" />` :
-          `<div style="width: 100%; height: 300px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #666; background: #f9f9f9;">No diagram available</div>`
+        ${play.thumbnail ?
+          `<img src="${play.thumbnail}" alt="${escapeHtml(play.name || UNTITLED_PLAY)}" class="diagram-image" />` :
+          `<div style="width: 100%; height: 300px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; color: #666;">No diagram available</div>`
         }
       </div>
-      
+
       <div class="metadata-section">
         <div class="metadata-title">Play Details</div>
-        
+
         ${play.metadata?.formation ? `
           <div class="metadata-item">
             <span class="metadata-label">Formation:</span>
-            <span class="metadata-value">${play.metadata.formation}</span>
+            <span class="metadata-value">${escapeHtml(play.metadata.formation)}</span>
           </div>
         ` : ''}
-        
+
+        <div class="metadata-item">
+          <span class="metadata-label">Type:</span>
+          <span class="metadata-value">${escapeHtml(formatPlayType(play.type))}</span>
+        </div>
+
         ${play.metadata?.situation ? `
           <div class="metadata-item">
             <span class="metadata-label">Situation:</span>
-            <span class="metadata-value">${play.metadata.situation}</span>
+            <span class="metadata-value">${escapeHtml(play.metadata.situation)}</span>
           </div>
         ` : ''}
-        
+
         ${play.metadata?.yardage ? `
           <div class="metadata-item">
             <span class="metadata-label">Expected Yardage:</span>
-            <span class="metadata-value">${play.metadata.yardage}</span>
+            <span class="metadata-value">${escapeHtml(play.metadata.yardage)}</span>
           </div>
         ` : ''}
-        
+
         ${play.metadata?.personnel ? `
           <div class="metadata-item">
             <span class="metadata-label">Personnel:</span>
-            <span class="metadata-value">${play.metadata.personnel}</span>
+            <span class="metadata-value">${escapeHtml(play.metadata.personnel)}</span>
           </div>
         ` : ''}
-        
+
         ${play.metadata?.difficulty ? `
           <div class="metadata-item">
             <span class="metadata-label">Difficulty:</span>
-            <span class="metadata-value">${play.metadata.difficulty}</span>
+            <span class="metadata-value">${escapeHtml(formatPlayType(play.metadata.difficulty))}</span>
           </div>
         ` : ''}
-        
+
         <div class="metadata-item">
           <span class="metadata-label">Created:</span>
           <span class="metadata-value">${new Date(play.created_at).toLocaleDateString()}</span>
         </div>
-        
+
         ${play.metadata?.tags && play.metadata.tags.length > 0 ? `
           <div class="metadata-item">
             <span class="metadata-label">Tags:</span>
-            <span class="metadata-value">${play.metadata.tags.join(', ')}</span>
+            <span class="metadata-value">${escapeHtml(play.metadata.tags.join(', '))}</span>
           </div>
         ` : ''}
       </div>
     </div>
-    
-    ${play.description || play.metadata?.description ? `
-      <div class="description-section">
-        <div class="description-title">Description & Notes</div>
-        <div class="description-text">${(play.description || play.metadata?.description || '').replace(/\n/g, '<br>')}</div>
-      </div>
-    ` : ''}
+
+    ${notesBlockHTML(play.description || play.metadata?.description)}
   </div>
 </body>
 </html>`;
@@ -671,16 +649,16 @@ export function PlaybooksPage() {
   const generateGridPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string): string => {
     const playItems = plays.map(play => `
       <div class="grid-item">
-        <div class="grid-play-name">${playTitleHTML(play.name, '11pt')}</div>
+        <div class="grid-play-name">${playTitleHTML(play.name || UNTITLED_PLAY, '11pt')}</div>
         <div class="grid-play-image">
-          ${play.thumbnail ? 
-            `<img src="${play.thumbnail}" alt="${play.name}" />` :
+          ${play.thumbnail ?
+            `<img src="${play.thumbnail}" alt="${escapeHtml(play.name || UNTITLED_PLAY)}" />` :
             `<div class="no-image">No Image</div>`
           }
         </div>
         <div class="grid-play-info">
-          <div class="play-type">${play.type}</div>
-          ${play.metadata?.formation ? `<div>Formation: ${play.metadata.formation}</div>` : ''}
+          <div class="play-type">${escapeHtml(formatPlayType(play.type))}</div>
+          ${play.metadata?.formation ? `<div>Formation: ${escapeHtml(play.metadata.formation)}</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -690,62 +668,62 @@ export function PlaybooksPage() {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${playbookName} - Grid View</title>
+  <title>${escapeHtml(playbookName)} - Grid View</title>
   <style>
     @page {
       size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
       margin: 0.5in;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: Arial, sans-serif;
       font-size: 9pt;
       line-height: 1.2;
-      color: #000;
+      color: ${EXPORT_INK};
       background: white;
     }
-    
+
     .header {
       text-align: center;
       margin-bottom: 25px;
       padding-bottom: 15px;
-      border-bottom: 3px solid #2563eb;
+      border-bottom: ${EXPORT_ACCENT_RULE};
     }
-    
+
     .playbook-title {
       font-size: 24pt;
       font-weight: bold;
-      color: #1e40af;
+      color: ${EXPORT_INK};
       margin-bottom: 5px;
     }
-    
+
     .playbook-subtitle {
       font-size: 12pt;
-      color: #64748b;
+      color: #555;
     }
-    
+
     .plays-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 15px;
       margin-bottom: 20px;
     }
-    
+
     .grid-item {
-      border: 1px solid #d1d5db;
+      border: 1px solid #ccc;
       border-radius: 6px;
       padding: 10px;
-      background: #fafafa;
+      background: ${EXPORT_WASH};
       text-align: center;
       page-break-inside: avoid;
     }
-    
+
     .grid-play-name {
       margin-bottom: 8px;
       min-height: 30px;
@@ -757,7 +735,7 @@ export function PlaybooksPage() {
     .grid-play-image {
       margin-bottom: 8px;
       background: white;
-      border: 1px solid #e5e7eb;
+      border: 1px solid ${EXPORT_HAIRLINE};
       border-radius: 4px;
       padding: 5px;
       height: 120px;
@@ -765,43 +743,33 @@ export function PlaybooksPage() {
       align-items: center;
       justify-content: center;
     }
-    
+
     .grid-play-image img {
       max-width: 100%;
       max-height: 100%;
       height: auto;
       width: auto;
     }
-    
+
     .no-image {
-      color: #9ca3af;
+      color: #999;
       font-size: 8pt;
     }
-    
+
     .grid-play-info {
       font-size: 8pt;
-      color: #6b7280;
+      color: #555;
       line-height: 1.3;
     }
-    
+
     .grid-play-info div {
       margin-bottom: 2px;
     }
-    
+
     .play-type {
-      text-transform: capitalize;
       font-weight: 500;
     }
-    
-    .footer {
-      margin-top: 20px;
-      text-align: center;
-      font-size: 8pt;
-      color: #6b7280;
-      border-top: 1px solid #e5e7eb;
-      padding-top: 10px;
-    }
-    
+
     @media print {
       body { -webkit-print-color-adjust: exact !important; }
       .grid-item { page-break-inside: avoid; }
@@ -811,336 +779,28 @@ export function PlaybooksPage() {
 <body>
   <div class="header">
     ${teamBrandHTML(prefs)}
-    <div class="playbook-title">${playbookName}</div>
+    <div class="playbook-title">${escapeHtml(playbookName)}</div>
     <div class="playbook-subtitle">Complete Playbook Grid</div>
   </div>
-  
+
   <div class="plays-grid">
     ${playItems}
   </div>
-  
-  <div class="footer">
-    Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} | Total Plays: ${plays.length}
-  </div>
+
+  ${exportFooterHTML(plays.length, '20px')}
 </body>
 </html>`;
   };
 
-  const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string, textOnly = false): string => {
-    // 4.5in x 2.2in matches the play window on Wristband Interactive Y23-style
-    // QB wristbands, which hold 3 cut inserts arranged as a 4x2 grid of
-    // numbered plays (8 per insert) — same layout as the printed inserts
-    // that ship with those wristbands.
-    const PLAYS_PER_INSERT = 8;
-    const INSERTS_PER_BAND = 3;
-
-    // Text-only mode is a fixed 4-column x 10-row template (columns 1-2 are
-    // one #+name pair, columns 3-4 are the next 10 plays' #+name pair,
-    // continuing the numbering) — always this exact shape regardless of how
-    // many plays are populated, like a blank grid you fill in, not a list
-    // that shrinks to fit. Confirmed against a photo of a real text-only
-    // wristband insert, then refined to this precise spec.
-    const ROWS_PER_INSERT_TEXT = 10;
-    const PLAYS_PER_INSERT_TEXT = ROWS_PER_INSERT_TEXT * 2; // 20
-    const perInsert = textOnly ? PLAYS_PER_INSERT_TEXT : PLAYS_PER_INSERT;
-
-    const insertGroups: PlayInPlaybook[][] = [];
-    for (let i = 0; i < plays.length; i += perInsert) {
-      insertGroups.push(plays.slice(i, i + perInsert));
-    }
-
-    const inserts = insertGroups.map((group, groupIndex) => {
-      const bandNumber = Math.floor(groupIndex / INSERTS_PER_BAND) + 1;
-      const slotNumber = (groupIndex % INSERTS_PER_BAND) + 1;
-      const insertLabel = `Wristband ${bandNumber} &middot; Insert ${slotNumber} of ${INSERTS_PER_BAND}`;
-
-      if (textOnly) {
-        // Always exactly ROWS_PER_INSERT_TEXT rows — blank cells (no number,
-        // no name) when this insert has fewer than a full 20 plays, so the
-        // template's shape never changes.
-        const cell = (play: PlayInPlaybook | undefined, num: number | '') => `
-            <td class="wb-num">${num}</td><td class="wb-play-name">${play ? play.name : ''}</td>`;
-        const rowsHtml = Array.from({ length: ROWS_PER_INSERT_TEXT }, (_, r) => {
-          const left = group[r];
-          const right = group[r + ROWS_PER_INSERT_TEXT];
-          const leftNum = left ? groupIndex * perInsert + r + 1 : '';
-          const rightNum = right ? groupIndex * perInsert + r + ROWS_PER_INSERT_TEXT + 1 : '';
-          return `
-            <tr>${cell(left, leftNum)}${cell(right, rightNum)}</tr>`;
-        }).join('');
-
-        return `
-      <div class="wb-insert wb-insert-text">
-        <div class="wb-insert-label">${insertLabel}</div>
-        <table class="wb-text-table">
-          <colgroup>
-            <col class="col-num" /><col class="col-name" /><col class="col-num" /><col class="col-name" />
-          </colgroup>
-          <tbody>${rowsHtml}
-        </tbody></table>
-      </div>`;
-      }
-
-      const cells = group.map((play, i) => {
-        const playNumber = groupIndex * perInsert + i + 1;
-        return `
-        <div class="wb-cell">
-          <div class="wb-cell-header">
-            <div class="wb-number">${playNumber}</div>
-            <div class="wb-name">${play.name}</div>
-          </div>
-          <div class="wb-thumb">
-            ${play.thumbnail ?
-              `<img src="${play.thumbnail}" alt="" />` :
-              `<div class="no-image">&mdash;</div>`
-            }
-          </div>
-        </div>`;
-      }).join('');
-
-      return `
-      <div class="wb-insert">
-        <div class="wb-insert-label">${insertLabel}</div>
-        <div class="wb-cells">${cells}</div>
-      </div>`;
-    }).join('');
-
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${playbookName} - Wristband Inserts</title>
-  <style>
-    @page {
-      size: ${(prefs?.paper_size ?? 'letter') === 'a4' ? 'A4 landscape' : '11in 8.5in'};
-      margin: 0.4in;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: Arial, sans-serif;
-      color: #000;
-      background: white;
-    }
-
-    .header {
-      text-align: center;
-      margin-bottom: 0.15in;
-      padding-bottom: 0.1in;
-      border-bottom: 3px solid #2563eb;
-    }
-
-    .playbook-title {
-      font-size: 16pt;
-      font-weight: bold;
-      color: #1e40af;
-      margin-bottom: 2px;
-    }
-
-    .playbook-subtitle {
-      font-size: 9pt;
-      color: #64748b;
-    }
-
-    .wb-compat {
-      font-size: 6.5pt;
-      color: #9ca3af;
-      margin-top: 2px;
-    }
-
-    .wb-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 4.5in);
-      gap: 0.2in;
-      justify-content: center;
-    }
-
-    .wb-insert {
-      width: 4.5in;
-      height: 2.2in;
-      border: 1px dashed #9ca3af;
-      border-radius: 4px;
-      padding: 0.06in 0.1in;
-      background: #fafafa;
-      page-break-inside: avoid;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .wb-insert-label {
-      font-size: 6.5pt;
-      color: #6b7280;
-      text-align: center;
-      margin-bottom: 0.03in;
-      flex-shrink: 0;
-    }
-
-    .wb-cells {
-      flex: 1;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(2, 1fr);
-      gap: 0.04in;
-      min-height: 0;
-    }
-
-    .wb-cell {
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      min-width: 0;
-      border: 1px solid #e5e7eb;
-      border-radius: 2px;
-      overflow: hidden;
-      background: white;
-    }
-
-    .wb-cell-header {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      padding: 1px 2px;
-      background: #eef2ff;
-      min-width: 0;
-    }
-
-    .wb-number {
-      flex-shrink: 0;
-      width: 0.15in;
-      height: 0.15in;
-      border-radius: 50%;
-      background: #1e40af;
-      color: white;
-      font-weight: bold;
-      font-size: 5.5pt;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .wb-name {
-      flex: 1;
-      min-width: 0;
-      font-weight: bold;
-      color: #1e40af;
-      font-size: 5.5pt;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .wb-thumb {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: white;
-      overflow: hidden;
-    }
-
-    .wb-thumb img {
-      max-width: 100%;
-      max-height: 100%;
-    }
-
-    .no-image {
-      color: #9ca3af;
-      font-size: 7pt;
-    }
-
-    /* Fixed 4-column x 10-row grid, styled like an Excel table — full cell
-       borders on every row including blank ones, so the template's shape
-       reads the same whether it's fully populated or mostly empty. */
-    .wb-text-table {
-      flex: 1;
-      width: 100%;
-      height: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-
-    .wb-text-table tr {
-      height: 10%; /* 10 fixed rows, evenly filling the insert */
-    }
-
-    .wb-text-table td {
-      border: 1px solid #9ca3af;
-      padding: 0.01in 0.03in;
-      font-size: 8pt;
-      line-height: 1.3;
-    }
-
-    /* Column widths are set here, on <colgroup>'s <col> elements — the
-       authoritative, unambiguous way to size a table-layout:fixed table.
-       Setting width on the repeated .wb-num/.wb-play-name TD classes was
-       unreliable (the name column rendered far too narrow and truncated
-       aggressively — reported with a screenshot), since table-layout:fixed
-       only reads the first row's cells to fix column widths, easy to get
-       inconsistent results from cell-level CSS across 4 repeating columns. */
-    .col-num {
-      width: 10%;
-    }
-
-    .col-name {
-      width: 40%;
-    }
-
-    .wb-num {
-      font-weight: bold;
-      color: #1e40af;
-      text-align: right;
-    }
-
-    .wb-play-name {
-      text-align: left;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 0; /* forces overflow/ellipsis to respect the table column width */
-    }
-
-    .footer {
-      margin-top: 0.15in;
-      text-align: center;
-      font-size: 8pt;
-      color: #6b7280;
-      border-top: 1px solid #e5e7eb;
-      padding-top: 0.08in;
-    }
-
-    @media print {
-      body { -webkit-print-color-adjust: exact !important; }
-      .wb-insert { page-break-inside: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    ${teamBrandHTML(prefs)}
-    <div class="playbook-title">${playbookName}</div>
-    <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along dashed lines</div>
-    <div class="wb-compat">Compatible with ${WRISTBAND_PRODUCT_NAME} (${WRISTBAND_PRODUCT_URL}) and any wristband with a ${WRISTBAND_WINDOW_SIZE} play window.${SHOW_AFFILIATE_DISCLOSURE ? ' As an Amazon Associate we earn from qualifying purchases.' : ''}</div>
-  </div>
-
-  <div class="wb-grid">
-    ${inserts}
-  </div>
-
-  <div class="footer">
-    Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} | Total Plays: ${plays.length}
-  </div>
-</body>
-</html>`;
-  };
+  const generateWristbandPlaybookHTML = (plays: PlayInPlaybook[], playbookName: string, textOnly = false): string =>
+    generateWristbandHTML({
+      plays,
+      getName: (play) => play.name,
+      getImage: (play) => play.thumbnail,
+      title: playbookName,
+      textOnly,
+      preferences: prefs,
+    });
 
   const handleExportPDF = async (format: 'simple' | 'detailed' | 'grid' | 'wristband', wristbandTextOnly = false) => {
     if (!selectedPlaybook || playsInPlaybook.length === 0) {
@@ -1163,22 +823,28 @@ export function PlaybooksPage() {
         htmlContent = generateGridPlaybookHTML(playsInPlaybook, selectedPlaybook.name);
       } else {
         // For simple and detailed, create multiple pages
-        const pageContents = playsInPlaybook.map(play => 
+        const pageContents = playsInPlaybook.map(play =>
           format === 'simple' ? generateSimplePlayHTML(play) : generateDetailedPlayHTML(play)
         );
-        
-        // Combine all pages into one document
+
+        // Combine all pages into one document. Every page came from the same
+        // generator, so its <style> block is identical across all of them —
+        // lift the FIRST page's style into the wrapper's <head> rather than
+        // discarding it. This used to extract only each page's <body> and
+        // drop every <style> tag entirely, so multi-play Simple/Detailed
+        // exports printed with no styling at all: no header rule, no notes
+        // box, no metadata panel — just inline-styled fragments (team brand,
+        // title) survived, because those two are the only bits styled with
+        // `style=""` instead of a class.
+        const sharedStyle = pageContents[0]?.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
         htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${selectedPlaybook.name}</title>
+  <title>${escapeHtml(selectedPlaybook.name)}</title>
   <style>
-    @page {
-      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
-      margin: 0.75in;
-    }
+    ${sharedStyle}
     .page-break {
       page-break-before: always;
     }

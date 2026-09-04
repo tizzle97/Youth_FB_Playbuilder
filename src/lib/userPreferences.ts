@@ -114,7 +114,7 @@ export function teamBrandHTML(prefs: Pick<UserPreferences, 'team_name' | 'team_l
  *  hierarchy (a single-play sheet's title has always been bigger than a
  *  grid-view thumbnail's) instead of flattening every format to one size. */
 export function playTitleHTML(name: string, fontSize = '26pt'): string {
-  return `<div style="text-align:center; font-family: Georgia, 'Times New Roman', serif; font-size:${fontSize}; font-weight:700; color:#1e40af; letter-spacing:0.5px;">${escapeHtml(name)}</div>`;
+  return `<div style="text-align:center; font-family: Georgia, 'Times New Roman', serif; font-size:${fontSize}; font-weight:700; color:#000; letter-spacing:0.5px;">${escapeHtml(name)}</div>`;
 }
 
 /** CSS @page size value for the user's paper preference (B-15). */
