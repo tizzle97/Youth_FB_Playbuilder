@@ -426,7 +426,7 @@ export function generateWristbandHTML<T>(opts: {
   <div class="playbook-header">
     ${teamBrandHTML(preferences)}
     <div class="playbook-title">${escapeHtml(title)}</div>
-    <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along dashed lines</div>
+    <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along ${textOnly ? 'the outer border' : 'dashed lines'}</div>
   </div>
 
   <div class="wb-grid">
