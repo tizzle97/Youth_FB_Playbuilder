@@ -437,7 +437,12 @@ export function VsDefenseView() {
     // the z-index note in Navbar.tsx.
     <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
       {/* ── HEADER ─────────────────────────────────────────────── */}
-      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">
+      {/* pt uses calc(...+env(safe-area-inset-top)) rather than a separate
+          pt-[...] utility alongside py-2 — see the matching note in
+          PlayDesigner.tsx / Navbar.tsx. Without it, this header's buttons
+          render under the iOS status bar once the site is added to the
+          home screen. */}
+      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-2 z-30">
         <Link
           to="/plays"
           className="p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"

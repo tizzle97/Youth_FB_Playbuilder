@@ -473,7 +473,15 @@ export function PlayDesigner() {
     <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
 
       {/* ── HEADER ─────────────────────────────────────────────── */}
-      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 py-2 flex items-center gap-2 z-30">
+      {/* pt uses calc(...+env(safe-area-inset-top)) rather than a separate
+          pt-[...] utility alongside py-2 — both would set padding-top, and
+          which one wins depends on Tailwind's generated CSS order, not
+          className order, so stacking them is a real footgun. See the
+          longer note on this same fix in Navbar.tsx: without it, this
+          header's buttons render under the iOS status bar once the site is
+          added to the home screen (apple-mobile-web-app-status-bar-style is
+          "black-translucent" in index.html). */}
+      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-2 z-30">
         {/* Home */}
         <button
           onClick={() => navigate('/')}
