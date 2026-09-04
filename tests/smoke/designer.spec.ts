@@ -310,7 +310,7 @@ test('offense: place a player, draw a straight route, undo both', async ({ page 
   expect(state.playerIcons[0].x).toBeLessThan(1);
 
   // Draw a straight route: origin = the icon, one endpoint, then Finish Route
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -351,7 +351,7 @@ test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, 
   const icon = state.playerIcons[0];
 
   // Press the icon and drag out ~5px off vertical in one motion.
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const iconPx = await canvasPoint(page, icon.x, icon.y);
   await page.mouse.move(iconPx.x, iconPx.y);
   await page.mouse.down();
@@ -369,7 +369,7 @@ test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, 
   await page.mouse.click(spot2.x, spot2.y);
   state = await canvasState(page);
   const icon2 = state.playerIcons[1];
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon2Px = await canvasPoint(page, icon2.x, icon2.y);
   await page.mouse.move(icon2Px.x, icon2Px.y);
   await page.mouse.down();
@@ -388,7 +388,7 @@ test('routes: drag-to-draw snaps near-vertical to exact vertical, keeps slants, 
   await page.mouse.click(spot3.x, spot3.y);
   state = await canvasState(page);
   const icon3 = state.playerIcons[2];
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon3Px = await canvasPoint(page, icon3.x, icon3.y);
   await page.mouse.move(icon3Px.x, icon3Px.y);
   await page.mouse.down();
@@ -413,8 +413,8 @@ test('offense: block ending toggle on Straight mode, path mode stays "straight",
 
   // Block is now an ending-style toggle, not its own mode — select Straight,
   // then switch the ending to Block before drawing.
-  await btn(page, 'Straight Line Route').click();
-  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Ending style: Arrow / Block (perpendicular cap)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -448,8 +448,8 @@ test('offense: curved route with block ending and dotted line — new combinatio
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
-  await btn(page, 'Ending style: Route (arrow) / Block (perpendicular cap)').click();
+  await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Ending style: Arrow / Block (perpendicular cap)').click();
   await btn(page, 'Line style: Solid / Dotted').click();
 
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
@@ -484,7 +484,7 @@ test('straight route: toggling dash mid-draw produces mixed segments', async ({ 
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -516,7 +516,7 @@ test('straight route: toggling dash but ending up uniform omits segmentDashed', 
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -546,7 +546,7 @@ test('straight route: undo mid-route after toggling pops the right segment style
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -589,7 +589,7 @@ test('straight route: canceling mid-route leaves no stale segment styles for the
   await page.mouse.click(spotR.x, spotR.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const iconQ = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(iconQ.x, iconQ.y);
   await page.waitForTimeout(TAP_GAP);
@@ -627,7 +627,7 @@ test('curved route: toggling dash mid-draw never sets segmentDashed (straight-on
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -891,7 +891,10 @@ test('mobile toolbar: tools are labelled, and every one is reachable by scrollin
 
   const bar = page.locator('div.sm\\:hidden').filter({ has: page.locator('button[title="Clear All"]') }).first();
   // Zone / Remove Zone are defense-only, so they're not in this offense list.
-  for (const text of ['Text', 'Straight', 'Route', 'Remove Route', 'Routes', 'All']) {
+  // 'Arrow' (not 'Route') is the ending-style toggle's default label — Route
+  // already names the two shape buttons (Straight/Curved), so the ending
+  // toggle was renamed off it to remove the duplicate label.
+  for (const text of ['Text', 'Straight', 'Curved', 'Arrow', 'Remove Route', 'Routes', 'All']) {
     await expect(bar.getByText(text, { exact: true }).first()).toBeVisible();
   }
 
@@ -1012,7 +1015,7 @@ test('formation templates: picking a second formation replaces the first instead
   // an icon index too — it should be gone after the re-stamp, not left
   // pointing at a different formation's icon.
   const shotgunState = await canvasState(page);
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, shotgunState.playerIcons[0].x, shotgunState.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -1094,7 +1097,7 @@ test('player icon: Delete in the edit popover removes the icon and its own route
   let state = await canvasState(page);
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
   const end = await canvasPoint(page, 0.4, 0.3);
@@ -1409,7 +1412,7 @@ test('customize a placed icon: new label, new color, route recolors to match', a
   let state = await canvasState(page);
   const originalColor = state.playerIcons[0].color;
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3793,7 +3796,7 @@ test('route color: sticky non-Auto default survives the icon being recolored lat
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3830,7 +3833,7 @@ test('route color: Auto (default) still follows the icon, including after a late
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3867,7 +3870,7 @@ test('route color: Recolor Route mode changes only the tapped player\'s route', 
   await page.mouse.click(spotR.x, spotR.y);
 
   let state = await canvasState(page);
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const iconQ = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(iconQ.x, iconQ.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3878,7 +3881,7 @@ test('route color: Recolor Route mode changes only the tapped player\'s route', 
 
   state = await canvasState(page);
   const iconR = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(iconR.x, iconR.y);
   await page.waitForTimeout(TAP_GAP);
   const endR = await canvasPoint(page, 0.6, 0.4);
@@ -3911,7 +3914,7 @@ test('route color: picking Auto in the popover reverts the override and resumes 
   await page.mouse.click(spot.x, spot.y);
   let state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3959,7 +3962,7 @@ test('route color: Recolor Route mode is mutually exclusive with other tools', a
   await page.mouse.click(spot.x, spot.y);
   const state = await canvasState(page);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
@@ -3995,7 +3998,7 @@ test('route color: overriding a route leaves the icon\'s zone color unaffected',
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
 
   // A route AND a zone from the same defender.
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(icon.x, icon.y);
   await page.waitForTimeout(TAP_GAP);
   const end = await canvasPoint(page, 0.5, 0.35);
@@ -4616,7 +4619,7 @@ test('Community Forum: signed out, submitting a comment redirects to sign in ins
  * finishes it — the same click/wait/click/Finish sequence used throughout
  * this file's existing route-drawing tests. */
 async function drawStraightRoute(page: Page, origin: { x: number; y: number }, end: { x: number; y: number }) {
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(origin.x, origin.y);
   await page.waitForTimeout(TAP_GAP);
   await page.mouse.click(end.x, end.y);
@@ -4646,7 +4649,7 @@ test('routes: a player can have two independent routes (short + deep option); a 
   expect(state.paths[1].startIconIndex).toBe(0);
 
   // A third attempt on the same player is blocked (cap is 2).
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(icon.x, icon.y);
   await expect(page.getByText('This player already has 2 routes', { exact: false })).toBeVisible();
   state = await canvasState(page);
@@ -4730,7 +4733,7 @@ test('routes: dragging a player translates their route with them, preserving its
 
   // A dog-leg so the assertion below would catch a shape change, not just a
   // translation: out to the right, then straight upfield.
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(iconPx.x, iconPx.y);
   await page.waitForTimeout(TAP_GAP);
   const mid = await canvasPoint(page, 0.45, 0.6);
@@ -4889,7 +4892,7 @@ test('routes: Copy Route pastes a translated copy onto another player', async ({
 
   // A dog-leg so a translation bug (offsetting only some points) would be
   // caught, not just a bug that moves the whole route's bounding box.
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(qPx.x, qPx.y);
   await page.waitForTimeout(TAP_GAP);
   const mid = await canvasPoint(page, 0.3, 0.6);
@@ -4943,7 +4946,7 @@ test('routes: Copy Route with Mirror reflects the pasted route\'s shape', async 
   const qPx = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   const xPx = await canvasPoint(page, state.playerIcons[1].x, state.playerIcons[1].y);
 
-  await btn(page, 'Straight Line Route').click();
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
   await page.mouse.click(qPx.x, qPx.y);
   await page.waitForTimeout(TAP_GAP);
   const mid = await canvasPoint(page, 0.3, 0.6);
@@ -5271,7 +5274,7 @@ test('touch: tapping out a route at speed does not finish it early', async ({ pa
   expect(icon, 'a player must be placed for a route to start from').toBeTruthy();
   const iconPt = await canvasPoint(page, icon.x, icon.y);
 
-  await btn(page, 'Multi-Segment Route (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
   await tap(client, iconPt.x, iconPt.y);
   // Four more points, each well clear of the last, all faster than 350ms apart.
   for (const fx of [0.42, 0.54, 0.66, 0.78]) {
