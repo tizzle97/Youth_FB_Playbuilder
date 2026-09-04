@@ -1,5 +1,4 @@
 import { escapeHtml, teamBrandHTML, type UserPreferences } from './userPreferences';
-import { WRISTBAND_PRODUCT_NAME, WRISTBAND_PRODUCT_URL, WRISTBAND_WINDOW_SIZE, SHOW_AFFILIATE_DISCLOSURE } from './wristbandProducts';
 
 /**
  * Shared print-export design tokens — a classic black & white coach-sheet
@@ -236,12 +235,6 @@ export function generateWristbandHTML<T>(opts: {
       color: ${EXPORT_MUTED};
     }
 
-    .wb-compat {
-      font-size: 6.5pt;
-      color: #888;
-      margin-top: 2px;
-    }
-
     .wb-grid {
       display: grid;
       grid-template-columns: repeat(2, 4.5in);
@@ -434,7 +427,6 @@ export function generateWristbandHTML<T>(opts: {
     ${teamBrandHTML(preferences)}
     <div class="playbook-title">${escapeHtml(title)}</div>
     <div class="playbook-subtitle">Wristband Inserts &mdash; sized for a 4.5" &times; 2.2" wristband window &mdash; cut along dashed lines</div>
-    <div class="wb-compat">Compatible with ${WRISTBAND_PRODUCT_NAME} (${WRISTBAND_PRODUCT_URL}) and any wristband with a ${WRISTBAND_WINDOW_SIZE} play window.${SHOW_AFFILIATE_DISCLOSURE ? ' As an Amazon Associate we earn from qualifying purchases.' : ''}</div>
   </div>
 
   <div class="wb-grid">
