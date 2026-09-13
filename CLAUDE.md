@@ -100,9 +100,13 @@ gh issue list --state open --label agent-ok      # highest priority, then oldest
 gh issue edit <N> --add-label in-progress        # claim BEFORE branching
 gh issue comment <N> --body "Claimed by <who> <ts>"
 ```
-Then re-read the issue to confirm the claim stuck. PRs must say `Closes #<N>`,
-so merging closes the issue and "mark it done" stops being a step anyone can
-forget — two items previously shipped and sat in the backlog as open work.
+Then re-read the issue to confirm the claim stuck. A PR that resolves a queue
+item must say `Closes #<N>`, so merging closes the issue and "mark it done"
+stops being a step anyone can forget — two items previously shipped and sat in
+the backlog as open work. Work that never came from the queue (a fix or feature
+asked for directly in a session) has no issue to close and doesn't need one —
+don't file a ticket purely to close it in the same breath, which records
+nothing the PR doesn't already say.
 
 **Why it moved:** three actors wrote one markdown file with no arbitration.
 B-37 and B-38 were each allocated twice by different lanes; B-36 still denotes
