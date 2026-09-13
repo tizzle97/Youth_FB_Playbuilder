@@ -4,10 +4,17 @@ import { PlayerToolbar } from './PlayerToolbar';
 import { resolveRoster, type CustomRoster } from './rosters';
 import { FormationMenu } from './FormationMenu';
 import { RouteColorButton } from './RouteColorButton';
-import type { DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
+import type { DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
 export type PlayType = 'offense' | 'defense' | 'special_teams';
+
+// One button cycles through these in order. A 3-button segmented control or a
+// popover would widen the mobile scroll row enough to push the Formation
+// trigger out of view — the same constraint that made the ending-style
+// control a toggle rather than a pill.
+const LINE_STYLE_CYCLE: LineStyle[] = ['solid', 'dashed', 'motion'];
+const LINE_STYLE_LABEL: Record<LineStyle, string> = { solid: 'Solid', dashed: 'Dotted', motion: 'Motion' };
 
 interface DesignerToolbarProps {
   playType: PlayType;
@@ -25,9 +32,10 @@ interface DesignerToolbarProps {
    *  mode — sticky until changed, independent of shape. */
   capStyle: CapStyle;
   setCapStyle: (style: CapStyle) => void;
-  /** Solid vs dashed stroke for the next route finished — sticky until changed. */
-  dashed: boolean;
-  setDashed: (dashed: boolean) => void;
+  /** Stroke style for the next route finished — sticky until changed. The
+   *  toolbar button cycles Solid -> Dotted -> Motion. */
+  lineStyle: LineStyle;
+  setLineStyle: (style: LineStyle) => void;
   /** Color for the next route finished — 'auto' matches the origin player
    *  (today's only behavior); a hex value draws every new route in that
    *  fixed color instead, independent of player color. Sticky until changed. */
@@ -88,8 +96,8 @@ export function DesignerToolbar({
   setDrawMode,
   capStyle,
   setCapStyle,
-  dashed,
-  setDashed,
+  lineStyle,
+  setLineStyle,
   routeColorMode,
   setRouteColorMode,
   deleteRouteMode,
@@ -325,14 +333,28 @@ export function DesignerToolbar({
           <span className={label}>{capStyle === 'block' ? 'Block' : 'Arrow'}</span>
         </button>
 
-        {/* Line style: click to flip between solid and dotted stroke. */}
+        {/* Line style: one button cycling Solid -> Dotted -> Motion. Motion is
+            the zigzag coaches use for pre-snap motion. Both glyphs live in the
+            same fixed h-4 w-4 box so the button's width never changes between
+            states and the mobile scroll row stays put. */}
         <button
-          onClick={() => setDashed(!dashed)}
-          title="Line style: Solid / Dotted"
-          className={`${tool} ${dashed ? active : inactive}`}
+          onClick={() => setLineStyle(LINE_STYLE_CYCLE[(LINE_STYLE_CYCLE.indexOf(lineStyle) + 1) % LINE_STYLE_CYCLE.length])}
+          title="Line style: Solid / Dotted / Motion"
+          className={`${tool} ${lineStyle !== 'solid' ? active : inactive}`}
         >
-          <span className={`block h-0 w-4 border-t-2 border-current ${dashed ? 'border-dotted' : ''}`} />
-          <span className={label}>{dashed ? 'Dotted' : 'Solid'}</span>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            {lineStyle === 'motion' ? (
+              // Tailwind has border-dotted/dashed but no zigzag, so this is an
+              // inline SVG; currentColor keeps it on the active/inactive token
+              // like every other glyph in the row.
+              <svg viewBox="0 0 16 16" aria-hidden className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1,8 3,4.5 5,11.5 7,4.5 9,11.5 11,4.5 13,11.5 15,8" />
+              </svg>
+            ) : (
+              <span className={`block h-0 w-4 border-t-2 border-current ${lineStyle === 'dashed' ? 'border-dotted' : ''}`} />
+            )}
+          </span>
+          <span className={label}>{LINE_STYLE_LABEL[lineStyle]}</span>
         </button>
 
         {/* Route color: Auto (match player, today's only past behavior) or a
@@ -512,7 +534,7 @@ export function DesignerToolbar({
           </span>
           {activeDraw && (
             <span>
-              — {capStyle === 'block' ? 'block ending' : 'arrow ending'}, {dashed ? 'dotted' : 'solid'}
+              — {capStyle === 'block' ? 'block ending' : 'arrow ending'}, {LINE_STYLE_LABEL[lineStyle].toLowerCase()}
             </span>
           )}
           <span>· See field for instructions</span>

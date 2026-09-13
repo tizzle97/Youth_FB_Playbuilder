@@ -7,7 +7,7 @@ import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
-import type { CanvasHandle, DrawMode, CapStyle, IconShape, PlayerIcon } from './Canvas';
+import type { CanvasHandle, DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -36,18 +36,18 @@ export function PlayDesigner() {
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
   // Ending decoration + line style for the next route finished — sticky
   // until changed, independent of drawMode (shape) so e.g. a curved route
-  // can end in a block T-cap and be dashed at the same time.
+  // can end in a block T-cap and be dotted at the same time.
   const [capStyle, setCapStyle] = useState<CapStyle>('arrow');
-  const [dashed, setDashed] = useState(false);
+  const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
   // Route color for the next route finished — 'auto' matches the origin
   // icon (today's only behavior); a hex value draws every new route in that
   // fixed color instead, independent of player color. Session-only, same as
-  // capStyle/dashed above.
+  // capStyle/lineStyle above.
   const [routeColorMode, setRouteColorMode] = useState<'auto' | string>('auto');
   const [deleteRouteMode, setDeleteRouteMode] = useState(false);
   const [recolorRouteMode, setRecolorRouteMode] = useState(false);
   const [copyRouteMode, setCopyRouteMode] = useState(false);
-  // Sticky like capStyle/dashed/routeColorMode above — a coach's mirror
+  // Sticky like capStyle/lineStyle/routeColorMode above — a coach's mirror
   // preference should survive turning Copy Route off and back on.
   const [copyRouteMirror, setCopyRouteMirror] = useState(false);
   const [zoneMode, setZoneMode] = useState(false);
@@ -554,8 +554,8 @@ export function PlayDesigner() {
             setDrawMode={setDrawMode}
             capStyle={capStyle}
             setCapStyle={setCapStyle}
-            dashed={dashed}
-            setDashed={setDashed}
+            lineStyle={lineStyle}
+            setLineStyle={setLineStyle}
             routeColorMode={routeColorMode}
             setRouteColorMode={setRouteColorMode}
             deleteRouteMode={deleteRouteMode}
@@ -603,7 +603,7 @@ export function PlayDesigner() {
               drawingMode={drawingMode}
               drawMode={drawMode}
               capStyle={capStyle}
-              dashed={dashed}
+              lineStyle={lineStyle}
               routeColorMode={routeColorMode}
               deleteRouteMode={deleteRouteMode}
               recolorRouteMode={recolorRouteMode}
@@ -670,8 +670,8 @@ export function PlayDesigner() {
           setDrawMode={setDrawMode}
           capStyle={capStyle}
           setCapStyle={setCapStyle}
-          dashed={dashed}
-          setDashed={setDashed}
+          lineStyle={lineStyle}
+          setLineStyle={setLineStyle}
           routeColorMode={routeColorMode}
           setRouteColorMode={setRouteColorMode}
           deleteRouteMode={deleteRouteMode}

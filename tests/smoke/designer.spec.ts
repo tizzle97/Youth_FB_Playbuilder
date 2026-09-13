@@ -24,7 +24,7 @@ const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-aut
 const TAP_GAP = 450;
 
 type CanvasState = {
-  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean; segmentDashed?: boolean[]; independentColor?: boolean }>;
+  paths: Array<{ points: { x: number; y: number }[]; color: string; startIconIndex?: number; mode: string; capStyle?: string; dashed?: boolean; segmentDashed?: boolean[]; lineStyle?: string; segmentStyles?: string[]; independentColor?: boolean }>;
   playerIcons: Array<{ x: number; y: number; letter: string; color: string; shape?: string }>;
   zones: Array<{ iconIndex: number; cx: number; cy: number; rx: number; ry: number; color: string }>;
   textBoxes: Array<{ x: number; y: number; text: string; color: string; fontSize: number }>;
@@ -450,7 +450,7 @@ test('offense: curved route with block ending and dotted line — new combinatio
 
   await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
   await btn(page, 'Ending style: Arrow / Block (perpendicular cap)').click();
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
 
   const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(icon.x, icon.y);
@@ -466,14 +466,15 @@ test('offense: curved route with block ending and dotted line — new combinatio
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].mode).toBe('waypoint');
   expect(state.paths[0].capStyle).toBe('block');
+  expect(state.paths[0].lineStyle).toBe('dashed');
   expect(state.paths[0].dashed).toBe(true);
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Mixed solid/dashed segments within one straight-line route (feedback: a
- * coach draws a solid hitch, then breaks into a dashed in/out cut, as one
- * continuous route). Deliberately straight-mode only — see the segmentDashed
- * comment in renderPlayScene.ts for why curved routes don't get this.
+ * Mixed line styles within one route (feedback: a coach draws a solid hitch,
+ * then breaks into a dashed in/out cut, as one continuous route). Applies to
+ * BOTH straight and curved routes — flattenRoute() in renderPlayScene.ts
+ * makes the curved split silhouette-preserving.
  * ──────────────────────────────────────────────────────────────────────────── */
 
 test('straight route: toggling dash mid-draw produces mixed segments', async ({ page }) => {
@@ -495,7 +496,7 @@ test('straight route: toggling dash mid-draw produces mixed segments', async ({ 
   await page.waitForTimeout(TAP_GAP);
 
   // Toggle to dashed, then commit segment 2 (the in/out cut).
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const end = await canvasPoint(page, 0.55, 0.4);
   await page.mouse.click(end.x, end.y);
   await page.waitForTimeout(TAP_GAP);
@@ -505,10 +506,10 @@ test('straight route: toggling dash mid-draw produces mixed segments', async ({ 
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].mode).toBe('straight');
   expect(state.paths[0].points).toHaveLength(3);
-  expect(state.paths[0].segmentDashed).toEqual([false, true]);
+  expect(state.paths[0].segmentStyles).toEqual(['solid', 'dashed']);
 });
 
-test('straight route: toggling dash but ending up uniform omits segmentDashed', async ({ page }) => {
+test('straight route: toggling style but ending up uniform omits segmentStyles', async ({ page }) => {
   await openDesigner(page);
 
   await btn(page, 'Player Q').click();
@@ -523,7 +524,7 @@ test('straight route: toggling dash but ending up uniform omits segmentDashed', 
 
   // Toggle to dashed BEFORE placing anything, so every segment is dashed —
   // net uniform, even though the button was clicked mid-route-session.
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const mid = await canvasPoint(page, 0.4, 0.45);
   await page.mouse.click(mid.x, mid.y);
   await page.waitForTimeout(TAP_GAP);
@@ -534,8 +535,9 @@ test('straight route: toggling dash but ending up uniform omits segmentDashed', 
 
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].lineStyle).toBe('dashed');
   expect(state.paths[0].dashed).toBe(true);
-  expect(state.paths[0].segmentDashed).toBeUndefined();
+  expect(state.paths[0].segmentStyles).toBeUndefined();
 });
 
 test('straight route: undo mid-route after toggling pops the right segment style', async ({ page }) => {
@@ -552,13 +554,15 @@ test('straight route: undo mid-route after toggling pops the right segment style
   await page.waitForTimeout(TAP_GAP);
 
   // Segment 1: dashed.
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const p1 = await canvasPoint(page, 0.4, 0.45);
   await page.mouse.click(p1.x, p1.y);
   await page.waitForTimeout(TAP_GAP);
 
-  // Segment 2: solid — then place a THIRD point we're about to undo away.
-  await btn(page, 'Line style: Solid / Dotted').click();
+  // Segment 2: a second click advances the cycle to motion (NOT back to
+  // solid — the button cycles Solid -> Dotted -> Motion). Then place a THIRD
+  // point we're about to undo away.
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const p2 = await canvasPoint(page, 0.5, 0.35);
   await page.mouse.click(p2.x, p2.y);
   await page.waitForTimeout(TAP_GAP);
@@ -567,14 +571,14 @@ test('straight route: undo mid-route after toggling pops the right segment style
   await page.waitForTimeout(TAP_GAP);
 
   // Undo pops the last committed point (p3) and its segment style, leaving
-  // origin -> p1 (dashed) -> p2 (solid) in progress.
+  // origin -> p1 (dashed) -> p2 (motion) in progress.
   await btn(page, 'Undo').click();
   await page.getByRole('button', { name: 'Finish Route' }).click();
 
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].points).toHaveLength(3);
-  expect(state.paths[0].segmentDashed).toEqual([true, false]);
+  expect(state.paths[0].segmentStyles).toEqual(['dashed', 'motion']);
 });
 
 test('straight route: canceling mid-route leaves no stale segment styles for the next route', async ({ page }) => {
@@ -593,7 +597,7 @@ test('straight route: canceling mid-route leaves no stale segment styles for the
   const iconQ = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
   await page.mouse.click(iconQ.x, iconQ.y);
   await page.waitForTimeout(TAP_GAP);
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const midQ = await canvasPoint(page, 0.35, 0.45);
   await page.mouse.click(midQ.x, midQ.y);
   await page.waitForTimeout(TAP_GAP);
@@ -616,10 +620,10 @@ test('straight route: canceling mid-route leaves no stale segment styles for the
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].points).toHaveLength(2);
-  expect(state.paths[0].segmentDashed).toBeUndefined();
+  expect(state.paths[0].segmentStyles).toBeUndefined();
 });
 
-test('curved route: toggling dash mid-draw never sets segmentDashed (straight-only feature)', async ({ page }) => {
+test('curved route: toggling style mid-draw produces mixed segments', async ({ page }) => {
   await openDesigner(page);
 
   await btn(page, 'Player Q').click();
@@ -635,7 +639,7 @@ test('curved route: toggling dash mid-draw never sets segmentDashed (straight-on
   const mid = await canvasPoint(page, 0.4, 0.45);
   await page.mouse.click(mid.x, mid.y);
   await page.waitForTimeout(TAP_GAP);
-  await btn(page, 'Line style: Solid / Dotted').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const end = await canvasPoint(page, 0.55, 0.4);
   await page.mouse.click(end.x, end.y);
   await page.waitForTimeout(TAP_GAP);
@@ -644,11 +648,122 @@ test('curved route: toggling dash mid-draw never sets segmentDashed (straight-on
   state = await canvasState(page);
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].mode).toBe('waypoint');
-  // Whole-path `dashed` still reflects the toggle at commit time (unchanged
-  // legacy behavior for curved routes) — it's the per-segment field that
-  // must never appear here.
+  // Curved routes now carry per-segment styles too — this used to assert the
+  // opposite, back when splitting a quadratic-smoothed stroke would have
+  // distorted it. flattenRoute() splits at the t=0.5 point of each corner
+  // instead, leaving the silhouette untouched.
+  expect(state.paths[0].segmentStyles).toEqual(['solid', 'dashed']);
+  // The legacy whole-path mirror still reflects the toggle at commit time.
   expect(state.paths[0].dashed).toBe(true);
-  expect(state.paths[0].segmentDashed).toBeUndefined();
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * The "Motion" line style (the zigzag coaches use for pre-snap motion) and
+ * the three-state cycle button that selects it.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('line style button cycles Solid -> Dotted -> Motion -> Solid', async ({ page }) => {
+  await openDesigner(page);
+  const styleBtn = btn(page, 'Line style: Solid / Dotted / Motion');
+
+  // Assert on the visible label, not canvas state — this is the button's own
+  // contract, and it's the only thing covering the wrap-around.
+  await expect(styleBtn).toHaveText(/Solid/);
+  await styleBtn.click();
+  await expect(styleBtn).toHaveText(/Dotted/);
+  await styleBtn.click();
+  await expect(styleBtn).toHaveText(/Motion/);
+  await styleBtn.click();
+  await expect(styleBtn).toHaveText(/Solid/);
+});
+
+test('straight route: motion as a whole-path style', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route with sharp corners at each point (drag or tap to place points, double-tap to finish)').click();
+  // Two clicks = motion.
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.5, 0.4);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].lineStyle).toBe('motion');
+  // Motion has no legacy equivalent, so the mirror degrades to solid.
+  expect(state.paths[0].dashed).toBe(false);
+  expect(state.paths[0].segmentStyles).toBeUndefined();
+});
+
+test('curved route: motion as a whole-path style', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.45, 0.5);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  const end = await canvasPoint(page, 0.55, 0.38);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('waypoint');
+  expect(state.paths[0].lineStyle).toBe('motion');
+  expect(state.paths[0].segmentStyles).toBeUndefined();
+});
+
+test('curved route: mixing dotted and motion exercises flatten + zigzag together', async ({ page }) => {
+  await openDesigner(page);
+
+  await btn(page, 'Player Q').click();
+  const spot = await canvasPoint(page, 0.4, 0.65);
+  await page.mouse.click(spot.x, spot.y);
+  let state = await canvasState(page);
+
+  await btn(page, 'Multi-Segment Route with smooth, curved corners at each point (drag or tap to place points, double-tap to finish)').click();
+  // Segment 1: dotted.
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+  const icon = await canvasPoint(page, state.playerIcons[0].x, state.playerIcons[0].y);
+  await page.mouse.click(icon.x, icon.y);
+  await page.waitForTimeout(TAP_GAP);
+  const mid = await canvasPoint(page, 0.45, 0.5);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(TAP_GAP);
+  // Segment 2: motion.
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
+  const end = await canvasPoint(page, 0.58, 0.38);
+  await page.mouse.click(end.x, end.y);
+  await page.waitForTimeout(TAP_GAP);
+  await page.getByRole('button', { name: 'Finish Route' }).click();
+
+  state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].mode).toBe('waypoint');
+  expect(state.paths[0].segmentStyles).toEqual(['dashed', 'motion']);
 });
 
 test('custom formations: signed-out/free user sees a locked upsell instead of the save flow', async ({ page }) => {
@@ -2161,6 +2276,61 @@ test('loads a saved play with a legacy mode:"block" path (pre-dates capStyle) wi
   expect(state.paths).toHaveLength(1);
   expect(state.paths[0].mode).toBe('block');
   expect(state.paths[0].capStyle).toBeUndefined();
+});
+
+test('loads a saved play using only the legacy dashed/segmentDashed fields', async ({ page }) => {
+  // The read-forever fallback: every play saved before `lineStyle`/
+  // `segmentStyles` existed carries only `dashed` and `segmentDashed`, and
+  // resolveSegmentStyles() must keep honoring them. This is the only direct
+  // coverage of that path — deleting those fields from PathItem would break
+  // real saved plays silently, and this is what catches it.
+  const canvasData = JSON.stringify({
+    version: 4,
+    paths: [
+      {
+        points: [{ x: 0.4, y: 0.65 }, { x: 0.4, y: 0.45 }, { x: 0.55, y: 0.4 }],
+        color: '#1FA75D',
+        startIconIndex: 0,
+        mode: 'straight',
+        dashed: true,
+        segmentDashed: [true, false],
+      },
+    ],
+    playerIcons: [{ x: 0.4, y: 0.65, letter: 'Q', color: '#1FA75D' }],
+    zones: [],
+    textBoxes: [],
+  });
+
+  await page.route('**/rest/v1/plays**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '00000000-0000-0000-0000-000000000009',
+        name: 'Legacy dashed route',
+        type: 'offense',
+        canvas_data: canvasData,
+        description: '',
+        is_public: false,
+        metadata: { playName: 'Legacy dashed route' },
+      }),
+    }),
+  );
+
+  await page.goto('/designer?play=00000000-0000-0000-0000-000000000009');
+  await page.waitForFunction(() => {
+    const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
+    return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
+  });
+
+  // Loaded verbatim — no migration on read, the new fields stay absent and
+  // the renderer derives styles from the legacy ones.
+  const state = await canvasState(page);
+  expect(state.paths).toHaveLength(1);
+  expect(state.paths[0].dashed).toBe(true);
+  expect(state.paths[0].segmentDashed).toEqual([true, false]);
+  expect(state.paths[0].lineStyle).toBeUndefined();
+  expect(state.paths[0].segmentStyles).toBeUndefined();
 });
 
 test('loads a saved play with text boxes via /designer?play= (mocked backend, version 4)', async ({ page }) => {
@@ -4986,12 +5156,16 @@ test('routes: Copy Route pastes a translated copy onto another player', async ({
   const mid = await canvasPoint(page, 0.3, 0.6);
   await page.mouse.click(mid.x, mid.y);
   await page.waitForTimeout(TAP_GAP);
+  // Mix the styles too, so the paste's per-segment clone is covered here
+  // rather than needing a near-duplicate test of its own.
+  await btn(page, 'Line style: Solid / Dotted / Motion').click();
   const end = await canvasPoint(page, 0.3, 0.3);
   await page.mouse.click(end.x, end.y);
   await page.getByRole('button', { name: 'Finish Route' }).click();
 
   const before = await canvasState(page);
   expect(before.paths).toHaveLength(1);
+  expect(before.paths[0].segmentStyles).toEqual(['solid', 'dashed']);
   const srcStart = before.paths[0].points[0];
   const srcPoints = before.paths[0].points;
   const destIcon = before.playerIcons[1];
@@ -5016,6 +5190,9 @@ test('routes: Copy Route pastes a translated copy onto another player', async ({
   // synced (independentColor undefined) rather than being pinned.
   expect(pasted.color).toBe(destIcon.color);
   expect(pasted.independentColor).toBeFalsy();
+  // Per-segment styles come along with the shape — a paste that dropped them
+  // would silently flatten a mixed route to one style.
+  expect(pasted.segmentStyles).toEqual(['solid', 'dashed']);
   // The source route is untouched.
   expect(state.paths[0].points).toEqual(srcPoints);
 });

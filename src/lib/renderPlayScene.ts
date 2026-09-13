@@ -78,6 +78,19 @@ export type DrawMode = 'straight' | 'waypoint' | 'block';
 
 export type CapStyle = 'arrow' | 'block';
 
+/** Stroke style for a route, or for one segment of one. 'dashed' is labeled
+ *  "Dotted" in the toolbar (the label predates this type); 'motion' is the
+ *  football-diagram squiggle coaches use for pre-snap motion. */
+export type LineStyle = 'solid' | 'dashed' | 'motion';
+
+const LINE_STYLE_VALUES: readonly LineStyle[] = ['solid', 'dashed', 'motion'];
+
+/** Guard every style value read off a saved play, so a hand-edited or
+ *  corrupted field degrades to 'solid' instead of reaching the renderer as
+ *  an unknown string. */
+export const isLineStyle = (v: unknown): v is LineStyle =>
+  typeof v === 'string' && (LINE_STYLE_VALUES as readonly string[]).includes(v);
+
 export type Pt = { x: number; y: number }; // normalized 0–1
 
 export type PathItem = {
@@ -90,20 +103,32 @@ export type PathItem = {
    *  field. A legacy `mode === 'block'` path is still treated as a block
    *  ending even without this field (see renderScene's useBlockCap). */
   capStyle?: CapStyle;
-  /** Dashed vs solid stroke. Omitted/undefined means solid. */
+  /** @deprecated Superseded by `lineStyle`, but still WRITTEN as a legacy
+   *  mirror (see finishRoute in Canvas.tsx) so an already-deployed older
+   *  bundle in a stale tab renders a route sensibly, and still READ as the
+   *  fallback for every play saved before `lineStyle` existed. Never delete.
+   *  Omitted/undefined means solid. */
   dashed?: boolean;
-  /** Per-segment dash override for a 'straight' mode path — index i is the
-   *  style of the segment from points[i] to points[i+1], so length must equal
-   *  points.length-1 when present. Omitted means every segment uses `dashed`
-   *  above, which covers every pre-existing saved play and any route that was
-   *  never toggled mid-draw — no migration, no version bump, same pattern as
-   *  `dashed`/`capStyle` themselves. Never set for 'waypoint' mode: splitting
-   *  a curved route's quadratic-smoothed stroke at an interior point changes
-   *  the curve's shape, not just its dash pattern (the curve is drawn through
-   *  the midpoints between points, never touching an interior point itself —
-   *  forcing a split to land exactly on one distorts the silhouette). See
-   *  resolveSegmentDash(). */
+  /** @deprecated Superseded by `segmentStyles`. Read-only legacy: still
+   *  honored for plays saved before that field existed, never written now.
+   *  Index i is the style of the segment from points[i] to points[i+1], so
+   *  length equals points.length-1 when present. Only ever set for 'straight'
+   *  mode, back when splitting a curved route wasn't supported. */
   segmentDashed?: boolean[];
+  /** Whole-path stroke style. Supersedes `dashed`; omitted means derive from
+   *  `dashed` (and solid when that's absent too), which covers every play
+   *  saved before this field existed — no migration and no canvas_data
+   *  version bump, the same optional-field pattern as capStyle/dashed/
+   *  independentColor. See resolveLineStyle(). */
+  lineStyle?: LineStyle;
+  /** Per-segment style override — index i is the style of the segment from
+   *  points[i] to points[i+1], so length must equal points.length-1 when
+   *  present. Omitted means every segment uses `lineStyle` above, which keeps
+   *  a route that was never toggled mid-draw exactly as small as before.
+   *  Unlike the `segmentDashed` it supersedes, this IS set for 'waypoint'
+   *  mode: flattenRoute() splits the quadratic-smoothed stroke at the t=0.5
+   *  point of each corner without changing the silhouette. */
+  segmentStyles?: LineStyle[];
   /** True once this path's color was explicitly set — via a non-Auto sticky
    *  route-color default at draw time, or the Recolor Route popover — and
    *  must survive the origin icon being recolored later. Omitted/false =
@@ -113,15 +138,28 @@ export type PathItem = {
   independentColor?: boolean;
 };
 
-/** The per-segment dash style to actually render/edit, honoring the
- *  whole-path `dashed` fallback. Falls back even if `segmentDashed` is
- *  present but the wrong length (e.g. a hand-edited or corrupted save),
- *  rather than let a misaligned array silently attach the wrong style to the
- *  wrong segment. */
-export function resolveSegmentDash(path: Pick<PathItem, 'points' | 'dashed' | 'segmentDashed'>): boolean[] {
+/** A path's whole-path style, honoring the pre-`lineStyle` `dashed` flag. */
+export function resolveLineStyle(path: Pick<PathItem, 'lineStyle' | 'dashed'>): LineStyle {
+  if (isLineStyle(path.lineStyle)) return path.lineStyle;
+  return path.dashed ? 'dashed' : 'solid';
+}
+
+/** The per-segment styles to actually render/edit. Precedence:
+ *    segmentStyles > segmentDashed > lineStyle > dashed > 'solid'
+ *  A per-segment array of the wrong length (a hand-edited or corrupted save)
+ *  is ignored in favor of the whole-path fallback, rather than allowed to
+ *  silently attach the wrong style to the wrong segment. */
+export function resolveSegmentStyles(
+  path: Pick<PathItem, 'points' | 'dashed' | 'segmentDashed' | 'lineStyle' | 'segmentStyles'>,
+): LineStyle[] {
   const segmentCount = Math.max(0, path.points.length - 1);
-  if (path.segmentDashed && path.segmentDashed.length === segmentCount) return path.segmentDashed;
-  return new Array(segmentCount).fill(!!path.dashed);
+  if (path.segmentStyles && path.segmentStyles.length === segmentCount) {
+    return path.segmentStyles.map((s) => (isLineStyle(s) ? s : 'solid'));
+  }
+  if (path.segmentDashed && path.segmentDashed.length === segmentCount) {
+    return path.segmentDashed.map((d) => (d ? 'dashed' : 'solid'));
+  }
+  return new Array<LineStyle>(segmentCount).fill(resolveLineStyle(path));
 }
 
 export type IconShape = 'circle' | 'square' | 'triangle' | 'star';
@@ -217,36 +255,206 @@ export function strokeStraight(ctx: CanvasRenderingContext2D, pts: Pt[], color: 
   ctx.restore();
 }
 
+// Motion-line geometry, in multiples of the current line width so it scales
+// with `scale` exactly like the dash pattern [lw*2.5, lw*2] does — on screen
+// (lw = ROUTE_LINE_WIDTH * scale) and in the 1650x1275 export alike.
+const MOTION_WAVELENGTH = 3.2; // × lw — one full period (two half-waves)
+const MOTION_AMPLITUDE = 1.6; // × lw — peak offset from the centerline
+
 /**
- * Strokes contiguous same-style runs of a polyline separately, so a route can
- * mix solid and dashed segments. `segDash[i]` is the style of the segment
- * from `pts[i]` to `pts[i+1]`, so `segDash.length === pts.length - 1`.
+ * Convert a polyline into the zigzag "motion" squiggle drawn along it.
  *
- * Only used for 'straight' mode (plain `lineTo` between points), where
- * splitting is exact — each run is a literal sub-polyline of the original,
- * so this is pixel-identical to a single stroke() call when every entry in
- * `segDash` is the same (the common case: nobody toggled mid-route). Do NOT
- * use this for the quadratic-smoothed 'waypoint' mode — see the PathItem
- * comment on `segmentDashed`.
+ * Walks the input by arc length emitting alternating perpendicular offsets.
+ * Two properties are load-bearing:
+ *  - An integer number of half-waves is fitted to the run's exact length, and
+ *    the first and last peaks are pinned to zero offset, so the squiggle
+ *    starts and ends ON the true path. That's what keeps the start anchored
+ *    at the player icon, lets the tip tuck behind the arrowhead through the
+ *    usual trimEnd(), and makes adjacent runs of different styles join.
+ *  - Every interior vertex of the input is forced into the sample set, so a
+ *    sharp cut mid-run stays sharp instead of being rounded off by sampling.
  */
-export function strokeRuns(
+export function motionZigzag(pts: Pt[], wavelength: number, amplitude: number): Pt[] {
+  if (pts.length < 2 || wavelength <= 0) return pts;
+  // Cumulative arc length of the input.
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  }
+  const total = cum[cum.length - 1];
+  // Too short to fit a full period — a lone half-wave reads as a mistake,
+  // where a short solid stub just reads as a short line.
+  if (total < wavelength) return pts;
+
+  const halfWaves = Math.max(2, Math.round((2 * total) / wavelength));
+  const hw = total / halfWaves;
+  // Zeroed first/last peaks make the end half-waves ramps onto the centerline.
+  const peak = (k: number) => (k === 0 || k === halfWaves ? 0 : k % 2 === 1 ? 1 : -1);
+
+  // Sample at every half-wave stop AND every interior vertex, deduped.
+  const stops: number[] = [];
+  for (let k = 0; k <= halfWaves; k++) stops.push(k * hw);
+  for (let i = 1; i < pts.length - 1; i++) stops.push(cum[i]);
+  stops.sort((a, b) => a - b);
+  const eps = Math.max(1e-6, total * 1e-9);
+
+  const out: Pt[] = [];
+  let seg = 0;
+  let prevStop = Number.NEGATIVE_INFINITY;
+  for (const s of stops) {
+    if (s - prevStop < eps) continue; // dedupe a vertex landing on a half-wave stop
+    prevStop = s;
+    // Advance to the segment containing s.
+    while (seg < pts.length - 2 && cum[seg + 1] < s - eps) seg++;
+    const segLen = cum[seg + 1] - cum[seg];
+    const t = segLen > eps ? (s - cum[seg]) / segLen : 0;
+    const px = pts[seg].x + (pts[seg + 1].x - pts[seg].x) * t;
+    const py = pts[seg].y + (pts[seg + 1].y - pts[seg].y) * t;
+
+    // Tangent: the containing segment's direction, except exactly at an
+    // interior vertex, where the average of the incoming and outgoing
+    // directions bisects the corner so the offset point doesn't pinch.
+    let tx = pts[seg + 1].x - pts[seg].x;
+    let ty = pts[seg + 1].y - pts[seg].y;
+    const atVertex = Math.abs(s - cum[seg + 1]) < eps && seg + 2 < pts.length;
+    if (atVertex) {
+      const l1 = Math.hypot(tx, ty) || 1;
+      let nx = pts[seg + 2].x - pts[seg + 1].x;
+      let ny = pts[seg + 2].y - pts[seg + 1].y;
+      const l2 = Math.hypot(nx, ny) || 1;
+      nx /= l2; ny /= l2;
+      tx = tx / l1 + nx;
+      ty = ty / l1 + ny;
+    }
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl; ty /= tl;
+
+    // Triangular wave: lerp between the surrounding peaks.
+    const u = s / hw;
+    const k = Math.min(halfWaves - 1, Math.floor(u + eps));
+    const off = amplitude * (peak(k) + (peak(k + 1) - peak(k)) * (u - k));
+
+    out.push({ x: px - ty * off, y: py + tx * off });
+  }
+  return out.length >= 2 ? out : pts;
+}
+
+/**
+ * A dense polyline tracing exactly the path strokeRoute() draws, plus the
+ * index into that polyline where each interior point's segment boundary falls.
+ *
+ * strokeRoute draws, for pts.length = n >= 3: moveTo(P0), then for each
+ * interior i in 1..n-2 a quadratic with control P_i ending at the midpoint
+ * M_i = mid(P_i, P_{i+1}), then a straight lineTo(P_{n-1}). So there are
+ * exactly n-2 quadratics for n-2 interior points — a 1:1 mapping.
+ *
+ * The boundary between segment i-1 and segment i is the t=0.5 point of the
+ * quadratic controlled by P_i: the curve's closest approach to that interior
+ * point, and the only split that is both well-defined and symmetric. Each
+ * quadratic is therefore subdivided into an EVEN number of steps so t=0.5 is
+ * an exact sample — that makes the boundary an exact index with no
+ * nearest-sample search. An odd count would drift every boundary by half a
+ * step, subtly and without ever throwing.
+ *
+ * `boundaries.length === pts.length - 2`.
+ */
+export function flattenRoute(pts: Pt[]): { points: Pt[]; boundaries: number[] } {
+  if (pts.length < 3) return { points: pts, boundaries: [] };
+  const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const out: Pt[] = [pts[0]];
+  const boundaries: number[] = [];
+  let start = pts[0];
+  for (let i = 1; i <= pts.length - 2; i++) {
+    const control = pts[i];
+    const end = mid(control, pts[i + 1]);
+    // Even step count, scaled by the curve's rough size so the 1650x1275
+    // export automatically samples about twice as finely as the screen.
+    const rough = Math.hypot(control.x - start.x, control.y - start.y)
+      + Math.hypot(end.x - control.x, end.y - control.y);
+    const m = Math.min(16, Math.max(4, Math.round(rough / 8)));
+    const steps = m * 2;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const it = 1 - t;
+      out.push({
+        x: it * it * start.x + 2 * it * t * control.x + t * t * end.x,
+        y: it * it * start.y + 2 * it * t * control.y + t * t * end.y,
+      });
+      if (s === m) boundaries.push(out.length - 1); // exactly t = 0.5
+    }
+    start = end;
+  }
+  out.push(pts[pts.length - 1]); // the closing lineTo
+  return { points: out, boundaries };
+}
+
+/**
+ * Stroke a route, honoring a per-segment style array so one route can mix
+ * solid, dotted and motion segments. `styles[i]` is the style of the segment
+ * from `pts[i]` to `pts[i+1]`, so `styles.length === pts.length - 1`.
+ *
+ * ⚠ The uniform fast path below is the ENTIRE backward-compatibility story:
+ * every play saved before `segmentStyles` existed resolves to a single
+ * repeated style and must keep going through the exact same strokeRoute /
+ * strokeStraight + setLineDash calls it always did. Do not "simplify" this by
+ * routing everything through the run loop — that would silently change every
+ * existing curved route's silhouette (re-smoothing an already-flattened
+ * sample set shrinks it) and restart every dashed route's dash phase.
+ */
+export function strokeStyledRuns(
   ctx: CanvasRenderingContext2D,
   pts: Pt[],
-  segDash: boolean[],
+  styles: LineStyle[],
   color: string,
   lw: number,
+  curved: boolean,
 ) {
-  if (pts.length < 2 || segDash.length !== pts.length - 1) {
-    strokeStraight(ctx, pts, color, lw);
+  if (pts.length < 2) return;
+  const dash: [number, number] = [lw * 2.5, lw * 2];
+  const zig = (run: Pt[]) => motionZigzag(run, MOTION_WAVELENGTH * lw, MOTION_AMPLITUDE * lw);
+  // Each run sets its own dash inside save/restore — a dash leaked from a
+  // neighbouring run would turn a squiggle into confetti.
+  const strokeOne = (run: Pt[], style: LineStyle) => {
+    ctx.save();
+    ctx.setLineDash(style === 'dashed' ? dash : []);
+    strokeStraight(ctx, style === 'motion' ? zig(run) : run, color, lw);
+    ctx.restore();
+  };
+
+  const uniform = styles.length !== pts.length - 1 || new Set(styles).size <= 1;
+  if (uniform) {
+    const style = styles[0] ?? 'solid';
+    if (!curved) {
+      strokeOne(pts, style);
+      return;
+    }
+    ctx.save();
+    if (style === 'motion') {
+      // A curve has to be flattened before it can be walked by arc length.
+      ctx.setLineDash([]);
+      strokeStraight(ctx, zig(flattenRoute(pts).points), color, lw);
+    } else {
+      ctx.setLineDash(style === 'dashed' ? dash : []);
+      strokeRoute(ctx, pts, color, lw);
+    }
+    ctx.restore();
     return;
   }
+
+  // Mixed. Straight mode splits at its own vertices; curved mode splits the
+  // flattened curve at the t=0.5 corner boundaries, so the silhouette is
+  // unchanged and only the cut points are new. Mixed curved runs are stroked
+  // with strokeStraight over the dense samples — never strokeRoute, which
+  // would re-smooth them.
+  const flat = curved
+    ? flattenRoute(pts)
+    : { points: pts, boundaries: pts.map((_, i) => i).slice(1, -1) };
+  const cut = (segIdx: number) =>
+    segIdx === 0 ? 0 : segIdx >= styles.length ? flat.points.length - 1 : flat.boundaries[segIdx - 1];
   let runStart = 0;
-  for (let i = 0; i <= segDash.length; i++) {
-    if (i === segDash.length || segDash[i] !== segDash[runStart]) {
-      ctx.save();
-      ctx.setLineDash(segDash[runStart] ? [lw * 2.5, lw * 2] : []);
-      strokeStraight(ctx, pts.slice(runStart, i + 1), color, lw);
-      ctx.restore();
+  for (let i = 0; i <= styles.length; i++) {
+    if (i === styles.length || styles[i] !== styles[runStart]) {
+      strokeOne(flat.points.slice(cut(runStart), cut(i) + 1), styles[runStart]);
       runStart = i;
     }
   }
@@ -698,24 +906,12 @@ export function renderScene(
     // arrowhead. Skipped for the block cap, which sits on the endpoint
     // rather than tapering to it.
     const stroked = !useBlockCap ? trimEnd(pts, arrowSize * 0.8) : pts;
-    if (p.mode === 'waypoint') {
-      ctx.save();
-      ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
-      strokeRoute(ctx, stroked, p.color, lineWidth);
-      ctx.restore();
-    } else if (p.segmentDashed) {
-      // trimEnd only ever removes/rewrites points from the tail, so the
-      // first `stroked.length - 1` entries of the original per-segment
-      // array still line up with the segments still visually present —
-      // resolve against the untrimmed points, then slice to match.
-      const segDash = resolveSegmentDash(p).slice(0, stroked.length - 1);
-      strokeRuns(ctx, stroked, segDash, p.color, lineWidth);
-    } else {
-      ctx.save();
-      ctx.setLineDash(p.dashed ? [lineWidth * 2.5, lineWidth * 2] : []);
-      strokeStraight(ctx, stroked, p.color, lineWidth);
-      ctx.restore();
-    }
+    // trimEnd only ever removes/rewrites points from the tail, so the
+    // first `stroked.length - 1` entries of the original per-segment
+    // array still line up with the segments still visually present —
+    // resolve against the untrimmed points, then slice to match.
+    const styles = resolveSegmentStyles(p).slice(0, stroked.length - 1);
+    strokeStyledRuns(ctx, stroked, styles, p.color, lineWidth, p.mode === 'waypoint');
     if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
     else drawArrowhead(ctx, pts, p.color, arrowSize);
   });
