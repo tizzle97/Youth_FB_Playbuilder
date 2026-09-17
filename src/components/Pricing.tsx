@@ -7,6 +7,7 @@ import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
 import { getSafeErrorMessage } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { UpgradeConsentModal } from './billing/UpgradeConsentModal';
+import { WristbandPreview } from './WristbandPreview';
 
 const freeFeatures = [
   'All Play Designer tools',
@@ -161,6 +162,22 @@ export function Pricing() {
                 Coming soon
               </button>
             )}
+          </div>
+        </div>
+
+        {/* "Wristband export" means nothing to a coach who hasn't used one, and
+            it's the Pro feature hardest to picture sight-unseen. Show the real
+            output — rendered by the export's own code, so it can't go stale. */}
+        <div className="mt-16 border-t border-chalk/10 pt-12">
+          <div className="max-w-2xl mx-auto text-center">
+            <h3 className="font-display text-2xl text-chalk">What the wristband export gives you</h3>
+            <p className="mt-3 text-chalk/70">
+              Print your playbook as inserts sized for a QB wristband — with play diagrams, or as a
+              text-only call sheet. Cut them out and slide them in.
+            </p>
+          </div>
+          <div className="mt-8">
+            <WristbandPreview width={720} className="w-full max-w-[720px] mx-auto" />
           </div>
         </div>
       </div>
