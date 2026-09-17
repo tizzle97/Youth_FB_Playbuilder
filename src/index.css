@@ -179,6 +179,11 @@ body {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
+/* ⚠ No `::-webkit-scrollbar { display: none }` here, on purpose. On a real
+   iPhone (Safari), that rule on an overflow-x container made the children of
+   the designer's bottom tool rows un-tappable until the layer repainted —
+   the player chips and Offense/Defense control did nothing until choosing a
+   draw mode grew the bar. Headless WebKit does not reproduce it, only the
+   device does. `scrollbar-width: none` covers Chrome 121+, Firefox and
+   Safari 18.2+; on older iOS the overlay scrollbar is invisible when idle
+   anyway, so nothing is lost by leaving it. */
