@@ -11,6 +11,8 @@ import {
   formatPlayType, exportFooterHTML, NOTES_BLOCK_CSS, notesBlockHTML, generateWristbandHTML,
 } from '../../lib/exportStyles';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
+import { WristbandPreview } from '../WristbandPreview';
+import type { PreviewPlay } from '../../lib/wristbandDemo';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 const PRO_ONLY_FORMATS = new Set(['detailed-playbook', 'grid-playbook', 'wristband-playbook']);
@@ -58,11 +60,22 @@ export function ExportModal({
   const [wristbandTextOnly, setWristbandTextOnly] = useState(false);
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  // Free users clicking the locked Wristband option get a live preview of the
+  // sheet instead of a bare paywall — they can't evaluate the upgrade without
+  // seeing what it produces.
+  const [showWristbandPreview, setShowWristbandPreview] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
 
   // Escape mirrors the header's X button in each view: back out of the
   // metadata editor rather than closing the whole modal when it's open.
-  useEscapeKey(isOpen, showMetadataEditor ? () => setShowMetadataEditor(false) : onClose);
+  useEscapeKey(
+    isOpen,
+    showMetadataEditor
+      ? () => setShowMetadataEditor(false)
+      : showWristbandPreview
+        ? () => setShowWristbandPreview(false)
+        : onClose,
+  );
 
   if (!isOpen) return null;
 
@@ -490,9 +503,33 @@ export function ExportModal({
       preferences,
     });
 
+  /** The plays the wristband export would actually print, shaped for the
+   *  preview. Mirrors handleExport's resolution order so what a coach sees
+   *  here is what they'd get. */
+  const resolvePreviewPlays = (): PreviewPlay[] => {
+    let plays: PlayData[] = [];
+    if (onGetAllPlays) plays = onGetAllPlays();
+    else if (allPlays.length > 0) plays = allPlays;
+    else {
+      const canvasDataURL = getCurrentCanvasData();
+      if (canvasDataURL && canvasDataURL.length > 100) plays = [{ metadata, canvasDataURL }];
+    }
+    const rows = plays
+      .filter((p) => p.metadata?.playName)
+      .map((p) => ({ name: p.metadata.playName, image: p.canvasDataURL }));
+    // A coach with one or two plays would see a nearly blank sheet, which
+    // undersells the format. Below half an insert, show the sample set
+    // instead — WristbandPreview relabels itself "Sample plays", so this
+    // never passes someone else's plays off as theirs.
+    return rows.length >= 4 ? rows : [];
+  };
+
   const handleFormatClick = (formatId: string) => {
     if (PRO_ONLY_FORMATS.has(formatId) && !entitlementLoading && !isPro) {
-      setShowUpgradePrompt(true);
+      // Show, don't tell: the wristband sheet is the hardest format to picture
+      // sight-unseen, so it gets a preview rather than the generic prompt.
+      if (formatId === 'wristband-playbook') setShowWristbandPreview(true);
+      else setShowUpgradePrompt(true);
       return;
     }
     setSelectedFormat(formatId as 'single-play' | 'detailed-playbook' | 'grid-playbook' | 'wristband-playbook');
@@ -757,6 +794,64 @@ export function ExportModal({
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (showWristbandPreview) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose} />
+        <div className="relative flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden text-left bg-board-light rounded-lg shadow-xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-chalk/10 flex-shrink-0">
+            <h3 className="text-xl font-bold text-chalk flex items-center gap-2">
+              Wristband Sheet
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                <Lock className="h-3 w-3" /> Pro
+              </span>
+            </h3>
+            <button
+              onClick={() => setShowWristbandPreview(false)}
+              className="text-chalk/70 hover:text-chalk transition-colors"
+              aria-label="Back to export formats"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-6">
+            <WristbandPreview
+              plays={resolvePreviewPlays()}
+              preferences={preferences}
+              width={560}
+              className="w-full"
+            />
+          </div>
+
+          <div className="flex justify-between gap-3 px-6 py-4 border-t border-chalk/10 flex-shrink-0">
+            <button
+              onClick={() => setShowWristbandPreview(false)}
+              className="px-4 py-2 text-sm font-medium text-chalk bg-board border border-chalk/20 rounded-md hover:bg-board-light"
+            >
+              Back
+            </button>
+            <button
+              // Keep the preview panel mounted underneath — closing it here
+              // would unmount the wristband-specific UpgradePrompt below with
+              // it, and the generic "Playbook PDF export" one would show.
+              onClick={() => setShowUpgradePrompt(true)}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary-dark"
+            >
+              Upgrade to Pro
+            </button>
+          </div>
+        </div>
+        <UpgradePrompt
+          isOpen={showUpgradePrompt}
+          onClose={() => setShowUpgradePrompt(false)}
+          feature="Wristband export"
+          description="Printable wristband inserts are part of Playbuilder Pro ($39/yr), along with full playbook PDFs."
+        />
       </div>
     );
   }
