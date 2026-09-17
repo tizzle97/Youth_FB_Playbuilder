@@ -1875,8 +1875,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
 
     return (
       // Sized to the width/height props (not the parent) so the parent can
-      // letterbox the canvas to the export aspect ratio.
-      <div className="relative" style={{ width, height }}>
+      // letterbox the canvas to the export aspect ratio. Framed as an object
+      // on the deck (ring + shadow, ≥ sm). Radius is deliberately small: a
+      // radius r trims ~0.29r off each corner edge, and on a 375px phone the
+      // chalk border's outer edge sits only ~3px in — rounded-lg (2.3px) is
+      // safe everywhere, rounded-xl would nick it.
+      <div className="relative rounded-md sm:rounded-lg sm:ring-1 sm:ring-chalk/10 sm:shadow-2xl" style={{ width, height }}>
         <canvas
           id={id || 'play-canvas'}
           ref={canvasRef}
@@ -1895,7 +1899,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           onPointerCancel={handlePointerUp}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          className="block bg-board touch-none"
+          className="block bg-board touch-none rounded-md sm:rounded-lg"
           style={{ width: '100%', height: '100%' }}
         />
 

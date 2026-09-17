@@ -8,6 +8,7 @@ import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
 import type { CanvasHandle, DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
+import { deck } from '../../lib/ambient';
 import { supabase } from '../../lib/supabase';
 import { PlayMetadata } from '../../types/play';
 import { getSafeErrorMessage } from '../../lib/errors';
@@ -31,6 +32,11 @@ export function PlayDesigner() {
   // Canvas zoom: multiplies the letterboxed base size; the container scrolls
   // (drag-to-pan in Select mode) when the zoomed canvas overflows it.
   const [zoom, setZoom] = useState(1);
+  // Margin between the framed canvas and the deck's edges, ≥ sm only.
+  // Subtracted from the letterbox fit (see update() below) — phones are
+  // width-bound and keep every pixel, so it is 0 there.
+  const DECK_INSET_SM = 16;
+  const [deckInset, setDeckInset] = useState(0);
 
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawMode, setDrawMode] = useState<DrawMode>('straight');
@@ -234,8 +240,13 @@ export function PlayDesigner() {
     const update = () => {
       const el = canvasContainerRef.current;
       if (!el) return;
-      const maxW = Math.max(320, el.clientWidth);
-      const maxH = Math.max(320, el.clientHeight);
+      // The deck inset has to come out of the fit here: padding the canvas
+      // wrapper without shrinking the fit would overflow the scroll container
+      // by 2×inset at zoom 1 and grow scrollbars on every desktop load.
+      const inset = window.matchMedia('(min-width: 640px)').matches ? DECK_INSET_SM : 0;
+      setDeckInset(inset);
+      const maxW = Math.max(320, el.clientWidth - inset * 2);
+      const maxH = Math.max(320, el.clientHeight - inset * 2);
       const ratio = EXPORT_WIDTH / EXPORT_HEIGHT;
       const w = Math.min(maxW, maxH * ratio);
       setCanvasSize({ width: w, height: w / ratio });
@@ -257,6 +268,18 @@ export function PlayDesigner() {
   // buttons pick the nearest step past the current (continuous) value in
   // either direction rather than indexing into zoomLevels by exact match.
   const ZOOM_EPS = 0.001;
+  // Zoom pill placement. While the canvas fits, sit on the FIELD's
+  // bottom-right corner (m-auto centers it, so its edge is 50% minus half its
+  // size from the container edge); once a zoomed canvas overflows, max()
+  // snaps the pill to the container corner. It cannot live inside the canvas
+  // wrapper: that is inside the scroll container, so at zoom > 1 it would
+  // scroll off-screen and zoom-out become unreachable without panning.
+  const PILL_INSET = 12;
+  const pillEdge = (px: number) => `max(${PILL_INSET}px, calc(50% - ${px / 2}px + ${PILL_INSET}px))`;
+  const pillStyle: React.CSSProperties = {
+    right: pillEdge(canvasSize.width * zoom),
+    bottom: pillEdge(canvasSize.height * zoom),
+  };
   const zoomOutTarget = [...zoomLevels].reverse().find((z) => z < zoom - ZOOM_EPS) ?? null;
   const zoomInTarget = zoomLevels.find((z) => z > zoom + ZOOM_EPS) ?? null;
 
@@ -591,14 +614,20 @@ export function PlayDesigner() {
           />
         </aside>
 
+        {/* The deck: everything right of the sidebar. `relative` so the zoom
+            pill's 50% math measures this box (main only), not main + sidebar. */}
+        <div className="relative flex-1 min-w-0 flex">
         {/* Scroll container: m-auto centers the canvas while it fits; once
-            zoomed past the container it overflows and drag-to-pan scrolls. */}
+            zoomed past the container it overflows and drag-to-pan scrolls.
+            The deck texture is a background on the scroll container, which
+            does not scroll with its content — it stays put under a panned
+            canvas. */}
         <main
           ref={canvasContainerRef}
-          className="flex-1 bg-white overflow-auto flex"
-          style={{ minHeight: 0 }}
+          className="flex-1 bg-board overflow-auto flex"
+          style={{ minHeight: 0, ...deck }}
         >
-          <div className="m-auto">
+          <div className="m-auto" style={{ padding: deckInset }}>
             <Canvas
               ref={canvasRef}
               id="play-canvas"
@@ -628,7 +657,10 @@ export function PlayDesigner() {
         </main>
 
         {/* ── ZOOM CONTROLS ─────────────────────────────────────── */}
-        <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg px-1 py-1">
+        <div
+          className="absolute z-30 flex items-center gap-0.5 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg px-1 py-1"
+          style={pillStyle}
+        >
           <button
             title="Zoom out"
             disabled={zoomOutTarget === null}
@@ -652,6 +684,7 @@ export function PlayDesigner() {
           >
             <ZoomIn className="h-4 w-4" />
           </button>
+        </div>
         </div>
       </div>
 
