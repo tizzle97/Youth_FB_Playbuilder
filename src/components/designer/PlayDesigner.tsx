@@ -330,6 +330,10 @@ export function PlayDesigner() {
         zones: canvasRef.current?.getZones?.() ?? [],
         textBoxes: canvasRef.current?.getTextBoxes?.() ?? [],
       }),
+      // The fixed-resolution PRINT render, exactly what the export modal and
+      // the stored thumbnail use — so a test can prove it stays white and
+      // 1650x1275 no matter what the on-screen canvas is drawing.
+      exportImage: (w?: number, h?: number) => canvasRef.current?.exportImage?.(w, h) ?? '',
     };
     return () => { delete (window as any).__PBP_TEST__; };
   }, []);

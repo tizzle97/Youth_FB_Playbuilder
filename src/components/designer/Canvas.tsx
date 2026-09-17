@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -87,6 +88,23 @@ const TOUCH_ICON_HIT_MIN_PX = 22;
 // Remove Route and Recolor Route, both destructive-ish.
 const TOUCH_PATH_HIT_PX = 22;
 const MOUSE_PATH_HIT_PX = 14;
+
+// Backing-store budget in DEVICE pixels. iOS Safari refuses canvases past
+// ~16.7M px (4096²). This is separate from PlayDesigner's MAX_CANVAS_PIXELS,
+// which is a CSS-px cap deciding which zoom steps exist — retina must never
+// remove a zoom level, so that one stays in CSS px and this clamps the
+// device-pixel multiplier instead.
+const MAX_BACKING_PIXELS = 16_000_000;
+const MAX_BACKING_DPR = 2;
+
+/** Device pixels per CSS pixel to back a canvas of this CSS size with —
+ *  the display's ratio, capped, then reduced if the result would exceed
+ *  the budget. Always ≥ 1. */
+function backingScale(cssW: number, cssH: number): number {
+  const dpr = Math.min(MAX_BACKING_DPR, window.devicePixelRatio || 1);
+  const fit = Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, cssW * cssH));
+  return Math.max(1, Math.min(dpr, fit));
+}
 
 // A double-tap finishes a route. Two taps this far apart in space are two
 // deliberate points, however fast they came — without the distance gate,
@@ -582,8 +600,22 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      const W = canvas.width;
-      const H = canvas.height;
+      // Layout math is in CSS px (the width/height props) — the same units
+      // every hit-test and popover anchor below uses. The backing store is
+      // sized at device resolution here, in the one place that draws, so a
+      // 1px yard line is a real device pixel on a retina display instead of
+      // being resampled to a grey smear. Assigning canvas.width resets the
+      // context, so the transform is re-applied every draw, not once at mount.
+      const W = width;
+      const H = height;
+      const dpr = backingScale(W, H);
+      const bw = Math.round(W * dpr);
+      const bh = Math.round(H * dpr);
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw;
+        canvas.height = bh;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
@@ -712,7 +744,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const color = playerIcons[waypointIconIndex].color;
         ctx.save();
         ctx.shadowColor = color;
-        ctx.shadowBlur = 24 * scale;
+        // shadowBlur ignores the context transform — scale it by dpr by hand
+        // or the glow renders half-size on a retina backing store.
+        ctx.shadowBlur = 24 * scale * dpr;
         ctx.strokeStyle = color;
         ctx.lineWidth = 4 * scale;
         ctx.beginPath();
@@ -746,7 +780,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
         ctx.shadowColor = ringColor;
-        ctx.shadowBlur = 18 * scale;
+        ctx.shadowBlur = 18 * scale * dpr;
         ctx.strokeStyle = ringColor;
         ctx.lineWidth = 3 * scale;
         ctx.globalAlpha = 0.85;
@@ -778,7 +812,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const pts = target.points.map(toPx);
         ctx.save();
         ctx.shadowColor = highlightColor;
-        ctx.shadowBlur = 16 * scale;
+        ctx.shadowBlur = 16 * scale * dpr;
         ctx.globalAlpha = 0.55;
         // Trace the route's actual shape — a curved route used to get a
         // straight highlight that visibly missed its own line. Deliberately
@@ -790,10 +824,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         else strokeStraight(ctx, pts, highlightColor, hlWidth);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone, width, height]);
 
-    // Redraw on state change
-    useEffect(() => { draw(); }, [draw]);
+    // Redraw on state change. Layout effect, not a plain effect: draw() now
+    // owns the backing-store size, so the first paint must already carry the
+    // field — a plain effect left one frame of blank canvas on every resize.
+    useLayoutEffect(() => { draw(); }, [draw]);
 
     // Keep the parent's undo/redo button state in sync with this canvas's
     // internal history stacks. An in-progress route counts toward canUndo
@@ -806,15 +842,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         canRedo: redoStack.length > 0 && waypointPoints.length === 0,
       });
     }, [undoStack.length, redoStack.length, waypointPoints.length, onHistoryChange]);
-
-    // Sync canvas size
-    useEffect(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = width;
-      canvas.height = height;
-      draw();
-    }, [width, height, draw]);
 
     // Clear in-progress segments when switching draw modes
     useEffect(() => {
@@ -1840,8 +1867,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         <canvas
           id={id || 'play-canvas'}
           ref={canvasRef}
-          width={width}
-          height={height}
+          // No width/height attributes: draw() sizes the backing store at
+          // device resolution, and React re-applying CSS-px attributes here
+          // would reset it (and clear the canvas) on every size change.
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
