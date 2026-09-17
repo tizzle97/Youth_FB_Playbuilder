@@ -2544,7 +2544,26 @@ test('single-play export prints via a generated window, pulling in no PDF librar
 
   // The print document is real, generated HTML — not a PDF blob.
   await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
-  expect(opened.join('')).toContain('@media print');
+  const html = opened.join('');
+  expect(html).toContain('@media print');
+
+  // The diagram embedded in the sheet must be the fixed 1650x1275 PRINT
+  // render, never a scrape of the live #play-canvas. ExportModal used to fall
+  // back to canvas.toDataURL() — which would now copy a dark-turf, retina,
+  // zoom-sized on-screen canvas straight into a printed page. At this
+  // viewport the live canvas is ~1040px wide, so width alone tells them apart.
+  const dataUrl = html.match(/data:image\/png;base64,[A-Za-z0-9+/=]+/)?.[0];
+  expect(dataUrl).toBeTruthy();
+  const embedded = await page.evaluate(async (url) => {
+    const bmp = await createImageBitmap(await (await fetch(url)).blob());
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext('2d')!;
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(2, 2, 1, 1).data;
+    return { w: bmp.width, h: bmp.height, r: d[0], g: d[1], b: d[2] };
+  }, dataUrl!);
+  expect(embedded).toEqual({ w: 1650, h: 1275, r: 255, g: 255, b: 255 });
 
   // No PDF/canvas-rasterizing library may be pulled into this flow.
   const heavy = await page.evaluate(() =>
