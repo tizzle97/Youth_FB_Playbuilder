@@ -175,15 +175,18 @@ body {
    whose edge fade is the "more this way" affordance instead. Referenced by
    DesignerToolbar since it was written, defined nowhere until now (no
    plugin provides it), so it had always been a no-op. */
-.scrollbar-hide {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+/* ⚠ Fine-pointer devices ONLY, on purpose. Hiding the scrollbar on a real
+   iPhone (Safari) — first via `::-webkit-scrollbar { display: none }`, then,
+   once that was removed, still via `scrollbar-width: none`, which Safari
+   18.2+ honors — made the children of the designer's bottom tool rows
+   un-tappable until the row re-laid-out: the player chips and the
+   Offense/Defense control did nothing until choosing a draw mode grew the
+   bar. Headless WebKit does not reproduce it; only the device does. On touch
+   devices the overlay scrollbar is invisible when idle anyway, so leaving it
+   alone there costs nothing and matches how the rows always behaved. */
+@media (pointer: fine) {
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
-/* ⚠ No `::-webkit-scrollbar { display: none }` here, on purpose. On a real
-   iPhone (Safari), that rule on an overflow-x container made the children of
-   the designer's bottom tool rows un-tappable until the layer repainted —
-   the player chips and Offense/Defense control did nothing until choosing a
-   draw mode grew the bar. Headless WebKit does not reproduce it, only the
-   device does. `scrollbar-width: none` covers Chrome 121+, Firefox and
-   Safari 18.2+; on older iOS the overlay scrollbar is invisible when idle
-   anyway, so nothing is lost by leaving it. */

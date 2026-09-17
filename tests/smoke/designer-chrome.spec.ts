@@ -70,14 +70,34 @@ test('the header title is set in the brand display face', async ({ page }) => {
   expect(family).toMatch(/Anton/);
 });
 
-test('.scrollbar-hide actually hides the mobile bar scrollbar', async ({ page }) => {
+test('.scrollbar-hide hides the tool-row scrollbar for a mouse/trackpad', async ({ page }) => {
   // It was referenced in the toolbar but defined nowhere — a no-op until now.
+  // Playwright's default context is a fine pointer, so the rule applies here.
   await page.setViewportSize({ width: 390, height: 844 });
   await openDesigner(page);
   const width = await page.locator('.scrollbar-hide').first().evaluate(
     (el) => getComputedStyle(el).scrollbarWidth,
   );
   expect(width).toBe('none');
+});
+
+test.describe('touch', () => {
+  // hasTouch is what makes `pointer: coarse` evaluate true (a viewport size
+  // alone does not) — see the note in CLAUDE.md.
+  test.use({ hasTouch: true });
+
+  test('.scrollbar-hide leaves touch devices alone (iOS Safari hit-testing)', async ({ page }) => {
+    // Hiding the scrollbar on a real iPhone made the bottom rows' children
+    // un-tappable until the row re-laid-out. Emulation cannot show that bug,
+    // so this pins the rule that avoids it: no scrollbar hiding under a
+    // coarse pointer.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openDesigner(page);
+    const width = await page.locator('.scrollbar-hide').first().evaluate(
+      (el) => getComputedStyle(el).scrollbarWidth,
+    );
+    expect(width).not.toBe('none');
+  });
 });
 
 test('an armed Remove mode is the only time a tool goes amber', async ({ page }) => {
