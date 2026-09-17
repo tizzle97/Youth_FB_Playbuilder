@@ -170,3 +170,15 @@ body {
 .community-post-content u {
   text-decoration: underline;
 }
+
+/* A row that scrolls but shows no bar — the designer's mobile tool bar,
+   whose edge fade is the "more this way" affordance instead. Referenced by
+   DesignerToolbar since it was written, defined nowhere until now (no
+   plugin provides it), so it had always been a no-op. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

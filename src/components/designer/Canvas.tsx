@@ -1910,11 +1910,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
             style={{ top: instructionBarTop }}
           >
             <div
-              className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
-                savedFlash ? 'bg-green-600'
-                : (deletedFlash || deletedZoneFlash) ? 'bg-amber-600'
-                : (conflictFlash || finishFirstFlash || selfPasteFlash) ? 'bg-red-600'
-                : 'bg-black/65 backdrop-blur-sm'
+              // Brand tokens rather than raw Tailwind greens/ambers. `stadium`
+              // is ambient-only by the token rules, and a passive toast
+              // qualifies. Errors keep red-600: there is no red token, and
+              // this is not the place to invent one.
+              className={`text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-150 motion-reduce:transition-none ${
+                savedFlash ? 'bg-primary text-white'
+                : (deletedFlash || deletedZoneFlash) ? 'bg-stadium text-board'
+                : (conflictFlash || finishFirstFlash || selfPasteFlash) ? 'bg-red-600 text-white'
+                : 'bg-board/80 text-chalk ring-1 ring-chalk/10 backdrop-blur-sm'
               }`}
             >
               {savedFlash ? '✓ Route saved!'
