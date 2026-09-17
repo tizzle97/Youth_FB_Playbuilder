@@ -26,27 +26,41 @@ test('pricing: the wristband section renders the real export sheet', async ({ pa
   await expect(frame).toBeVisible();
 
   // Content from generateWristbandHTML itself, not from the React wrapper —
-  // proves the preview is the actual export output.
+  // proves the preview is the actual export output. Assert on markup INSIDE
+  // the insert: the preview crops to it, so the sheet's page header and
+  // footer are deliberately out of view.
   await expect(sheet(page).locator('.wb-insert').first()).toBeVisible();
-  await expect(sheet(page).getByText(/Wristband Inserts/)).toBeVisible();
+  await expect(sheet(page).getByText(/Insert 1 of 3/)).toBeVisible();
 
   // Sample plays are rendered by renderScene into the insert cells.
   await expect(sheet(page).locator('.wb-insert img').first()).toBeVisible();
+});
+
+test('pricing: the preview is cropped to one 4.5in x 2.2in insert', async ({ page }) => {
+  await page.goto('/');
+  const box = page.locator(PREVIEW_FRAME).locator('xpath=..');
+  await expect(box).toBeVisible();
+
+  // The point of the crop: a coach sees the piece they cut out, at its real
+  // proportions, not a letter sheet with the insert buried in it.
+  const b = await box.boundingBox();
+  expect(b).not.toBeNull();
+  expect(b!.width / b!.height).toBeCloseTo(4.5 / 2.2, 1);
 });
 
 test('pricing: the layout toggle switches between diagram and text-only sheets', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator(PREVIEW_FRAME)).toBeVisible();
 
-  // Diagram mode: image cells, and the dashed-line cut instruction.
+  // Diagram mode: image cells inside the insert.
   await expect(sheet(page).locator('.wb-insert img').first()).toBeVisible();
-  await expect(sheet(page).getByText(/cut along dashed lines/)).toBeVisible();
+  await expect(sheet(page).locator('.wb-insert-text')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Text only' }).click();
 
-  // Text-only is a fixed fill-in grid: no images, a "Play #" header, and a
-  // different cut instruction (there are no dashed lines to cut along).
-  await expect(sheet(page).getByText(/cut along the outer border/)).toBeVisible();
+  // Text-only is a fixed fill-in grid: its own insert variant, no images, and
+  // a "Play #" table header.
+  await expect(sheet(page).locator('.wb-insert-text').first()).toBeVisible();
   await expect(sheet(page).locator('.wb-insert img')).toHaveCount(0);
   await expect(sheet(page).getByText('Play #').first()).toBeVisible();
 

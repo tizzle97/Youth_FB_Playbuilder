@@ -32,7 +32,13 @@ import type { UserPreferences } from '../lib/userPreferences';
  */
 const sheetWidthPx = (paperSize?: string | null) => (paperSize === 'a4' ? 11.69 : 11) * 96;
 const FALLBACK_HEIGHT = 620;
-const BOTTOM_PAD = 20;
+
+/** Nominal insert size in CSS px (4.5in x 2.2in), used until the real element
+ *  is measured so the frame doesn't jump on first paint. */
+const INSERT_W = 4.5 * 96;
+const INSERT_H = 2.2 * 96;
+
+type Crop = { x: number; y: number; w: number; h: number };
 
 type WristbandPreviewProps = {
   /** Plays to render. Falls back to the sample set when empty, so the
@@ -52,6 +58,7 @@ export function WristbandPreview({
 }: WristbandPreviewProps) {
   const [textOnly, setTextOnly] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(FALLBACK_HEIGHT);
+  const [crop, setCrop] = useState<Crop>({ x: 0, y: 0, w: INSERT_W, h: INSERT_H });
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   // `width` is a maximum, not a fixed size: the sheet is a landscape page, so
@@ -104,13 +111,28 @@ export function WristbandPreview({
     const measure = () => {
       if (cancelled) return;
       try {
-        const body = frame.contentDocument?.body;
+        const doc = frame.contentDocument;
+        const body = doc?.body;
+        if (!body) return;
         // Body only — never documentElement, which fills the iframe viewport
         // and so can only ever grow: measuring it feeds the height we just set
-        // straight back in and the frame never shrinks again.
-        // BOTTOM_PAD covers the export footer's own top margin, which rounds
-        // out of scrollHeight and clipped the "Generated on …" line.
-        if (body) setSheetHeight(Math.max(body.scrollHeight + BOTTOM_PAD, 200));
+        // straight back in and the frame never shrinks again. This sizes the
+        // frame so the sheet lays out fully; what's SHOWN is the crop below.
+        setSheetHeight(Math.max(body.scrollHeight, 200));
+
+        // Crop to the first insert — the 4.5in x 2.2in area a coach actually
+        // cuts out and slides into the wristband. Showing the whole letter
+        // sheet buried that in page header, footer and empty grid columns.
+        // `.wb-insert` IS the cut boundary in both layouts: the dashed guide
+        // in diagram mode, and in text-only mode the element the table's own
+        // bold outer border fills edge to edge.
+        const insert = body.querySelector('.wb-insert') as HTMLElement | null;
+        if (insert) {
+          const r = insert.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            setCrop({ x: r.left, y: r.top, w: r.width, h: r.height });
+          }
+        }
       } catch {
         setSheetHeight(FALLBACK_HEIGHT);
       }
@@ -145,7 +167,9 @@ export function WristbandPreview({
 
   const sheetPx = sheetWidthPx(preferences?.paper_size);
   const renderWidth = Math.min(width, availableWidth ?? width);
-  const scale = renderWidth / sheetPx;
+  // Scale the INSERT to the available width, not the whole sheet — the insert
+  // is what's on screen now, so it fills the frame at a readable size.
+  const scale = renderWidth / crop.w;
   const toggle = (value: boolean, label: string) => (
     <button
       type="button"
@@ -169,13 +193,13 @@ export function WristbandPreview({
           {toggle(true, 'Text only')}
         </div>
         <p className="text-xs text-chalk/50">
-          {usingSamples ? 'Sample plays' : 'Your plays'} · actual export output
+          {usingSamples ? 'Sample plays' : 'Your plays'} · one insert, actual output
         </p>
       </div>
 
       <div
         className="relative overflow-hidden rounded-lg border border-chalk/15 bg-white"
-        style={{ width: renderWidth, height: sheetHeight * scale, maxWidth: '100%' }}
+        style={{ width: renderWidth, height: crop.h * scale, maxWidth: '100%' }}
       >
         <iframe
           ref={frameRef}
@@ -190,7 +214,9 @@ export function WristbandPreview({
             width: sheetPx,
             height: sheetHeight,
             border: 0,
-            transform: `scale(${scale})`,
+            // Applied right-to-left: shift the insert to the origin first,
+            // then scale it up to fill the frame.
+            transform: `scale(${scale}) translate(${-crop.x}px, ${-crop.y}px)`,
             transformOrigin: 'top left',
             pointerEvents: 'none',
           }}
@@ -198,8 +224,8 @@ export function WristbandPreview({
       </div>
 
       <p className="mt-3 text-xs text-chalk/60">
-        Prints as {textOnly ? 'a fill-in grid' : 'play diagrams'} sized for a 4.5&quot; &times; 2.2&quot;
-        wristband window — cut out and slide straight in.
+        This is one insert at 4.5&quot; &times; 2.2&quot; — {textOnly ? 'a fill-in call sheet' : 'your play diagrams'},
+        cut out and slid straight into the wristband. Each printed page holds three.
       </p>
     </div>
   );
