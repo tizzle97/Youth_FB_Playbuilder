@@ -88,7 +88,9 @@ const FIELD_THEMES: Record<FieldTheme, FieldPalette> = {
   // (#1FA75D) so routes drawn in the brand green still separate from it.
   screen: {
     bg: '#0F2A1E',
-    stripe: '#12301F',
+    // One quiet step above the base — enough to read as mown turf at a
+    // glance, not enough to compete with routes. Tuned on screen.
+    stripe: '#143523',
     yardLine: 'rgba(248,246,241,0.55)',
     hash: 'rgba(248,246,241,0.40)',
     yardNumber: 'rgba(248,246,241,0.35)',

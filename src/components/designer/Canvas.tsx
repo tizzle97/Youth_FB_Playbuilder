@@ -32,6 +32,7 @@ import {
   strokeRoute,
   strokeStraight,
   strokeStyledRuns,
+  screenHalo,
   trimEnd,
   drawArrowhead,
   drawBlockCap,
@@ -619,7 +620,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, textBoxes, editingTextIndex);
+      // 'screen' = dark turf. This is one of exactly two callers that opt in
+      // (the other is VsDefenseView); exportImage() below deliberately does
+      // not, so every file produced from this canvas stays print-white.
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, textBoxes, editingTextIndex, { fieldTheme: 'screen' });
 
       // Alignment guides while a drag is snapped to a row/column/centerline
       if (activeGuides.x !== null || activeGuides.y !== null) {
@@ -716,7 +720,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         // against the untrimmed points, then slice to match `stroked`.
         const fullStyles = pendingPoint ? [...waypointSegmentStyles, lineStyle] : waypointSegmentStyles;
         const styles = fullStyles.slice(0, stroked.length - 1);
-        strokeStyledRuns(ctx, stroked, styles, waypointColor, ROUTE_LINE_WIDTH * scale, drawMode === 'waypoint');
+        // Same contrast under-stroke renderScene gives committed routes on the
+        // screen theme — otherwise a black route is faint WHILE being drawn.
+        const previewHalo = screenHalo(waypointColor, scale);
+        const previewLw = ROUTE_LINE_WIDTH * scale;
+        ctx.save();
+        ctx.globalAlpha = previewHalo.alpha;
+        strokeStyledRuns(ctx, stroked, styles, previewHalo.color, previewLw + previewHalo.width * 2, drawMode === 'waypoint', previewLw);
+        ctx.restore();
+        strokeStyledRuns(ctx, stroked, styles, waypointColor, previewLw, drawMode === 'waypoint');
         // Waypoint dots mark the points placed so far. Curved mode omits them:
         // the curve doesn't pass through its interior points, so a dot there
         // would sit off the line.
@@ -731,8 +743,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           });
         }
         if (pts.length >= 2) {
-          if (isBlock) drawBlockCap(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
-          else drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale);
+          const capHalo = screenHalo(waypointColor, scale);
+          if (isBlock) drawBlockCap(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale, capHalo);
+          else drawArrowhead(ctx, pts, waypointColor, ARROWHEAD_SIZE * scale, capHalo);
         }
       }
 
@@ -1882,7 +1895,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           onPointerCancel={handlePointerUp}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          className="block bg-white touch-none"
+          className="block bg-board touch-none"
           style={{ width: '100%', height: '100%' }}
         />
 

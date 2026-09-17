@@ -358,7 +358,9 @@ export function VsDefenseView() {
     canvas.height = Math.round(canvasSize.height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    renderOverlayScene(ctx, canvasSize.width, canvasSize.height, offenseScene, visibleDefenseScene);
+    // On-screen view: dark turf, like the designer. VsExportModal renders the
+    // same scenes with the default 'print' theme for the printed sheet.
+    renderOverlayScene(ctx, canvasSize.width, canvasSize.height, offenseScene, visibleDefenseScene, { fieldTheme: 'screen' });
   }, [canvasSize, offenseScene, visibleDefenseScene]);
 
   // ── Cycling ─────────────────────────────────────────────────

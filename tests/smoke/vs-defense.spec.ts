@@ -160,6 +160,23 @@ test('overlays a defense on the offense and cycles without disturbing the offens
   expect(errors, 'no uncaught page errors').toEqual([]);
 });
 
+test('the on-screen /vs canvas draws the dark turf theme', async ({ page }) => {
+  await mockBackend(page, DEFENSES);
+  await openVs(page);
+
+  // Same opt-in the designer makes (renderOverlayScene fieldTheme 'screen');
+  // VsExportModal keeps the default print theme. Top edge, horizontal center
+  // is field — turf base or a mow stripe, both deep green. Sampled in the
+  // canvas's own (retina-backed) pixels.
+  const px = await page.evaluate(() => {
+    const c = document.getElementById('vs-canvas') as HTMLCanvasElement;
+    const d = c.getContext('2d')!.getImageData(Math.round(c.width / 2), 2, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2] };
+  });
+  expect(px.g).toBeGreaterThan(px.r);
+  expect(Math.max(px.r, px.g, px.b)).toBeLessThan(96);
+});
+
 test('?d= restores a specific matchup on reload', async ({ page }) => {
   await mockBackend(page, DEFENSES);
   await openVs(page, `?play=${OFFENSE.id}&d=def-2`);

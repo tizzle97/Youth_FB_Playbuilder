@@ -51,6 +51,27 @@ test('exportImage() is 1650x1275 and white, whatever the screen shows', async ({
   expect(px).toEqual({ w: 1650, h: 1275, r: 255, g: 255, b: 255, a: 255 });
 });
 
+test('the live canvas draws dark turf while the export stays white', async ({ page }) => {
+  await openDesigner(page);
+
+  // Top edge, horizontal center: inside the field, above the sideline pad's
+  // chalk border, on either the turf base or a mow stripe — both deep green.
+  // Sampled in backing-store pixels (retina-scaled), so use the canvas's own
+  // width, not its CSS width.
+  const screen = await page.evaluate(() => {
+    const c = document.getElementById('play-canvas') as HTMLCanvasElement;
+    const d = c.getContext('2d')!.getImageData(Math.round(c.width / 2), 2, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2] };
+  });
+  expect(screen.g).toBeGreaterThan(screen.r);
+  expect(Math.max(screen.r, screen.g, screen.b)).toBeLessThan(96);
+
+  // …and the very same canvas's export is still the white page.
+  const url = await page.evaluate(() => (window as unknown as Bridge).__PBP_TEST__.exportImage());
+  const px = await samplePng(page, url, 2, 2);
+  expect(px).toEqual({ w: 1650, h: 1275, r: 255, g: 255, b: 255, a: 255 });
+});
+
 test('the stored-thumbnail size renders white too', async ({ page }) => {
   await openDesigner(page);
   // PlayDesigner persists exportImage(660, 510) to plays.thumbnail.
