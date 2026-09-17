@@ -173,7 +173,7 @@ export function Pricing() {
             <h3 className="font-display text-2xl text-chalk">What the wristband export gives you</h3>
             <p className="mt-3 text-chalk/70">
               Print your playbook as inserts sized for a QB wristband — with play diagrams, or as a
-              text-only call sheet. Cut them out and slide them in.
+              text-only call sheet. Cut them out and insert into your players' wristbands.
             </p>
           </div>
           <div className="mt-8">
