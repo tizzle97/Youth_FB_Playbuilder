@@ -3,7 +3,6 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -105,6 +104,23 @@ function backingScale(cssW: number, cssH: number): number {
   const dpr = Math.min(MAX_BACKING_DPR, window.devicePixelRatio || 1);
   const fit = Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, cssW * cssH));
   return Math.max(1, Math.min(dpr, fit));
+}
+
+// TEMPORARY — draw() timing, for DebugHud.tsx (PR #152's iOS mobile-bar
+// investigation). Two timestamp reads per draw call, always collected (cost
+// is negligible), read only by DebugHud, which itself only renders behind
+// ?debug=touch. Remove alongside DebugHud.tsx once resolved.
+const drawStats = { count: 0, lastMs: 0, maxMs: 0, recentTimestamps: [] as number[] };
+export function getDrawStats() {
+  const now = performance.now();
+  // Prune anything older than 5s so this can't grow unbounded over a session.
+  drawStats.recentTimestamps = drawStats.recentTimestamps.filter((t) => now - t < 5000);
+  return {
+    count: drawStats.count,
+    lastMs: Math.round(drawStats.lastMs * 10) / 10,
+    maxMs: Math.round(drawStats.maxMs * 10) / 10,
+    inLast1s: drawStats.recentTimestamps.filter((t) => now - t < 1000).length,
+  };
 }
 
 // A double-tap finishes a route. Two taps this far apart in space are two
@@ -619,6 +635,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      // TEMPORARY — see drawStats/getDrawStats above.
+      const _drawStart = performance.now();
       // Layout math is in CSS px (the width/height props) — the same units
       // every hit-test and popover anchor below uses. The backing store
       // (canvas.width/height, in DEVICE px) is now a normal React prop set
@@ -851,12 +869,31 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         else strokeStraight(ctx, pts, highlightColor, hlWidth);
         ctx.restore();
       }
+      // TEMPORARY — see drawStats/getDrawStats above.
+      const _dt = performance.now() - _drawStart;
+      drawStats.count++;
+      drawStats.lastMs = _dt;
+      drawStats.maxMs = Math.max(drawStats.maxMs, _dt);
+      drawStats.recentTimestamps.push(performance.now());
     }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone, width, height, backingDpr]);
 
-    // Redraw on state change. Layout effect, not a plain effect: draw() now
-    // owns the backing-store size, so the first paint must already carry the
-    // field — a plain effect left one frame of blank canvas on every resize.
-    useLayoutEffect(() => { draw(); }, [draw]);
+    // Redraw on state change.
+    //
+    // ⚠ Reverted from useLayoutEffect back to a plain effect (2026-09-17,
+    // PR #152's iOS mobile-bar investigation). useLayoutEffect ran draw()
+    // SYNCHRONOUSLY, blocking the main thread, on every resize — and a page
+    // load or orientation change fires a BURST of resize events in quick
+    // succession while iOS settles its own chrome. On a real iPhone, a
+    // synchronous canvas redraw landing in that window, repeatedly, is a
+    // plausible way for WebKit to drop delivering a touch to JS entirely
+    // (not misroute it — the mobile toolbar's chips went dead with ZERO
+    // pointerdown reaching even a capture-phase document listener, which
+    // rules out a wrong-element hit-test and points at the touch never being
+    // dispatched at all). useLayoutEffect was only ever justified by a
+    // cosmetic one-blank-frame-during-resize concern; that is a far smaller
+    // cost than the toolbar not working. If this doesn't fix it, the
+    // draw-timing numbers in DebugHud (getDrawStats) are the next lead.
+    useEffect(() => { draw(); }, [draw]);
 
     // Keep the parent's undo/redo button state in sync with this canvas's
     // internal history stacks. An in-progress route counts toward canUndo

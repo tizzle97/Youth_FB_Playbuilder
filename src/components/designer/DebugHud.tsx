@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getDrawStats } from './Canvas';
 
 /**
  * TEMPORARY diagnostic overlay for the iOS Safari "mobile bar dead until an
@@ -7,11 +8,15 @@ import { useEffect, useState } from 'react';
  * real users — no setup (cable, Web Inspector) needed to read it, just the
  * query param on the phone itself.
  *
- * Three prior fixes (two CSS, one canvas-sizing) each looked well-reasoned
- * from the diff and each missed, because none were checked against what's
- * actually happening on the device at the moment a tap fails. This shows
- * that instead: viewport/element geometry, live on every resize/orientation
- * change, plus exactly what a tap's target and elementFromPoint resolve to.
+ * Prior fixes each looked well-reasoned from the diff and each missed,
+ * because none were checked against what's actually happening on the device
+ * at the moment a tap fails. This shows that instead: viewport/element
+ * geometry (live on every resize/orientation change), exactly what a tap's
+ * target and elementFromPoint resolve to, and draw()'s own call count/timing
+ * (Canvas.tsx's getDrawStats) — a confirmed-empty tap (zero pointerdown
+ * reaching even a capture-phase document listener) pointed at the touch
+ * never being dispatched at all, and a burst of synchronous canvas redraws
+ * around resize is the leading theory for why.
  *
  * Delete this file and its one import + one JSX line in PlayDesigner.tsx,
  * and the `data-testid="mobile-toolbar"` attribute, once this is resolved.
@@ -52,6 +57,7 @@ export function DebugHud() {
   const [chipRect, setChipRect] = useState<Rect | null>(null);
   const [lastTap, setLastTap] = useState<TapInfo | null>(null);
   const [tick, setTick] = useState(0);
+  const [draws, setDraws] = useState(getDrawStats());
 
   useEffect(() => {
     if (!enabled) return;
@@ -63,6 +69,7 @@ export function DebugHud() {
       setCanvasRect(rectOf(document.getElementById('play-canvas')));
       // Any roster chip — they're all the same row; the first one found is enough.
       setChipRect(rectOf(document.querySelector('[data-testid="mobile-toolbar"] button[title^="Player "]')));
+      setDraws(getDrawStats());
     };
     measure();
     window.addEventListener('resize', measure);
@@ -110,6 +117,7 @@ ${line('main:   ', mainRect)}
 ${line('bar:    ', barRect)}${barBelowViewport === null ? '' : barBelowViewport ? '  <<< BAR EXTENDS BELOW VIEWPORT' : '  (fully in view)'}
 ${line('canvas: ', canvasRect)}
 ${line('chip:   ', chipRect)}${chipCoveredByCanvas === null ? '' : chipCoveredByCanvas ? '  <<< CHIP ROW OVERLAPS CANVAS RECT' : '  (clear of canvas)'}
+draws:  count=${draws.count} last=${draws.lastMs}ms max=${draws.maxMs}ms inLast1s=${draws.inLast1s}${draws.inLast1s >= 2 ? '  <<< BURST RIGHT NOW' : ''}
 lastTap: ${lastTap ? `x=${lastTap.x} y=${lastTap.y}\n  target=${lastTap.target}\n  efp=   ${lastTap.efp}` : '(tap something — including a dead chip — and it will show here)'}`}
     </div>
   );
