@@ -3,6 +3,7 @@ import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut } from 'lucide-react';
 import { Logo } from '../Logo';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
+import { DebugHud } from './DebugHud'; // TEMPORARY — see DebugHud.tsx
 import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
@@ -498,6 +499,9 @@ export function PlayDesigner() {
     // z-50: must outrank Navbar's sticky z-40 so this still fully covers it — see
     // the z-index note in Navbar.tsx.
     <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
+      {/* TEMPORARY — remove with DebugHud.tsx once the mobile-bar bug is
+          resolved. No-ops unless ?debug=touch is in the URL. */}
+      <DebugHud />
 
       {/* ── HEADER ─────────────────────────────────────────────── */}
       {/* pt uses calc(...+env(safe-area-inset-top)) rather than a separate
@@ -696,7 +700,9 @@ export function PlayDesigner() {
       </div>
 
       {/* ── MOBILE BOTTOM TOOLBAR ──────────────────────────────── */}
-      <div className="
+      <div
+        data-testid="mobile-toolbar"
+        className="
         sm:hidden shrink-0 bg-board-light border-t border-chalk/10 px-3 py-2 z-20
         pb-[env(safe-area-inset-bottom,8px)]
       ">
