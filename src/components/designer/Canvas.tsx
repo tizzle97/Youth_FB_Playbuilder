@@ -197,6 +197,24 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
   ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+    // Backing-store size, in DEVICE px — computed here so it can be passed as
+    // a normal React `width`/`height` prop on the <canvas> element below,
+    // rather than mutated on canvasRef imperatively inside draw(). The two
+    // are NOT equivalent on iOS Safari: confirmed on a real iPhone that the
+    // imperative form (this file's very first retina-backing commit) left
+    // touch targets below the canvas — the mobile bar's player chips and
+    // Offense/Defense control — dead until an unrelated layout change (e.g.
+    // the caption row appearing) forced a reflow. Letting React own the
+    // attribute means the resize goes through a normal commit, which a
+    // ref-mutation inside a layout effect does not, and WebKit's hit-test
+    // tree didn't reliably invalidate for the latter. Not fully explained,
+    // but bisected to exactly this, and removing the imperative mutation
+    // removes the whole category of bug rather than working around a guess
+    // at its mechanism.
+    const backingDpr = backingScale(width, height);
+    const backingWidth = Math.round(width * backingDpr);
+    const backingHeight = Math.round(height * backingDpr);
+
     const [paths, setPaths] = useState<PathItem[]>([]);
     const [playerIcons, setPlayerIcons] = useState<PlayerIcon[]>([]);
     const [zones, setZones] = useState<Zone[]>([]);
@@ -602,21 +620,17 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       // Layout math is in CSS px (the width/height props) — the same units
-      // every hit-test and popover anchor below uses. The backing store is
-      // sized at device resolution here, in the one place that draws, so a
+      // every hit-test and popover anchor below uses. The backing store
+      // (canvas.width/height, in DEVICE px) is now a normal React prop set
+      // on the element itself — see backingWidth/backingHeight above — so a
       // 1px yard line is a real device pixel on a retina display instead of
-      // being resampled to a grey smear. Assigning canvas.width resets the
-      // context, so the transform is re-applied every draw, not once at mount.
+      // being resampled to a grey smear. React resetting that attribute
+      // (whenever it actually changes) resets the drawing context same as an
+      // imperative assignment would, so the transform is re-applied every
+      // draw regardless, not once at mount.
       const W = width;
       const H = height;
-      const dpr = backingScale(W, H);
-      const bw = Math.round(W * dpr);
-      const bh = Math.round(H * dpr);
-      if (canvas.width !== bw || canvas.height !== bh) {
-        canvas.width = bw;
-        canvas.height = bh;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(backingDpr, 0, 0, backingDpr, 0, 0);
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
@@ -759,7 +773,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         ctx.shadowColor = color;
         // shadowBlur ignores the context transform — scale it by dpr by hand
         // or the glow renders half-size on a retina backing store.
-        ctx.shadowBlur = 24 * scale * dpr;
+        ctx.shadowBlur = 24 * scale * backingDpr;
         ctx.strokeStyle = color;
         ctx.lineWidth = 4 * scale;
         ctx.beginPath();
@@ -793,7 +807,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
         ctx.shadowColor = ringColor;
-        ctx.shadowBlur = 18 * scale * dpr;
+        ctx.shadowBlur = 18 * scale * backingDpr;
         ctx.strokeStyle = ringColor;
         ctx.lineWidth = 3 * scale;
         ctx.globalAlpha = 0.85;
@@ -825,7 +839,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const pts = target.points.map(toPx);
         ctx.save();
         ctx.shadowColor = highlightColor;
-        ctx.shadowBlur = 16 * scale * dpr;
+        ctx.shadowBlur = 16 * scale * backingDpr;
         ctx.globalAlpha = 0.55;
         // Trace the route's actual shape — a curved route used to get a
         // straight highlight that visibly missed its own line. Deliberately
@@ -837,7 +851,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         else strokeStraight(ctx, pts, highlightColor, hlWidth);
         ctx.restore();
       }
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone, width, height]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone, width, height, backingDpr]);
 
     // Redraw on state change. Layout effect, not a plain effect: draw() now
     // owns the backing-store size, so the first paint must already carry the
@@ -1884,9 +1898,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         <canvas
           id={id || 'play-canvas'}
           ref={canvasRef}
-          // No width/height attributes: draw() sizes the backing store at
-          // device resolution, and React re-applying CSS-px attributes here
-          // would reset it (and clear the canvas) on every size change.
+          // DEVICE px, not the CSS-px width/height props — see
+          // backingWidth/backingHeight above. React only touches this
+          // attribute when the value actually changes, so an unrelated
+          // re-render doesn't reset the backing store or clear the canvas.
+          width={backingWidth}
+          height={backingHeight}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
