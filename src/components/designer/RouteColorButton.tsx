@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RouteColorEditor } from './RouteColorEditor';
-import { toolbarClasses } from './toolbarStyles';
 
 const DEFAULT_PREVIEW_COLOR = '#3B82F6';
 
@@ -72,9 +71,9 @@ export function RouteColorButton({ value, onChange, fullWidth = false }: RouteCo
     };
   }, [open]);
 
-  // Shared with DesignerToolbar so this trigger's pressed look matches the
-  // tools around it (it used to carry its own copy of these strings).
-  const { btnBase, inactive, active } = toolbarClasses(fullWidth);
+  const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
+  const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
+  const active = 'bg-primary/20 text-primary';
   const isAuto = value === 'auto';
 
   return (

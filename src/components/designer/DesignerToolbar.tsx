@@ -4,7 +4,6 @@ import { PlayerToolbar } from './PlayerToolbar';
 import { resolveRoster, type CustomRoster } from './rosters';
 import { FormationMenu } from './FormationMenu';
 import { RouteColorButton } from './RouteColorButton';
-import { toolbarClasses } from './toolbarStyles';
 import type { DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
 import type { PlayMetadata } from '../../types/play';
 
@@ -220,18 +219,15 @@ export function DesignerToolbar({
   // Safe for the canvas: it's width-bound on a phone (min(maxW, maxH * ratio)
   // in PlayDesigner), with ~215px of vertical slack before the height term
   // starts binding, so a taller bar costs no drawing area.
-  // One shared set of tool styles (also used by RouteColorButton and
-  // FormationMenu, so the whole column has a single "pressed" look).
-  const { btnBase, inactive, active, activeWarn, tool, iconOnly, eyebrow } = toolbarClasses(vertical);
-  // The mobile bar still separates groups with a hairline; the sidebar
-  // labels them instead (see section()).
-  const divider = 'w-px h-5 bg-chalk/15 shrink-0 mx-0.5';
-  // A tool group boundary: a labeled eyebrow in the sidebar — the groups are
-  // real families (Draw / Route / Edit / Players), so a label carries more
-  // than a rule — and a plain divider in the scrolling mobile bar, where
-  // there's no room for labels.
-  const section = (name: string) =>
-    vertical ? <p data-testid="toolbar-section" className={eyebrow}>{name}</p> : <div className={divider} />;
+  const btnBase = `flex items-center rounded-lg transition-colors shrink-0${vertical ? '' : ' tap-target'}`;
+  const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
+  const active = 'bg-primary/20 text-primary';
+  // Tool buttons: full-width labeled rows in the sidebar, compact chips in the bar
+  const tool = vertical
+    ? `${btnBase} w-full justify-start gap-2 px-2.5 py-2 text-xs font-medium`
+    : `${btnBase} justify-center px-2.5 py-2 gap-1.5 text-xs font-medium`;
+  const iconOnly = `${btnBase} justify-center p-2 min-w-[36px]`;
+  const divider = vertical ? 'h-px w-full bg-chalk/15 my-1 shrink-0' : 'w-px h-5 bg-chalk/15 shrink-0 mx-0.5';
   // `hidden sm:inline` used to be the horizontal branch, which hid every label
   // unconditionally: the horizontal orientation is ONLY rendered below sm (see
   // PlayDesigner's `sm:hidden` bottom bar), so the label could never appear on
@@ -255,10 +251,9 @@ export function DesignerToolbar({
   );
 
   return (
-    <div className="flex flex-col w-full gap-1">
+    <div className={`flex flex-col w-full ${vertical ? 'gap-2' : 'gap-1'}`}>
       {/* Tools: a column of labeled rows (sidebar) or one scrollable row (bar) */}
       <div className={vertical ? 'flex flex-col items-stretch gap-0.5' : `${scrollRow} pb-0.5`}>
-        {vertical && section('Draw')}
 
         {/* Select */}
         <button
@@ -290,7 +285,7 @@ export function DesignerToolbar({
           {vertical && <span className="whitespace-nowrap">Snap</span>}
         </button>
 
-        {section('Route')}
+        <div className={divider} />
 
         {/* Straight — both this and Curved below are multi-segment: tap or
             drag to place any number of points, double-tap to finish. The
@@ -316,7 +311,7 @@ export function DesignerToolbar({
           <span className={label}>Curved</span>
         </button>
 
-        {!vertical && <div className={divider} />}
+        <div className={divider} />
 
         {/* Ending style: click to flip between arrowhead and a perpendicular
             block cap. Independent of shape (Straight/Curved above) — a route
@@ -373,7 +368,7 @@ export function DesignerToolbar({
         <button
           onClick={toggleDeleteRouteMode}
           title="Remove a route (tap the route)"
-          className={`${tool} ${deleteRouteMode ? activeWarn : inactive}`}
+          className={`${tool} ${deleteRouteMode ? 'bg-amber-500/20 text-amber-400' : inactive}`}
         >
           <RouteOff className="h-4 w-4" />
           <span className={label}>Remove Route</span>
@@ -421,16 +416,17 @@ export function DesignerToolbar({
           </button>
         )}
 
-        {section('Edit')}
-
         {playType === 'offense' && (
           <>
+            <div className={divider} />
             <FormationMenu gameType={gameType} onSetGameType={onSetGameType} onStamp={onStampFormation} getCurrentIcons={getCurrentIcons} fullWidth={vertical} />
           </>
         )}
 
         {showZoneTools && (
           <>
+            <div className={divider} />
+
             {/* Zone of responsibility */}
             <button
               onClick={toggleZoneMode}
@@ -445,7 +441,7 @@ export function DesignerToolbar({
             <button
               onClick={toggleDeleteZoneMode}
               title="Remove a player's zone (tap the zone or the player)"
-              className={`${tool} ${deleteZoneMode ? activeWarn : inactive}`}
+              className={`${tool} ${deleteZoneMode ? 'bg-amber-500/20 text-amber-400' : inactive}`}
             >
               <CircleOff className="h-4 w-4" />
               <span className={label}>Remove Zone</span>
@@ -453,7 +449,7 @@ export function DesignerToolbar({
           </>
         )}
 
-        {!vertical && <div className={divider} />}
+        <div className={divider} />
 
         {/* Undo / redo / clears: always compact icons — one row in the sidebar
             (display:contents keeps the horizontal bar's flat flex layout) */}
@@ -474,16 +470,14 @@ export function DesignerToolbar({
           <button
             onClick={onClearRoutes}
             title="Clear Routes"
-            className={`${vertical ? iconOnly : `${btnBase} justify-center px-2.5 py-2 gap-1 text-xs`} ${inactive}`}
+            className={`${vertical ? iconOnly : `${btnBase} justify-center px-2.5 py-2 gap-1 text-xs`} text-yellow-400 hover:bg-yellow-400/10`}
           >
             <Eraser className="h-4 w-4" />
             {!vertical && <span className={label}>Routes</span>}
           </button>
 
           {/* Clear all */}
-          {/* Clear All is an instant destructive action, not an armed mode, so
-              it keeps a warning — but only on hover, not sitting red at rest. */}
-          <button onClick={onClear} title="Clear All" className={`${btnBase} justify-center px-2.5 py-2 gap-1 text-xs ${inactive} hover:text-red-300 hover:bg-red-400/10`}>
+          <button onClick={onClear} title="Clear All" className={`${btnBase} justify-center px-2.5 py-2 gap-1 text-xs text-red-400 hover:bg-red-400/10`}>
             <Eraser className="h-4 w-4" />
             <span className={label}>All</span>
           </button>
@@ -491,7 +485,7 @@ export function DesignerToolbar({
         {!vertical && edgeFade}
       </div>
 
-      {vertical && section('Players')}
+      {vertical && <div className={divider} />}
 
       {/* Play type + player icons: wrapped grid (sidebar) or scrollable row (bar) */}
       <div className={vertical ? 'flex flex-col gap-2' : scrollRow}>
@@ -505,8 +499,8 @@ export function DesignerToolbar({
               key={t}
               disabled={playTypeLocked}
               onClick={() => onSetPlayType(t)}
-              className={`${vertical ? 'flex-1' : 'tap-target'} px-1.5 py-1 text-[11px] font-medium capitalize transition-colors duration-150 motion-reduce:transition-none ${
-                playType === t ? 'bg-primary/15 text-chalk' : 'text-chalk/60 hover:text-chalk hover:bg-white/5'
+              className={`${vertical ? 'flex-1' : 'tap-target'} px-1.5 py-1 text-[11px] font-medium capitalize transition-colors ${
+                playType === t ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk'
               } ${playTypeLocked ? 'cursor-not-allowed' : ''}`}
             >
               {t.replace('_', ' ')}
@@ -527,7 +521,7 @@ export function DesignerToolbar({
 
       {/* Active mode label */}
       {(activeDraw || deleteRouteMode || recolorRouteMode || copyRouteMode || zoneMode || deleteZoneMode || textMode) && (
-        <p className="font-label text-[10px] tracking-wide text-chalk/50 px-3 flex items-center gap-1">
+        <p className="text-[10px] text-chalk/50 px-1 flex items-center gap-1">
           <span className={`font-semibold ${(deleteRouteMode || deleteZoneMode) ? 'text-amber-400' : 'text-primary'}`}>
             {deleteRouteMode && 'Remove route mode'}
             {recolorRouteMode && 'Recolor route mode'}

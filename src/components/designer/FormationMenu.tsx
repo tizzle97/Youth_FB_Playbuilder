@@ -8,7 +8,6 @@ import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { loadCustomFormations, saveCustomFormation, deleteCustomFormation } from '../../lib/customFormations';
 import { getSafeErrorMessage } from '../../lib/errors';
-import { toolbarClasses } from './toolbarStyles';
 
 const GAME_TYPES: PlayMetadata['gameType'][] = ['5v5', '6v6', '7v7', '11v11'];
 
@@ -143,9 +142,9 @@ export function FormationMenu({ gameType, onSetGameType, onStamp, getCurrentIcon
     }
   };
 
-  // Shared with DesignerToolbar so this trigger's pressed look matches the
-  // tools around it (it used to carry its own copy of these strings).
-  const { btnBase, inactive, active } = toolbarClasses(fullWidth);
+  const btnBase = 'flex items-center rounded-lg transition-colors shrink-0';
+  const inactive = 'text-chalk/60 hover:text-chalk hover:bg-white/10';
+  const active = 'bg-primary/20 text-primary';
 
   return (
     <div className={`relative shrink-0 ${fullWidth ? 'w-full' : ''}`}>

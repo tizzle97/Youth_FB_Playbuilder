@@ -17,9 +17,8 @@ interface PlayerIconProps {
 }
 
 const PlayerIcon: React.FC<PlayerIconProps> = ({ letter, color, shape, isSelected, editing, onClick, onDragStart }) => {
-  // hover:bg-white/5 was invisible here — the sidebar IS board-light.
-  const buttonClasses = `relative p-2 rounded-md transition-colors duration-150 motion-reduce:transition-none ${
-    isSelected ? 'bg-primary/15 ring-1 ring-primary/60' : 'hover:bg-white/5'
+  const buttonClasses = `relative p-2 rounded-md transition-colors ${
+    isSelected ? 'bg-primary/20' : 'hover:bg-board-light'
   }`;
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -175,7 +174,7 @@ export function PlayerToolbar({
       <button
         onClick={() => setShowCustomEditor(true)}
         title="Custom player (choose label and color)"
-        className="p-2 rounded-md transition-colors hover:bg-white/5"
+        className="p-2 rounded-md transition-colors hover:bg-board-light"
       >
         <div className="w-8 h-8 rounded-full border-2 border-dashed border-chalk/40 flex items-center justify-center text-chalk/60 hover:text-chalk hover:border-chalk/70 transition-colors">
           <UserPlus className="h-4 w-4" />
@@ -190,7 +189,7 @@ export function PlayerToolbar({
             title={editMode ? 'Done editing players' : 'Edit your players'}
             aria-pressed={editMode}
             className={`tap-target flex items-center justify-center p-2 rounded-md transition-colors ${
-              editMode ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk hover:bg-white/5'
+              editMode ? 'bg-primary/20 text-primary' : 'text-chalk/60 hover:text-chalk hover:bg-board-light'
             }`}
           >
             {editMode ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
@@ -199,7 +198,7 @@ export function PlayerToolbar({
             <button
               onClick={handleReset}
               title="Reset these players to the defaults"
-              className="p-2 rounded-md text-chalk/60 hover:text-chalk hover:bg-white/5 transition-colors"
+              className="p-2 rounded-md text-chalk/60 hover:text-chalk hover:bg-board-light transition-colors"
             >
               <RotateCcw className="h-4 w-4" />
             </button>

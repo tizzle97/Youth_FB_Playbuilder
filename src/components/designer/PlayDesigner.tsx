@@ -521,12 +521,9 @@ export function PlayDesigner() {
         {/* Title */}
         <div className="flex items-center gap-1.5 mr-auto min-w-0">
           <Logo className="h-6 w-6 text-chalk shrink-0" />
-          {/* The brand display face (Anton), as on the marketing site — the
-              tool should read as the same product. "(editing)" drops back to
-              the body face so it reads as a status, not part of the name. */}
-          <span className="font-display uppercase tracking-wide text-chalk text-lg leading-none truncate">
+          <span className="font-bold text-chalk text-sm sm:text-base truncate">
             Play Designer
-            {isEditingExistingPlay && <span className="font-sans font-normal normal-case tracking-normal text-chalk/50 ml-1.5 text-xs hidden sm:inline">(editing)</span>}
+            {isEditingExistingPlay && <span className="font-normal text-chalk/50 ml-1 text-xs hidden sm:inline">(editing)</span>}
           </span>
         </div>
 
@@ -568,11 +565,7 @@ export function PlayDesigner() {
       {/* Desktop: toolbar in a left sidebar so the full viewport height goes
           to the aspect-locked canvas | Mobile: bottom bar (below) */}
       <div className="relative flex-1 flex min-h-0">
-        {/* `board` (darker than the board-light header) so the tool column
-            reads as a distinct surface under the header instead of the same
-            navy split by a 1px rule. Top padding comes from the first section
-            eyebrow. */}
-        <aside className="hidden sm:block w-52 shrink-0 bg-board border-r border-chalk/10 px-2.5 pb-3 z-20 overflow-y-auto">
+        <aside className="hidden sm:block w-52 shrink-0 bg-board-light border-r border-chalk/10 px-2.5 py-3 z-20 overflow-y-auto">
           <DesignerToolbar
             orientation="vertical"
             playType={playType}
