@@ -61,7 +61,13 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
   fail the run. Don't add new errors.
 - `npm run smoke` — Playwright smoke suite (`tests/smoke/`), drives the real app
   headlessly on its own port (4517). Tests assert on real canvas state via the
-  dev-only `window.__PBP_TEST__` bridge in `PlayDesigner.tsx` — no pixel sampling.
+  dev-only `window.__PBP_TEST__` bridge in `PlayDesigner.tsx` — no pixel
+  sampling, with two deliberate exceptions where pixels ARE the contract:
+  `designer-export-identity.spec.ts` (the export must be 1650×1275 white while
+  the screen is turf) and the `#vs-canvas` probe in `vs-defense.spec.ts`.
+  ⚠ When reading a `verify` log, the `N failed` line prints ABOVE the
+  `skipped`/`passed` lines — `tail -3` hides it. Grep for `failed` and check
+  the real exit code; a `197 passed` with six ✘ above it fooled one commit.
   **If your environment ships its own Chromium** instead of the pinned one
   Playwright downloads (the cloud agent container does), set
   `PBP_CHROMIUM_PATH=/path/to/chromium` — don't hand-edit `playwright.config.ts`.
@@ -195,6 +201,34 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
+- **⚠ Two field themes, and exports must never see the second one.**
+  `renderScene`'s `opts.fieldTheme` is `'print'` by default — the white
+  printed-playbook page that every export, stored thumbnail, PDF sheet,
+  wristband cell, hero card and `/vs` export uses — and `'screen'`, the dark
+  turf the live designer and `/vs` view draw on. Exactly two callers pass
+  `'screen'` (`Canvas.tsx` `draw()` and `VsDefenseView.tsx`); nothing that
+  produces a file may. The `print` palette is the literal pre-theme colors and
+  every screen-only draw call is gated, so print output is byte-identical to
+  before the theme existed (proven by SHA-256 of `exportImage()` at the time;
+  guarded now by `tests/smoke/designer-export-identity.spec.ts`). Screen-only
+  legibility comes from a luminance-aware halo (`screenHalo()`), never from
+  changing a user's color. `ExportModal` must call `exportImage()` and never
+  scrape `#play-canvas` — that fallback once existed and would print turf.
+  ⚠ A retina backing-store attempt (drawing the live canvas at
+  `devicePixelRatio` for sharper on-screen lines) shipped briefly on this
+  branch and was reverted 2026-09-17: it left the mobile toolbar's second row
+  (player chips, Offense/Defense/Special Teams) dead to touch on real iOS
+  Safari — confirmed by bisecting to that exact commit on-device, and by
+  forcing the backing store back to 1:1 CSS-pixel size (which should have
+  been behaviorally identical to not having the feature at all) *still*
+  leaving it dead, meaning the touch is never dispatched to the page at all,
+  for a reason never fully identified. None of it reproduced in Chromium or
+  WebKit emulation. If retina backing is attempted again, get real Safari Web
+  Inspector access to a device *before* writing a fix — five rounds of
+  screenshot-relay bisection across separate hypotheses (hit-testing, an OS
+  edge gesture, main-thread blocking, backing-store size) each looked
+  well-reasoned and each missed, which real DevTools access would very likely
+  have shortened to one.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized

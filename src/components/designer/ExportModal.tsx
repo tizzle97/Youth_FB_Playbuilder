@@ -12,6 +12,7 @@ import {
 } from '../../lib/exportStyles';
 import { WRISTBAND_PRODUCT_NAME, WRISTBAND_WINDOW_SIZE, wristbandProductLink, SHOW_AFFILIATE_DISCLOSURE } from '../../lib/wristbandProducts';
 import { WristbandPreview } from '../WristbandPreview';
+import type { CanvasHandle } from './Canvas';
 import type { PreviewPlay } from '../../lib/wristbandDemo';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
@@ -25,7 +26,7 @@ interface PlayData {
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  canvasRef?: React.RefObject<any>;
+  canvasRef: React.RefObject<CanvasHandle>;
   playMetadata?: PlayMetadata;
   onUpdateMetadata?: (metadata: PlayMetadata) => void;
   userHasAccount?: boolean;
@@ -85,16 +86,12 @@ export function ExportModal({
     onUpdateMetadata?.(updated);
   };
 
-  const getCurrentCanvasData = (): string => {
-    // Fixed-resolution render so prints are identical on every device
-    const fixed = canvasRef?.current?.exportImage?.();
-    if (fixed) return fixed;
-    const canvas = document.getElementById('play-canvas') as HTMLCanvasElement;
-    if (canvas) {
-      return canvas.toDataURL('image/png', 1.0);
-    }
-    return '';
-  };
+  // Always the fixed-resolution PRINT render. This used to fall back to
+  // scraping #play-canvas with toDataURL, which would now copy the live
+  // canvas — drawn in the dark turf theme, at device resolution and whatever
+  // zoom — straight into a printed sheet. There is no legitimate fallback:
+  // exportImage() builds its own white 1650x1275 render from the same data.
+  const getCurrentCanvasData = (): string => canvasRef.current?.exportImage() ?? '';
 
   const generateSinglePlayHTML = (playData: PlayData): string => {
     return `

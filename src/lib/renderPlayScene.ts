@@ -43,14 +43,104 @@ export function iconScaleForCount(n: number): number {
   return 1 - t * (1 - ICON_SCALE_FLOOR);
 }
 
-const FIELD_BG = '#FFFFFF';
+/**
+ * Which field a scene is drawn on.
+ *
+ * 'print' is the white printed-playbook page and is the DEFAULT — every
+ * export, stored thumbnail, PDF sheet, wristband cell, hero card and /vs
+ * export renders with it, and it must never change (a test hashes the
+ * export bytes). 'screen' is the dark turf the live designer draws on, opted
+ * into by exactly the on-screen canvases. The two never mix: the print path
+ * executes the same context calls, in the same order, with the same literal
+ * colors it always has — 'screen' only ever ADDS gated draw calls.
+ */
+export type FieldTheme = 'print' | 'screen';
+
+type FieldPalette = {
+  bg: string;
+  /** Alternating 5-yard mow-stripe color; null = flat (print). */
+  stripe: string | null;
+  yardLine: string;
+  hash: string;
+  yardNumber: string;
+  los: string;
+  border: string;
+  /** Contrast under-stroke colors (screen only): haloLight goes under dark
+   *  fills, haloDark under light ones — see screenHalo(). */
+  haloLight: string;
+  haloDark: string;
+};
+
+const FIELD_THEMES: Record<FieldTheme, FieldPalette> = {
+  // The exact strings this file has always used — a rename, not a retune.
+  print: {
+    bg: '#FFFFFF',
+    stripe: null,
+    yardLine: '#D8D8D8',
+    hash: '#B0B0B0',
+    yardNumber: '#C4C4C4',
+    los: '#1a1a1a',
+    border: '#1a1a1a',
+    haloLight: '#FFFFFF', // unused: halos are gated on theme === 'screen'
+    haloDark: '#1a1a1a',
+  },
+  // Lit turf: deep green-black with chalk lines. Darker than `primary`
+  // (#1FA75D) so routes drawn in the brand green still separate from it.
+  screen: {
+    bg: '#0F2A1E',
+    // One quiet step above the base — enough to read as mown turf at a
+    // glance, not enough to compete with routes. Tuned on screen.
+    stripe: '#143523',
+    yardLine: 'rgba(248,246,241,0.55)',
+    hash: 'rgba(248,246,241,0.40)',
+    yardNumber: 'rgba(248,246,241,0.35)',
+    los: '#F8F6F1',
+    border: '#F8F6F1',
+    haloLight: '#F8F6F1',
+    haloDark: '#0F2A1E',
+  },
+};
+
 const SIDELINE_PADDING = 8;
-const FIELD_BORDER_COLOR = '#1a1a1a';
-const YARD_LINE_COLOR = '#D8D8D8';
-const HASH_COLOR = '#B0B0B0';
 const HASH_TICK_LEN = 10;
-const YARD_NUMBER_COLOR = '#C4C4C4';
-const LOS_COLOR = '#1a1a1a';
+
+/** A thin under-stroke in the opposite luminance, drawn beneath an icon,
+ *  route or annotation so a coach's own colors stay legible on dark turf
+ *  without anyone's color being changed — a black center, a navy route or
+ *  black annotation text would otherwise vanish. Screen theme only. */
+export type Halo = { color: string; width: number; alpha: number };
+const HALO_WIDTH = 1.5; // px at REF_SIZE, scaled like every other size
+const HALO_ALPHA = 0.55; // routes/arrowheads; icon rims and text halos draw opaque
+// WCAG relative luminance below this gets the chalk halo. Every default
+// roster chip (black 0, purple .20, blue .24, green .36, lime .48) lands
+// under it, giving the uniform outlined-token look; only white/yellow get
+// the turf-dark rim.
+const HALO_LUMINANCE_SPLIT = 0.5;
+
+/** WCAG relative luminance of a #rrggbb / #rgb color, 0 (black) to 1 (white).
+ *  Anything unparseable returns 0 — treated as dark, so it gets the chalk
+ *  halo, which is the legible failure mode on turf. */
+export function relLuminance(hex: string): number {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  if (h.length !== 6) return 0;
+  const lin = (i: number) => {
+    const v = parseInt(h.substring(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+}
+
+/** The halo a fill of this color needs on the screen theme. Exported for the
+ *  designer's in-progress route preview, which strokes outside renderScene. */
+export function screenHalo(fill: string, scale: number): Halo {
+  const p = FIELD_THEMES.screen;
+  return {
+    color: relLuminance(fill) < HALO_LUMINANCE_SPLIT ? p.haloLight : p.haloDark,
+    width: HALO_WIDTH * scale,
+    alpha: HALO_ALPHA,
+  };
+}
 // One universal field for every game format (styled after a printed flag
 // playbook page): 17 yards upfield of the LOS, 13 behind it. The sideline
 // yard numbers label the LOS as the "20", so 10/20/30 read exactly like the
@@ -205,8 +295,10 @@ export type TextBox = {
 
 export const TEXT_BOX_SIZES = { small: 14, medium: 20, large: 28 } as const;
 export const DEFAULT_TEXT_BOX_SIZE: number = TEXT_BOX_SIZES.medium;
-// The field background is white (a printed-playbook look — see FIELD_BG), so
-// black is the only default that's legible without the user picking a color.
+// The PRINT field is white (see FIELD_THEMES.print), so black is the only
+// default that's legible on paper without the user picking a color. On the
+// screen theme the turf draws a chalk halo under it, so black stays the right
+// default for both surfaces.
 export const DEFAULT_TEXT_BOX_COLOR = '#000000';
 const TEXT_BOX_FONT = (px: number) => `700 ${px}px Inter, Arial, sans-serif`;
 const TEXT_BOX_LINE_HEIGHT_RATIO = 1.2;
@@ -408,10 +500,14 @@ export function strokeStyledRuns(
   color: string,
   lw: number,
   curved: boolean,
+  /** Width the dash pattern and zigzag geometry are derived from. Defaults
+   *  to `lw`; a contrast halo passes the BASE width here while stroking
+   *  wider, so its dashes and teeth land exactly under the color pass. */
+  dashLw: number = lw,
 ) {
   if (pts.length < 2) return;
-  const dash: [number, number] = [lw * 2.5, lw * 2];
-  const zig = (run: Pt[]) => motionZigzag(run, MOTION_WAVELENGTH * lw, MOTION_AMPLITUDE * lw);
+  const dash: [number, number] = [dashLw * 2.5, dashLw * 2];
+  const zig = (run: Pt[]) => motionZigzag(run, MOTION_WAVELENGTH * dashLw, MOTION_AMPLITUDE * dashLw);
   // Each run sets its own dash inside save/restore — a dash leaked from a
   // neighbouring run would turn a squiggle into confetti.
   const strokeOne = (run: Pt[], style: LineStyle) => {
@@ -486,7 +582,7 @@ export function trimEnd(pts: Pt[], dist: number): Pt[] {
   return out;
 }
 
-export function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number) {
+export function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number, halo?: Halo) {
   if (pts.length < 2) return;
   const tip = pts[pts.length - 1];
   let from = pts[pts.length - 2];
@@ -511,6 +607,15 @@ export function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: s
   ctx.lineTo(tip.x - ux * size - uy * (size * 0.45), tip.y - uy * size + ux * (size * 0.45));
   ctx.lineTo(tip.x - ux * size + uy * (size * 0.45), tip.y - uy * size - ux * (size * 0.45));
   ctx.closePath();
+  if (halo) {
+    ctx.save();
+    ctx.globalAlpha = halo.alpha;
+    ctx.strokeStyle = halo.color;
+    ctx.lineWidth = halo.width * 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.fill();
   ctx.restore();
 }
@@ -522,7 +627,7 @@ export function drawArrowhead(ctx: CanvasRenderingContext2D, pts: Pt[], color: s
  * tip (see the `useBlockCap` trim skip in renderScene) since the bar sits
  * on the endpoint rather than tapering to it like an arrowhead does.
  */
-export function drawBlockCap(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number) {
+export function drawBlockCap(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, size: number, halo?: Halo) {
   if (pts.length < 2) return;
   const tip = pts[pts.length - 1];
   let from = pts[pts.length - 2];
@@ -545,12 +650,20 @@ export function drawBlockCap(ctx: CanvasRenderingContext2D, pts: Pt[], color: st
   const py = ux;
   const halfWidth = size * 0.6;
   ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = size * 0.28;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(tip.x + px * halfWidth, tip.y + py * halfWidth);
   ctx.lineTo(tip.x - px * halfWidth, tip.y - py * halfWidth);
+  if (halo) {
+    // Under-stroke first, wider, so a rim shows on both sides of the bar.
+    ctx.globalAlpha = halo.alpha;
+    ctx.strokeStyle = halo.color;
+    ctx.lineWidth = size * 0.28 + halo.width * 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = size * 0.28;
   ctx.stroke();
   ctx.restore();
 }
@@ -559,6 +672,14 @@ export function drawBlockCap(ctx: CanvasRenderingContext2D, pts: Pt[], color: st
  *  drawn on a slightly larger circumradius so their visual weight matches
  *  the circle/square. */
 function fillIconShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, shape: IconShape) {
+  traceIconShape(ctx, cx, cy, size, shape);
+  ctx.fill();
+}
+
+/** The icon's outline as the current path, unfilled — so the screen theme
+ *  can stroke a contrast rim beneath it before the fill. Same geometry
+ *  fillIconShape has always drawn. */
+function traceIconShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, shape: IconShape) {
   const r = size / 2;
   ctx.beginPath();
   if (shape === 'square') {
@@ -586,7 +707,6 @@ function fillIconShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, si
   } else {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
   }
-  ctx.fill();
 }
 
 /** How much of the icon's width the label may occupy — narrower shapes
@@ -598,17 +718,34 @@ const TEXT_FIT: Record<IconShape, number> = {
   star: 0.55,
 };
 
-function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) {
+function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number, theme: FieldTheme) {
+  const t = FIELD_THEMES[theme];
   const pad = SIDELINE_PADDING * scale;
   ctx.save();
-  ctx.fillStyle = FIELD_BG;
+  ctx.fillStyle = t.bg;
   ctx.fillRect(0, 0, W, H);
 
   // Yard lines every 5, anchored to the LOS (not the field edges — with a
   // 17/13 window the edges aren't on the 5-yard grid).
-  ctx.strokeStyle = YARD_LINE_COLOR;
-  ctx.lineWidth = Math.max(1, scale);
   const firstLine = -Math.floor(FIELD_YARDS_ABOVE_LOS / 5) * 5;
+
+  // Mow stripes (screen theme only — print.stripe is null): alternating
+  // 5-yard bands on the same LOS-anchored grid as the yard lines, so empty
+  // field reads as turf rather than nothing. One band above firstLine so the
+  // partial band at the top edge is painted too; each clamped to the canvas.
+  // Full width, past the sideline pad, so a CSS-rounded corner clips turf.
+  if (t.stripe) {
+    ctx.fillStyle = t.stripe;
+    for (let y = firstLine - 5, band = 0; y < FIELD_YARDS_BELOW_LOS; y += 5, band++) {
+      if (band % 2) continue;
+      const y0 = Math.max(0, yFromYards(y, H));
+      const y1 = Math.min(H, yFromYards(y + 5, H));
+      if (y1 > y0) ctx.fillRect(0, y0, W, y1 - y0);
+    }
+  }
+
+  ctx.strokeStyle = t.yardLine;
+  ctx.lineWidth = Math.max(1, scale);
   for (let y = firstLine; y <= FIELD_YARDS_BELOW_LOS; y += 5) {
     const py = yFromYards(y, H);
     ctx.beginPath();
@@ -620,7 +757,7 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   // Per-yard ticks: two interior hash columns at one-third width (the
   // NFHS/youth inset) plus sideline ticks hugging both borders, like a
   // printed playbook page. Same field for every game format.
-  ctx.strokeStyle = HASH_COLOR;
+  ctx.strokeStyle = t.hash;
   ctx.lineWidth = Math.max(1, scale);
   const tick = HASH_TICK_LEN * scale;
   const lhx = pad + (W - pad * 2) * HASH_LEFT_X_RATIO;
@@ -636,7 +773,7 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   // Sideline yard numbers, LOS labeled as the "20" (so 10/20/30 read like a
   // real field with the offense on its own 20). Rotated to lie along the
   // sidelines, mirrored left/right like painted field numbers.
-  ctx.fillStyle = YARD_NUMBER_COLOR;
+  ctx.fillStyle = t.yardNumber;
   ctx.font = `700 ${28 * scale}px 'Inter var', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -657,7 +794,7 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
 
   // Line of scrimmage (the "20")
   const losY = yFromYards(0, H);
-  ctx.strokeStyle = LOS_COLOR;
+  ctx.strokeStyle = t.los;
   ctx.lineWidth = 3 * scale;
   ctx.beginPath();
   ctx.moveTo(pad, losY);
@@ -665,7 +802,7 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   ctx.stroke();
 
   // Bold border, drawn last so it sits crisply over the line ends.
-  ctx.strokeStyle = FIELD_BORDER_COLOR;
+  ctx.strokeStyle = t.border;
   ctx.lineWidth = Math.max(1.5, 2 * scale);
   ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
   ctx.restore();
@@ -818,6 +955,7 @@ function drawTextBoxes(
   textBoxes: TextBox[],
   scale: number,
   selectedTextIndex: number | null,
+  haloFor: (fill: string) => Halo | undefined,
 ) {
   textBoxes.forEach((tb, i) => {
     const cx = tb.x * W;
@@ -828,10 +966,19 @@ function drawTextBoxes(
     const startY = cy - (lineHeight * (lines.length - 1)) / 2;
 
     ctx.save();
-    ctx.fillStyle = tb.color;
     ctx.font = TEXT_BOX_FONT(fontSize);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const halo = haloFor(tb.color);
+    if (halo) {
+      // Opaque stroked halo under the glyphs — the classic "readable on any
+      // background" treatment, so black annotation text survives dark turf.
+      ctx.strokeStyle = halo.color;
+      ctx.lineWidth = Math.max(2, 3 * scale);
+      ctx.lineJoin = 'round';
+      lines.forEach((line, li) => ctx.strokeText(line, cx, startY + li * lineHeight));
+    }
+    ctx.fillStyle = tb.color;
     lines.forEach((line, li) => ctx.fillText(line, cx, startY + li * lineHeight));
     ctx.restore();
 
@@ -855,6 +1002,11 @@ export type RenderSceneOptions = {
   /** Size icons as if this many were on the field, rather than
    *  playerIcons.length — see renderOverlayScene for why. */
   iconCountOverride?: number;
+  /** 'print' (default) is the white paper every export and thumbnail uses
+   *  and must never change. 'screen' is the dark turf the live designer
+   *  draws on — passed from exactly the on-screen canvases (Canvas.tsx
+   *  draw() and VsDefenseView), never from anything that produces a file. */
+  fieldTheme?: FieldTheme;
 };
 
 /**
@@ -885,10 +1037,15 @@ export function renderScene(
   const arrowSize = ARROWHEAD_SIZE * scale;
   const iconSize =
     PLAYER_SIZE * scale * iconScaleForCount(opts.iconCountOverride ?? playerIcons.length);
+  const theme: FieldTheme = opts.fieldTheme ?? 'print';
+  // Every halo block below is `if (halo)`, and this returns undefined for
+  // print — so the print path adds no draw calls at all.
+  const haloFor = (fill: string): Halo | undefined =>
+    theme === 'screen' ? screenHalo(fill, scale) : undefined;
 
   if (!opts.skipFieldReset) {
     ctx.clearRect(0, 0, W, H);
-    drawField(ctx, W, H, scale);
+    drawField(ctx, W, H, scale, theme);
   }
   // Zones sit on top of the grid (translucent, so it shows through) but
   // underneath routes/icons, which should stay crisp.
@@ -911,9 +1068,19 @@ export function renderScene(
     // array still line up with the segments still visually present —
     // resolve against the untrimmed points, then slice to match.
     const styles = resolveSegmentStyles(p).slice(0, stroked.length - 1);
-    strokeStyledRuns(ctx, stroked, styles, p.color, lineWidth, p.mode === 'waypoint');
-    if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize);
-    else drawArrowhead(ctx, pts, p.color, arrowSize);
+    const curved = p.mode === 'waypoint';
+    const halo = haloFor(p.color);
+    if (halo) {
+      // Same runs, wider, in the contrast color — with dashLw = the base
+      // width so dashes and motion teeth sit exactly under the color pass.
+      ctx.save();
+      ctx.globalAlpha = halo.alpha;
+      strokeStyledRuns(ctx, stroked, styles, halo.color, lineWidth + halo.width * 2, curved, lineWidth);
+      ctx.restore();
+    }
+    strokeStyledRuns(ctx, stroked, styles, p.color, lineWidth, curved);
+    if (useBlockCap) drawBlockCap(ctx, pts, p.color, arrowSize, halo);
+    else drawArrowhead(ctx, pts, p.color, arrowSize, halo);
   });
 
   // Player icons
@@ -921,6 +1088,17 @@ export function renderScene(
     const c = toPx(icon);
     const shape = iconShape(icon);
     ctx.save();
+    const rim = haloFor(icon.color);
+    if (rim) {
+      // Stroke the outline first; half the stroke sits under the fill, leaving
+      // an opaque rim of `rim.width` around it — chalk on dark fills, turf on
+      // light ones. Icons draw opaque, unlike the translucent route halo.
+      ctx.strokeStyle = rim.color;
+      ctx.lineWidth = rim.width * 2;
+      ctx.lineJoin = 'round';
+      traceIconShape(ctx, c.x, c.y, iconSize, shape);
+      ctx.stroke();
+    }
     ctx.fillStyle = icon.color;
     fillIconShape(ctx, c.x, c.y, iconSize, shape);
     ctx.fillStyle = '#fff';
@@ -942,7 +1120,7 @@ export function renderScene(
 
   // Text annotations sit on top of everything — they're meant to stay
   // legible over routes/zones/icons, like handwriting on a printed diagram.
-  drawTextBoxes(ctx, W, H, textBoxes, scale, selectedTextIndex);
+  drawTextBoxes(ctx, W, H, textBoxes, scale, selectedTextIndex, haloFor);
 }
 
 /** One play's drawable contents — the parsed shape of plays.canvas_data. */
@@ -973,6 +1151,7 @@ export function renderOverlayScene(
   H: number,
   offense: SceneLayer,
   defense: SceneLayer | null,
+  opts: { fieldTheme?: FieldTheme } = {},
 ) {
   // Each side keeps the icon size it has when viewed alone. Summing both
   // rosters would push a 5v5-on-5v5 matchup to 10 icons and shrink everything
@@ -981,6 +1160,9 @@ export function renderOverlayScene(
     offense.playerIcons.length,
     defense?.playerIcons.length ?? 0,
   );
+  // The theme goes to BOTH passes: the offense pass skips the field reset
+  // but still needs it for its halos.
+  const { fieldTheme } = opts;
 
   // Defense first, so its coverage zones sit underneath the offensive routes
   // the quarterback is being taught to read.
@@ -988,12 +1170,12 @@ export function renderOverlayScene(
     renderScene(
       ctx, W, H,
       defense.paths, defense.playerIcons, defense.zones, null, defense.textBoxes, null,
-      { iconCountOverride },
+      { iconCountOverride, fieldTheme },
     );
   }
   renderScene(
     ctx, W, H,
     offense.paths, offense.playerIcons, offense.zones, null, offense.textBoxes, null,
-    { skipFieldReset: !!defense, iconCountOverride },
+    { skipFieldReset: !!defense, iconCountOverride, fieldTheme },
   );
 }

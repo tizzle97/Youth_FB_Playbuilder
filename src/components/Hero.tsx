@@ -3,21 +3,9 @@ import type { User } from '@supabase/supabase-js';
 import { Link } from 'react-router-dom';
 import { HeroPlayCard } from './HeroPlayCard';
 import { supabase } from '../lib/supabase';
-
-/** Faint graph-paper grid, like a coach's printed play sheet — now on navy. */
-const gridPaper: React.CSSProperties = {
-  backgroundImage:
-    'repeating-linear-gradient(to right, transparent 0 59px, rgba(248,246,241,0.04) 59px 60px),' +
-    'repeating-linear-gradient(to bottom, transparent 0 59px, rgba(248,246,241,0.04) 59px 60px)',
-};
-
-/** Two floodlight cones, like stadium light towers catching dust in the air
- *  over a night game — ambient only, never used for anything interactive. */
-const floodlights: React.CSSProperties = {
-  backgroundImage:
-    'radial-gradient(ellipse 70% 60% at 10% -15%, rgba(232,163,61,0.38), transparent 65%),' +
-    'radial-gradient(ellipse 70% 60% at 90% -15%, rgba(232,163,61,0.30), transparent 65%)',
-};
+// Grid paper + floodlights moved to lib/ambient so the designer's canvas deck
+// can share the same vocabulary. Values unchanged.
+import { gridPaper, floodlights } from '../lib/ambient';
 
 export function Hero() {
   const [user, setUser] = useState<User | null>(null);
