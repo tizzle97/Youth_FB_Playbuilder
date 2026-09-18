@@ -89,57 +89,6 @@ const TOUCH_ICON_HIT_MIN_PX = 22;
 const TOUCH_PATH_HIT_PX = 22;
 const MOUSE_PATH_HIT_PX = 14;
 
-// Backing-store budget in DEVICE pixels. iOS Safari refuses canvases past
-// ~16.7M px (4096²). This is separate from PlayDesigner's MAX_CANVAS_PIXELS,
-// which is a CSS-px cap deciding which zoom steps exist — retina must never
-// remove a zoom level, so that one stays in CSS px and this clamps the
-// device-pixel multiplier instead.
-const MAX_BACKING_PIXELS = 16_000_000;
-const MAX_BACKING_DPR = 2;
-
-/** Device pixels per CSS pixel to back a canvas of this CSS size with —
- *  the display's ratio, capped, then reduced if the result would exceed
- *  the budget. Always ≥ 1. */
-function backingScale(cssW: number, cssH: number): number {
-  // TEMPORARY — ?dpr=N override for PR #152's iOS mobile-bar investigation.
-  // Every fix so far changed HOW or WHEN the backing store gets resized;
-  // none tested whether the resize existing at all (~2-3x the pixel count
-  // of a CSS-px canvas) is itself what a real device's WebKit reacts badly
-  // to, independent of mechanism — e.g. a canvas that size getting promoted
-  // to its own GPU compositing layer, with touch delivery to siblings
-  // affected until a relayout re-syncs it. ?dpr=1 forces the backing store
-  // back to exactly CSS-pixel size (pre-retina-commit sizing) while keeping
-  // every other line of that commit intact, isolating this one variable.
-  // Remove this override block (not the function) once resolved.
-  if (typeof window !== 'undefined') {
-    const override = new URLSearchParams(window.location.search).get('dpr');
-    if (override) {
-      const n = Number(override);
-      if (Number.isFinite(n) && n > 0) return Math.min(n, 4);
-    }
-  }
-  const dpr = Math.min(MAX_BACKING_DPR, window.devicePixelRatio || 1);
-  const fit = Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, cssW * cssH));
-  return Math.max(1, Math.min(dpr, fit));
-}
-
-// TEMPORARY — draw() timing, for DebugHud.tsx (PR #152's iOS mobile-bar
-// investigation). Two timestamp reads per draw call, always collected (cost
-// is negligible), read only by DebugHud, which itself only renders behind
-// ?debug=touch. Remove alongside DebugHud.tsx once resolved.
-const drawStats = { count: 0, lastMs: 0, maxMs: 0, recentTimestamps: [] as number[] };
-export function getDrawStats() {
-  const now = performance.now();
-  // Prune anything older than 5s so this can't grow unbounded over a session.
-  drawStats.recentTimestamps = drawStats.recentTimestamps.filter((t) => now - t < 5000);
-  return {
-    count: drawStats.count,
-    lastMs: Math.round(drawStats.lastMs * 10) / 10,
-    maxMs: Math.round(drawStats.maxMs * 10) / 10,
-    inLast1s: drawStats.recentTimestamps.filter((t) => now - t < 1000).length,
-  };
-}
-
 // A double-tap finishes a route. Two taps this far apart in space are two
 // deliberate points, however fast they came — without the distance gate,
 // tapping out a route at a normal pace silently ends it early.
@@ -229,24 +178,6 @@ export type CanvasHandle = {
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
   ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-    // Backing-store size, in DEVICE px — computed here so it can be passed as
-    // a normal React `width`/`height` prop on the <canvas> element below,
-    // rather than mutated on canvasRef imperatively inside draw(). The two
-    // are NOT equivalent on iOS Safari: confirmed on a real iPhone that the
-    // imperative form (this file's very first retina-backing commit) left
-    // touch targets below the canvas — the mobile bar's player chips and
-    // Offense/Defense control — dead until an unrelated layout change (e.g.
-    // the caption row appearing) forced a reflow. Letting React own the
-    // attribute means the resize goes through a normal commit, which a
-    // ref-mutation inside a layout effect does not, and WebKit's hit-test
-    // tree didn't reliably invalidate for the latter. Not fully explained,
-    // but bisected to exactly this, and removing the imperative mutation
-    // removes the whole category of bug rather than working around a guess
-    // at its mechanism.
-    const backingDpr = backingScale(width, height);
-    const backingWidth = Math.round(width * backingDpr);
-    const backingHeight = Math.round(height * backingDpr);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
     const [playerIcons, setPlayerIcons] = useState<PlayerIcon[]>([]);
@@ -652,20 +583,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      // TEMPORARY — see drawStats/getDrawStats above.
-      const _drawStart = performance.now();
-      // Layout math is in CSS px (the width/height props) — the same units
-      // every hit-test and popover anchor below uses. The backing store
-      // (canvas.width/height, in DEVICE px) is now a normal React prop set
-      // on the element itself — see backingWidth/backingHeight above — so a
-      // 1px yard line is a real device pixel on a retina display instead of
-      // being resampled to a grey smear. React resetting that attribute
-      // (whenever it actually changes) resets the drawing context same as an
-      // imperative assignment would, so the transform is re-applied every
-      // draw regardless, not once at mount.
-      const W = width;
-      const H = height;
-      ctx.setTransform(backingDpr, 0, 0, backingDpr, 0, 0);
+      const W = canvas.width;
+      const H = canvas.height;
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
@@ -806,9 +725,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const color = playerIcons[waypointIconIndex].color;
         ctx.save();
         ctx.shadowColor = color;
-        // shadowBlur ignores the context transform — scale it by dpr by hand
-        // or the glow renders half-size on a retina backing store.
-        ctx.shadowBlur = 24 * scale * backingDpr;
+        ctx.shadowBlur = 24 * scale;
         ctx.strokeStyle = color;
         ctx.lineWidth = 4 * scale;
         ctx.beginPath();
@@ -842,7 +759,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           : (blocked ? '#ef4444' : playerIcons[hoveredIconIndex].color);
         ctx.save();
         ctx.shadowColor = ringColor;
-        ctx.shadowBlur = 18 * scale * backingDpr;
+        ctx.shadowBlur = 18 * scale;
         ctx.strokeStyle = ringColor;
         ctx.lineWidth = 3 * scale;
         ctx.globalAlpha = 0.85;
@@ -874,7 +791,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         const pts = target.points.map(toPx);
         ctx.save();
         ctx.shadowColor = highlightColor;
-        ctx.shadowBlur = 16 * scale * backingDpr;
+        ctx.shadowBlur = 16 * scale;
         ctx.globalAlpha = 0.55;
         // Trace the route's actual shape — a curved route used to get a
         // straight highlight that visibly missed its own line. Deliberately
@@ -886,30 +803,9 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         else strokeStraight(ctx, pts, highlightColor, hlWidth);
         ctx.restore();
       }
-      // TEMPORARY — see drawStats/getDrawStats above.
-      const _dt = performance.now() - _drawStart;
-      drawStats.count++;
-      drawStats.lastMs = _dt;
-      drawStats.maxMs = Math.max(drawStats.maxMs, _dt);
-      drawStats.recentTimestamps.push(performance.now());
-    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone, width, height, backingDpr]);
+    }, [paths, playerIcons, zones, textBoxes, editingTextIndex, selectedZoneIndex, zoneDraft, activeGuides, waypointPoints, waypointSegmentStyles, pendingPoint, waypointColor, waypointIconIndex, hoveredIconIndex, hoveredPathIndex, editingRouteColorPathIndex, copyRoutePickedIndex, drawMode, capStyle, lineStyle, deleteRouteMode, recolorRouteMode, copyRouteMode, drawingMode, zoneMode, deleteZoneMode, iconRouteCount, iconHasZone]);
 
-    // Redraw on state change.
-    //
-    // ⚠ Reverted from useLayoutEffect back to a plain effect (2026-09-17,
-    // PR #152's iOS mobile-bar investigation). useLayoutEffect ran draw()
-    // SYNCHRONOUSLY, blocking the main thread, on every resize — and a page
-    // load or orientation change fires a BURST of resize events in quick
-    // succession while iOS settles its own chrome. On a real iPhone, a
-    // synchronous canvas redraw landing in that window, repeatedly, is a
-    // plausible way for WebKit to drop delivering a touch to JS entirely
-    // (not misroute it — the mobile toolbar's chips went dead with ZERO
-    // pointerdown reaching even a capture-phase document listener, which
-    // rules out a wrong-element hit-test and points at the touch never being
-    // dispatched at all). useLayoutEffect was only ever justified by a
-    // cosmetic one-blank-frame-during-resize concern; that is a far smaller
-    // cost than the toolbar not working. If this doesn't fix it, the
-    // draw-timing numbers in DebugHud (getDrawStats) are the next lead.
+    // Redraw on state change
     useEffect(() => { draw(); }, [draw]);
 
     // Keep the parent's undo/redo button state in sync with this canvas's
@@ -923,6 +819,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         canRedo: redoStack.length > 0 && waypointPoints.length === 0,
       });
     }, [undoStack.length, redoStack.length, waypointPoints.length, onHistoryChange]);
+
+    // Sync canvas size
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.width = width;
+      canvas.height = height;
+      draw();
+    }, [width, height, draw]);
 
     // Clear in-progress segments when switching draw modes
     useEffect(() => {
@@ -1952,12 +1857,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         <canvas
           id={id || 'play-canvas'}
           ref={canvasRef}
-          // DEVICE px, not the CSS-px width/height props — see
-          // backingWidth/backingHeight above. React only touches this
-          // attribute when the value actually changes, so an unrelated
-          // re-render doesn't reset the backing store or clear the canvas.
-          width={backingWidth}
-          height={backingHeight}
+          width={width}
+          height={height}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

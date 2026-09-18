@@ -65,8 +65,6 @@ playbooks, and print/share them. Live at **playbuilderpro.com**.
   sampling, with two deliberate exceptions where pixels ARE the contract:
   `designer-export-identity.spec.ts` (the export must be 1650×1275 white while
   the screen is turf) and the `#vs-canvas` probe in `vs-defense.spec.ts`.
-  Playwright's default `deviceScaleFactor` is 1, so anything retina-related
-  needs `test.use({ deviceScaleFactor: 2 })` (see `designer-retina.spec.ts`).
   ⚠ When reading a `verify` log, the `N failed` line prints ABOVE the
   `skipped`/`passed` lines — `tail -3` hides it. Grep for `failed` and check
   the real exit code; a `197 passed` with six ✘ above it fooled one commit.
@@ -216,10 +214,21 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   legibility comes from a luminance-aware halo (`screenHalo()`), never from
   changing a user's color. `ExportModal` must call `exportImage()` and never
   scrape `#play-canvas` — that fallback once existed and would print turf.
-  The live canvas is also backed at `devicePixelRatio` (`backingScale()` in
-  `Canvas.tsx`); all layout/hit-testing math stays in CSS px via the
-  `width`/`height` props, and `draw()` re-applies `setTransform` every frame
-  because assigning `canvas.width` resets the context.
+  ⚠ A retina backing-store attempt (drawing the live canvas at
+  `devicePixelRatio` for sharper on-screen lines) shipped briefly on this
+  branch and was reverted 2026-09-17: it left the mobile toolbar's second row
+  (player chips, Offense/Defense/Special Teams) dead to touch on real iOS
+  Safari — confirmed by bisecting to that exact commit on-device, and by
+  forcing the backing store back to 1:1 CSS-pixel size (which should have
+  been behaviorally identical to not having the feature at all) *still*
+  leaving it dead, meaning the touch is never dispatched to the page at all,
+  for a reason never fully identified. None of it reproduced in Chromium or
+  WebKit emulation. If retina backing is attempted again, get real Safari Web
+  Inspector access to a device *before* writing a fix — five rounds of
+  screenshot-relay bisection across separate hypotheses (hit-testing, an OS
+  edge gesture, main-thread blocking, backing-store size) each looked
+  well-reasoned and each missed, which real DevTools access would very likely
+  have shortened to one.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized

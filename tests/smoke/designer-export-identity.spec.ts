@@ -56,8 +56,6 @@ test('the live canvas draws dark turf while the export stays white', async ({ pa
 
   // Top edge, horizontal center: inside the field, above the sideline pad's
   // chalk border, on either the turf base or a mow stripe — both deep green.
-  // Sampled in backing-store pixels (retina-scaled), so use the canvas's own
-  // width, not its CSS width.
   const screen = await page.evaluate(() => {
     const c = document.getElementById('play-canvas') as HTMLCanvasElement;
     const d = c.getContext('2d')!.getImageData(Math.round(c.width / 2), 2, 1, 1).data;
