@@ -101,6 +101,23 @@ const MAX_BACKING_DPR = 2;
  *  the display's ratio, capped, then reduced if the result would exceed
  *  the budget. Always ≥ 1. */
 function backingScale(cssW: number, cssH: number): number {
+  // TEMPORARY — ?dpr=N override for PR #152's iOS mobile-bar investigation.
+  // Every fix so far changed HOW or WHEN the backing store gets resized;
+  // none tested whether the resize existing at all (~2-3x the pixel count
+  // of a CSS-px canvas) is itself what a real device's WebKit reacts badly
+  // to, independent of mechanism — e.g. a canvas that size getting promoted
+  // to its own GPU compositing layer, with touch delivery to siblings
+  // affected until a relayout re-syncs it. ?dpr=1 forces the backing store
+  // back to exactly CSS-pixel size (pre-retina-commit sizing) while keeping
+  // every other line of that commit intact, isolating this one variable.
+  // Remove this override block (not the function) once resolved.
+  if (typeof window !== 'undefined') {
+    const override = new URLSearchParams(window.location.search).get('dpr');
+    if (override) {
+      const n = Number(override);
+      if (Number.isFinite(n) && n > 0) return Math.min(n, 4);
+    }
+  }
   const dpr = Math.min(MAX_BACKING_DPR, window.devicePixelRatio || 1);
   const fit = Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, cssW * cssH));
   return Math.max(1, Math.min(dpr, fit));

@@ -12,11 +12,15 @@ import { getDrawStats } from './Canvas';
  * because none were checked against what's actually happening on the device
  * at the moment a tap fails. This shows that instead: viewport/element
  * geometry (live on every resize/orientation change), exactly what a tap's
- * target and elementFromPoint resolve to, and draw()'s own call count/timing
- * (Canvas.tsx's getDrawStats) — a confirmed-empty tap (zero pointerdown
- * reaching even a capture-phase document listener) pointed at the touch
- * never being dispatched at all, and a burst of synchronous canvas redraws
- * around resize is the leading theory for why.
+ * target and elementFromPoint resolve to, draw()'s own call count/timing
+ * (Canvas.tsx's getDrawStats — ruled out a redraw burst as the cause: 3
+ * calls, all under 1ms, over 28s with a confirmed-dead tap in between), and
+ * the canvas's actual backing-store size vs. its CSS rect (the ground truth
+ * for whether a `?dpr=` override — see backingScale() — actually took
+ * effect). A confirmed-empty lastTap (zero pointerdown reaching even a
+ * capture-phase document listener, for a real tap) rules out the wrong
+ * element being hit; the remaining untested variable is whether the backing
+ * store's raw SIZE (not how/when it's set) is itself what triggers this.
  *
  * Delete this file and its one import + one JSX line in PlayDesigner.tsx,
  * and the `data-testid="mobile-toolbar"` attribute, once this is resolved.
@@ -58,6 +62,11 @@ export function DebugHud() {
   const [lastTap, setLastTap] = useState<TapInfo | null>(null);
   const [tick, setTick] = useState(0);
   const [draws, setDraws] = useState(getDrawStats());
+  // Backing store's actual device-pixel size vs. its CSS rect — the ground
+  // truth for what DPR is really active, read off the live element rather
+  // than recomputed, so it can't disagree with what backingScale() actually
+  // did (or silently fail to apply a ?dpr= override).
+  const [backing, setBacking] = useState<{ w: number; h: number; effectiveDpr: number } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -66,7 +75,12 @@ export function DebugHud() {
       setVw(window.innerWidth);
       setMainRect(rectOf(document.querySelector('main')));
       setBarRect(rectOf(document.querySelector('[data-testid="mobile-toolbar"]')));
-      setCanvasRect(rectOf(document.getElementById('play-canvas')));
+      const canvasEl = document.getElementById('play-canvas') as HTMLCanvasElement | null;
+      setCanvasRect(rectOf(canvasEl));
+      if (canvasEl) {
+        const cssW = canvasEl.getBoundingClientRect().width || 1;
+        setBacking({ w: canvasEl.width, h: canvasEl.height, effectiveDpr: Math.round((canvasEl.width / cssW) * 100) / 100 });
+      }
       // Any roster chip — they're all the same row; the first one found is enough.
       setChipRect(rectOf(document.querySelector('[data-testid="mobile-toolbar"] button[title^="Player "]')));
       setDraws(getDrawStats());
@@ -116,6 +130,7 @@ viewport: ${vw} x ${vh}
 ${line('main:   ', mainRect)}
 ${line('bar:    ', barRect)}${barBelowViewport === null ? '' : barBelowViewport ? '  <<< BAR EXTENDS BELOW VIEWPORT' : '  (fully in view)'}
 ${line('canvas: ', canvasRect)}
+backing: ${backing ? `${backing.w}x${backing.h} device-px  (effective dpr=${backing.effectiveDpr})` : '(not found)'}
 ${line('chip:   ', chipRect)}${chipCoveredByCanvas === null ? '' : chipCoveredByCanvas ? '  <<< CHIP ROW OVERLAPS CANVAS RECT' : '  (clear of canvas)'}
 draws:  count=${draws.count} last=${draws.lastMs}ms max=${draws.maxMs}ms inLast1s=${draws.inLast1s}${draws.inLast1s >= 2 ? '  <<< BURST RIGHT NOW' : ''}
 lastTap: ${lastTap ? `x=${lastTap.x} y=${lastTap.y}\n  target=${lastTap.target}\n  efp=   ${lastTap.efp}` : '(tap something — including a dead chip — and it will show here)'}`}
