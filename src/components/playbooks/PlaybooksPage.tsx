@@ -449,7 +449,14 @@ export function PlaybooksPage() {
 
     .diagram-image {
       max-width: 100%;
-      max-height: 600px;
+      /* This sheet has just a title + diagram, no notes — so on a portrait
+         page (~9.5in usable) 600px always fit. Landscape's shorter ~7in
+         usable height doesn't have room for 600px plus the title, which
+         pushed every single play onto its own page PLUS a near-blank
+         overflow page (title/diagram on page 1, a sliver of leftover
+         whitespace on page 2, repeating for every play in the playbook).
+         420px leaves real margin rather than an exact fit. */
+      max-height: ${exportOrientation === 'landscape' ? 420 : 600}px;
       height: auto;
       border: 1px solid ${EXPORT_HAIRLINE};
       border-radius: 8px;

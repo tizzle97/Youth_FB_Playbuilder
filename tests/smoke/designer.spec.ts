@@ -3176,16 +3176,16 @@ test('PlaybooksPage: play count reflects the actual number of plays, not always 
  * PlaybooksPage — drag-to-reorder plays within a playbook (List view).
  * ──────────────────────────────────────────────────────────────────────────── */
 
-type PlayFixture = { id: string; name: string; order_position: number };
+type PlayFixture = { id: string; name: string; order_position: number; thumbnail?: string };
 
-function playbookPlaysRow({ id, name, order_position }: PlayFixture) {
+function playbookPlaysRow({ id, name, order_position, thumbnail = '' }: PlayFixture) {
   return {
     order_position,
     plays: {
       id,
       name,
       description: '',
-      thumbnail: '',
+      thumbnail,
       created_at: '2025-09-01T00:00:00Z',
       type: 'offense',
       metadata: {},
@@ -3208,7 +3208,8 @@ type PatchCall = { playId: string; position: number };
 async function mockPlaybookWithPlays(
   page: Page,
   plays: PlayFixture[],
-  shouldFailPatch?: (attempt: number) => boolean
+  shouldFailPatch?: (attempt: number) => boolean,
+  plan: 'free' | 'pro' = 'free'
 ): Promise<PatchCall[]> {
   const userJson = {
     id: '66666666-6666-6666-6666-666666666666',
@@ -3225,7 +3226,7 @@ async function mockPlaybookWithPlays(
   await page.route('**/auth/v1/user**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(userJson) }));
   await page.route('**/rest/v1/subscriptions**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: 'free' }) }));
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan, current_period_end: null }) }));
   await page.route('**/rest/v1/user_preferences**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
   await page.route('**/rest/v1/playbooks**', (route) =>
@@ -3455,6 +3456,56 @@ test('PlaybooksPage: a second reorder after a successful first one does not coll
     { playId: 'play-b', position: 20 },
     { playId: 'play-c', position: 30 },
   ]);
+});
+
+test('PlaybooksPage: Simple export in Landscape produces one page per play, no blank spillover pages', async ({ page }) => {
+  // Regression: .diagram-image's max-height (600px) was sized for portrait's
+  // ~9.5in usable page height. Landscape's usable height is only ~7in, so
+  // title + 600px image didn't fit on one physical page — every play's sheet
+  // silently spilled a near-empty second page, printing as
+  // content/blank/content/blank for a multi-play playbook (reported live).
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 1650; c.height = 1275;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1650, 1275);
+    ctx.fillStyle = '#000'; ctx.fillRect(100, 100, 1450, 1075);
+    return c.toDataURL('image/png');
+  });
+
+  const opened: string[] = [];
+  await page.exposeFunction('__recordSimpleExportHTML', (html: string) => { opened.push(html); });
+  await page.addInitScript(() => {
+    window.open = () => ({
+      document: {
+        open() {}, close() {},
+        write(html: string) { (window as unknown as { __recordSimpleExportHTML: (h: string) => void }).__recordSimpleExportHTML(html); },
+      },
+      focus() {}, print() {}, closed: false,
+    } as unknown as Window);
+  });
+
+  await mockPlaybookWithPlays(page, [
+    { id: 'play-a', name: 'Play A', order_position: 10, thumbnail: dataUrl },
+    { id: 'play-b', name: 'Play B', order_position: 20, thumbnail: dataUrl },
+    { id: 'play-c', name: 'Play C', order_position: 30, thumbnail: dataUrl },
+  ], undefined, 'pro');
+
+  await page.getByRole('button', { name: 'Export PDF' }).click();
+  await page.getByRole('button', { name: 'Landscape' }).click();
+  await page.getByText('Simple (1 per page)').click();
+
+  await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
+  const html = opened.join('');
+
+  // Real print pagination (not just a byte/text check): Chromium's PDF
+  // export only honors the document's own @page size when explicitly asked.
+  const printPage = await page.context().newPage();
+  await printPage.setContent(html, { waitUntil: 'load' });
+  const pdf = await printPage.pdf({ preferCSSPageSize: true });
+  const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+  expect(pageCount).toBe(3); // one per play — not 6 (a blank spillover after each)
+  await printPage.close();
 });
 
 /* ────────────────────────────────────────────────────────────────────────────

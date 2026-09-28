@@ -168,7 +168,14 @@ export function ExportModal({
 
     .canvas-image {
       max-width: 100%;
-      max-height: 400px;
+      /* Landscape's printable height is ~7in vs portrait's ~9.5in — capping
+         at the portrait value here left only ~1in for the header/notes below
+         it, so a play with a few lines of notes silently spilled onto a
+         second, nearly-blank page. 260px leaves real margin, not just an
+         exact fit — right at the boundary, Chromium's print pagination still
+         forces a spurious extra page even when computed content height
+         matches the budget exactly. */
+      max-height: ${orientation === 'landscape' ? 260 : 400}px;
       height: auto;
       border-radius: 4px;
     }
