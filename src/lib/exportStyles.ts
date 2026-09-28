@@ -1,4 +1,4 @@
-import { escapeHtml, teamBrandHTML, type UserPreferences } from './userPreferences';
+import { escapeHtml, teamBrandHTML, paperPageSize, type UserPreferences, type PaperSize } from './userPreferences';
 
 /**
  * Shared print-export design tokens — a classic black & white coach-sheet
@@ -85,7 +85,7 @@ export function notesBlockHTML(
   return `<div class="pb-notes"><div class="pb-notes-title">Notes</div><div class="pb-notes-body">${body}${extrasHtml}</div></div>`;
 }
 
-type WristbandPrefs = (Pick<UserPreferences, 'team_name' | 'team_logo_url'> & { paper_size?: string }) | null;
+type WristbandPrefs = (Pick<UserPreferences, 'team_name' | 'team_logo_url'> & { paper_size?: PaperSize }) | null;
 
 /**
  * Wristband insert sheet — the ONE implementation shared by the Designer
@@ -200,7 +200,7 @@ export function generateWristbandHTML<T>(opts: {
   <title>${escapeHtml(title)} - Wristband Inserts</title>
   <style>
     @page {
-      size: ${(preferences?.paper_size ?? 'letter') === 'a4' ? 'A4 landscape' : '11in 8.5in'};
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter', 'landscape')};
       margin: 0.4in;
     }
 

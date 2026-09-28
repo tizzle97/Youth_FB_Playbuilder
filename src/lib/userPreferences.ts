@@ -14,6 +14,7 @@ export type PlayVisibility = 'private' | 'public';
 export type DefaultPlayType = 'pass' | 'run' | 'option' | 'reverse' | 'screen' | 'trick';
 export type PaperSize = 'letter' | 'a4';
 export type ExportStyle = 'simple' | 'detailed' | 'grid';
+export type PageOrientation = 'portrait' | 'landscape';
 
 export interface UserPreferences {
   team_name: string | null;
@@ -117,7 +118,19 @@ export function playTitleHTML(name: string, fontSize = '26pt'): string {
   return `<div style="text-align:center; font-family: Georgia, 'Times New Roman', serif; font-size:${fontSize}; font-weight:700; color:#000; letter-spacing:0.5px;">${escapeHtml(name)}</div>`;
 }
 
-/** CSS @page size value for the user's paper preference (B-15). */
-export function paperPageSize(paper: PaperSize): string {
-  return paper === 'a4' ? 'A4' : '8.5in 11in';
+/** CSS @page size value for the user's paper preference (B-15), optionally
+ *  rotated to landscape. Explicit swapped dimensions rather than the
+ *  `landscape` keyword — same technique exportStyles.ts already uses for the
+ *  wristband sheet, which is always landscape regardless of this setting. */
+export function paperPageSize(paper: PaperSize, orientation: PageOrientation = 'portrait'): string {
+  if (paper === 'a4') return orientation === 'landscape' ? 'A4 landscape' : 'A4';
+  return orientation === 'landscape' ? '11in 8.5in' : '8.5in 11in';
+}
+
+/** `.page`'s min-height for single-item print templates that use a 0.75in
+ *  margin, so a landscape sheet doesn't inherit portrait's taller value and
+ *  spill onto a blank second page. Same Letter/A4 approximation
+ *  paperPageSize() already makes. */
+export function pageMinHeight(orientation: PageOrientation): string {
+  return orientation === 'landscape' ? '7in' : '9.5in';
 }
