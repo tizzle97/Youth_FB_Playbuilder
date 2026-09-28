@@ -30,7 +30,7 @@ import { FREE_LIMITS, isNearFreeLimit, rowIsPro } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
 import { UsageWarningBanner } from '../UsageWarningBanner';
 import { PlayCard } from '../plays/PlayCard';
-import { getUserPreferences, escapeHtml, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
+import { getUserPreferences, escapeHtml, paperPageSize, pageMinHeight, teamBrandHTML, playTitleHTML, type UserPreferences, type PageOrientation } from '../../lib/userPreferences';
 import {
   EXPORT_ACCENT_RULE, EXPORT_INK, EXPORT_HAIRLINE, EXPORT_WASH, UNTITLED_PLAY,
   formatPlayType, exportFooterHTML, NOTES_BLOCK_CSS, notesBlockHTML, generateWristbandHTML,
@@ -86,6 +86,10 @@ export function PlaybooksPage() {
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  // Portrait/landscape choice for the export menu below — not persisted,
+  // picked per print job like the format itself. Ignored by the wristband
+  // rows, which are always landscape (see exportStyles.ts).
+  const [exportOrientation, setExportOrientation] = useState<PageOrientation>('portrait');
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [isPro, setIsPro] = useState(false);
   const [entitlementLoading, setEntitlementLoading] = useState(true);
@@ -403,7 +407,7 @@ export function PlaybooksPage() {
   <title>${escapeHtml(play.name || UNTITLED_PLAY)}</title>
   <style>
     @page {
-      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter', exportOrientation)};
       margin: 0.75in;
     }
 
@@ -423,7 +427,7 @@ export function PlaybooksPage() {
 
     .page {
       width: 100%;
-      min-height: 9.5in;
+      min-height: ${pageMinHeight(exportOrientation)};
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -480,7 +484,7 @@ export function PlaybooksPage() {
   <title>${escapeHtml(play.name || UNTITLED_PLAY)}</title>
   <style>
     @page {
-      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter', exportOrientation)};
       margin: 0.75in;
     }
 
@@ -500,7 +504,7 @@ export function PlaybooksPage() {
 
     .page {
       width: 100%;
-      min-height: 9.5in;
+      min-height: ${pageMinHeight(exportOrientation)};
     }
 
     .header {
@@ -671,7 +675,7 @@ export function PlaybooksPage() {
   <title>${escapeHtml(playbookName)} - Grid View</title>
   <style>
     @page {
-      size: ${paperPageSize(prefs?.paper_size ?? 'letter')};
+      size: ${paperPageSize(prefs?.paper_size ?? 'letter', exportOrientation)};
       margin: 0.5in;
     }
 
@@ -710,7 +714,7 @@ export function PlaybooksPage() {
 
     .plays-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(${exportOrientation === 'landscape' ? 4 : 3}, 1fr);
       gap: 15px;
       margin-bottom: 20px;
     }
@@ -1150,6 +1154,28 @@ export function PlaybooksPage() {
                           
                           {showExportMenu && (
                             <div className="absolute right-0 mt-2 w-56 bg-board-light border border-chalk/20 rounded-lg shadow-xl z-10">
+                              {/* Applies to Simple/Detailed/Grid below — the
+                                  wristband rows further down are always
+                                  landscape regardless of this. */}
+                              <div className="px-3 pt-3 pb-2 border-b border-chalk/10">
+                                <div className="flex gap-1.5">
+                                  {(['portrait', 'landscape'] as const).map((value) => (
+                                    <button
+                                      key={value}
+                                      type="button"
+                                      onClick={() => setExportOrientation(value)}
+                                      aria-pressed={exportOrientation === value}
+                                      className={`flex-1 px-2 py-1 rounded-md border text-xs font-medium capitalize transition-colors ${
+                                        exportOrientation === value
+                                          ? 'bg-primary/20 border-primary text-primary'
+                                          : 'bg-board border-chalk/20 text-chalk hover:bg-board-light'
+                                      }`}
+                                    >
+                                      {value}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="py-2">
                                 {/* The user's default export style (B-15) sorts first */}
                                 {[

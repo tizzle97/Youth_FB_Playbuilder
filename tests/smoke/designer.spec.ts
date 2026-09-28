@@ -2588,6 +2588,34 @@ test('single-play export: multi-line notes survive as <br>, no leftover theme co
   expect(html).not.toMatch(/#2563eb|#1e40af|#f59e0b/i);
 });
 
+test('single-play export: Landscape flips @page size and content min-height', async ({ page }) => {
+  const opened: string[] = [];
+  await page.exposeFunction('__recordLandscapeHTML', (html: string) => { opened.push(html); });
+  await page.addInitScript(() => {
+    window.open = () => ({
+      document: {
+        open() {}, close() {},
+        write(html: string) { (window as unknown as { __recordLandscapeHTML: (h: string) => void }).__recordLandscapeHTML(html); },
+      },
+      focus() {}, print() {}, closed: false,
+    } as unknown as Window);
+  });
+
+  await openDesigner(page);
+  await page.getByRole('button', { name: 'Export' }).click();
+  await page.getByText('Single Play Sheet').click();
+  await page.getByPlaceholder('Enter play name...').fill('Landscape Test');
+  await page.getByRole('button', { name: 'Landscape' }).click();
+  await page.getByRole('button', { name: /Print Play/ }).first().click();
+
+  await expect.poll(() => opened.length, { timeout: 5000 }).toBeGreaterThan(0);
+  const html = opened.join('');
+  // Explicit swapped dimensions, not the `landscape` keyword — same
+  // technique as the wristband sheet (see paperPageSize()).
+  expect(html).toMatch(/@page\s*\{\s*size:\s*11in 8\.5in;/);
+  expect(html).toMatch(/\.page\s*\{[^}]*min-height:\s*7in;/);
+});
+
 test('wristband text-only: black header row, alternating stripes, bold outer border', async ({ page }) => {
   // Matches a supplied reference coach-sheet: black "Play #"/"Play" header,
   // bold 3px outer border, alternating grey/white row shading, and numbers

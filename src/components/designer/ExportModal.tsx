@@ -5,7 +5,7 @@ import { X, FileText, Printer, BookOpen, Grid3X3, Lock, Watch } from 'lucide-rea
 import type { PlayMetadata } from '../../types/play';
 import { useEntitlement } from '../../lib/entitlements';
 import { UpgradePrompt } from '../UpgradePrompt';
-import { escapeHtml, paperPageSize, teamBrandHTML, playTitleHTML, type UserPreferences } from '../../lib/userPreferences';
+import { escapeHtml, paperPageSize, pageMinHeight, teamBrandHTML, playTitleHTML, type UserPreferences, type PageOrientation } from '../../lib/userPreferences';
 import {
   EXPORT_ACCENT_RULE, EXPORT_INK, EXPORT_HAIRLINE, EXPORT_WASH, UNTITLED_PLAY,
   formatPlayType, exportFooterHTML, NOTES_BLOCK_CSS, notesBlockHTML, generateWristbandHTML,
@@ -58,6 +58,10 @@ export function ExportModal({
   // Wristband-only option: a dense #+name table instead of image cells —
   // see generateWristbandPlaybookHTML's textOnly branch.
   const [wristbandTextOnly, setWristbandTextOnly] = useState(false);
+  // Portrait/landscape choice per print job (not a persisted preference —
+  // a wide formation play and a dense playbook grid may want different
+  // orientations). Ignored by wristband-playbook, which is always landscape.
+  const [orientation, setOrientation] = useState<PageOrientation>('portrait');
   const [metadata, setMetadata] = useState<PlayMetadata>(playMetadata);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   // Free users clicking the locked Wristband option get a live preview of the
@@ -105,16 +109,16 @@ export function ExportModal({
   <title>${escapeHtml(playData.metadata.playName || UNTITLED_PLAY)}</title>
   <style>
     @page {
-      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter', orientation)};
       margin: 0.75in;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: Arial, sans-serif;
       font-size: 12pt;
@@ -122,10 +126,10 @@ export function ExportModal({
       color: #000;
       background: white;
     }
-    
+
     .page {
       width: 100%;
-      min-height: 9.5in;
+      min-height: ${pageMinHeight(orientation)};
       display: flex;
       flex-direction: column;
     }
@@ -253,7 +257,7 @@ export function ExportModal({
   <title>Playbook - Detailed View</title>
   <style>
     @page {
-      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter', orientation)};
       margin: 0.5in;
     }
 
@@ -381,16 +385,16 @@ export function ExportModal({
   <title>Playbook - Grid View</title>
   <style>
     @page {
-      size: ${paperPageSize(preferences?.paper_size ?? 'letter')};
+      size: ${paperPageSize(preferences?.paper_size ?? 'letter', orientation)};
       margin: 0.5in;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: Arial, sans-serif;
       font-size: 9pt;
@@ -420,7 +424,7 @@ export function ExportModal({
 
     .plays-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(${orientation === 'landscape' ? 4 : 3}, 1fr);
       gap: 15px;
       margin-bottom: 20px;
     }
@@ -736,6 +740,33 @@ export function ExportModal({
                         {selectedFormat === 'wristband-playbook' && 'This will print inserts sized 4.5" x 2.2" to cut and slide into a QB wristband'}
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Wristband is always landscape (see exportStyles.ts) — this
+                  choice only applies to the three page-based formats. */}
+              {selectedFormat !== 'wristband-playbook' && (
+                <div>
+                  <label className="block text-sm font-medium text-chalk mb-2">
+                    Orientation
+                  </label>
+                  <div className="flex gap-2">
+                    {(['portrait', 'landscape'] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setOrientation(value)}
+                        aria-pressed={orientation === value}
+                        className={`flex-1 px-3 py-2 rounded-md border text-sm font-medium capitalize transition-colors ${
+                          orientation === value
+                            ? 'bg-primary/20 border-primary text-primary'
+                            : 'bg-board border-chalk/20 text-chalk hover:bg-board-light'
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
