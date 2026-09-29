@@ -13,6 +13,9 @@ import { promoteImplicitHeadings, plainExcerpt, readingTime } from '../../lib/bl
 import { categorize, relatedScore, type Category, type CategoryId } from '../../lib/blogTaxonomy';
 import { BlogCoverArt } from './BlogCoverArt';
 import { floodlights, gridPaper } from '../../lib/ambient';
+import { resolveDiagrams } from '../../lib/blogDiagrams';
+import { PLAY_SCENES, type PlaySceneKey } from '../../lib/blogPlayScenes';
+import { PlayDiagramCard } from '../PlayDiagramCard';
 
 interface BlogPost {
   id: string;
@@ -250,6 +253,10 @@ export function BlogPostPage() {
   });
 
   const midCtaIndex = sections.length > 2 ? 1 : null;
+  const diagramsBySection = useMemo(
+    () => (post ? resolveDiagrams(post, sections) : new Map<number, PlaySceneKey[]>()),
+    [post, sections],
+  );
 
   return (
     <div className="min-h-screen bg-board">
@@ -328,6 +335,21 @@ export function BlogPostPage() {
                   {sections.map((section, i) => (
                     <React.Fragment key={section.id ?? `lead-${i}`}>
                       <div id={section.id ?? undefined} dangerouslySetInnerHTML={{ __html: section.html }} />
+                      {(diagramsBySection.get(i) ?? []).map((sceneKey) => {
+                        const scene = PLAY_SCENES[sceneKey];
+                        return (
+                          <div key={sceneKey} className="not-prose my-8 max-w-sm mx-auto">
+                            <PlayDiagramCard
+                              icons={scene.icons}
+                              paths={scene.paths}
+                              zones={scene.zones}
+                              label={scene.label}
+                              alt={scene.alt}
+                              animate="inView"
+                            />
+                          </div>
+                        );
+                      })}
                       {cta && midCtaIndex === i && <BlogPostCta cta={cta} />}
                     </React.Fragment>
                   ))}

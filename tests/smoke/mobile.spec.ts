@@ -728,6 +728,84 @@ test('blog post page: sidebar (TOC, related, CTA) holds at 320px with no horizon
   expect(scrollW).toBeLessThanOrEqual(clientW + 1);
 });
 
+// These diagrams animate 'inView' (an IntersectionObserver) — the canvas
+// stays at 0% draw progress (icons only, no route lines) until it's
+// scrolled into the viewport. test.use({ reducedMotion: 'reduce' }) does
+// NOT help here: verified directly that it doesn't propagate to
+// window.matchMedia('(prefers-reduced-motion: reduce)') in this test
+// environment (CDP media-emulation gaps are already documented elsewhere
+// in this project for pointer/hover features — this is the same class of
+// issue for reduced-motion). So these tests scroll the diagram into view
+// for real, the same trigger a real reader's scroll gives it, then poll
+// for the finished draw within the 1.1s animation.
+
+test('blog embedded diagrams: a curated post gets its real play diagram, drawn with real route color', async ({ page }) => {
+  const post = {
+    id: 'p1', slug: 'flag-football-plays-beat-zone-defense', title: 'Flag Football Plays That Beat Zone Defense',
+    description: 'zone defense plays', author_id: 'x',
+    published_at: '2025-01-01T00:00:00Z', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+    content: 'Intro paragraph about zone defense.\n\n## Flood (three levels to one side)\n\nBody text about the flood concept in this section.',
+  };
+  await page.route('**/rest/v1/blog_posts**', (route) => {
+    const url = route.request().url();
+    if (url.includes('slug=eq.')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(post) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([post]) });
+  });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: post.title })).toBeVisible();
+
+  // This slug is curated in blogDiagrams.ts's CURATED map with a "flood"
+  // placement after a heading containing "Flood" — the mock content above
+  // supplies that heading directly as real markdown (rather than relying on
+  // promoteImplicitHeadings, which is exercised by other tests already).
+  const diagram = page.locator('canvas[role="img"]');
+  await expect(diagram).toHaveAttribute('aria-label', /flood/i);
+
+  // Scroll it into view to actually trigger the 'inView' IntersectionObserver
+  // — real user behavior, and the only reliable trigger in this environment.
+  await diagram.scrollIntoViewIfNeeded();
+
+  // Per CLAUDE.md: check the actual route color, not "any non-white
+  // pixel" — the field's own grid lines would satisfy that trivially.
+  // expect.poll() (not a one-shot read) rather than a fixed wait, since the
+  // draw-in animation takes up to 1.1s — the same "poll, don't one-shot"
+  // rule this project's test-bridge-race memory documents for the
+  // __PBP_TEST__ bridge applies here too.
+  await expect.poll(() =>
+    diagram.evaluate((canvas: HTMLCanvasElement) => {
+      const ctx = canvas.getContext('2d')!;
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === 0x1f && data[i + 1] === 0xa7 && data[i + 2] === 0x5d) return true;
+      }
+      return false;
+    }),
+  ).toBe(true);
+});
+
+test('blog embedded diagrams: an uncurated post gets an automatic match when a concept word is strong-signal present', async ({ page }) => {
+  const post = {
+    id: 'p1', slug: 'some-post-about-mesh-concepts', title: 'How to Run the Mesh Concept in Flag Football',
+    description: 'mesh routes', author_id: 'x',
+    published_at: '2025-01-01T00:00:00Z', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+    content: 'Intro paragraph explaining the mesh concept for youth flag football teams.',
+  };
+  await page.route('**/rest/v1/blog_posts**', (route) => {
+    const url = route.request().url();
+    if (url.includes('slug=eq.')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(post) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([post]) });
+  });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: post.title })).toBeVisible();
+  // The mesh scene's alt text describes the concept rather than naming it
+  // ("Two receivers crossing underneath..."), so assert on that text
+  // (proving the resolver actually picked the mesh scene) rather than the
+  // literal word "mesh".
+  await expect(page.locator('canvas[role="img"]')).toHaveAttribute('aria-label', /crossing underneath/i);
+});
+
 /* ── Blog post typography on phones (B-49) ──────────────────────────────────
    `prose prose-invert` was inert (no `@tailwindcss/typography` plugin
    registered), so a post carrying a long unbroken token — a URL with no
