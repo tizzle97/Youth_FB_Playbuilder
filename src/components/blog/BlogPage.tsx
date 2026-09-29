@@ -9,6 +9,8 @@ import { parseSections } from '../../lib/blogMarkdown';
 import { promoteImplicitHeadings, plainExcerpt } from '../../lib/blogText';
 import { categorize, type Category, type CategoryId } from '../../lib/blogTaxonomy';
 import { BlogCoverArt } from './BlogCoverArt';
+import { floodlights, gridPaper } from '../../lib/ambient';
+import { format } from 'date-fns';
 
 interface BlogPost {
   id: string;
@@ -205,6 +207,11 @@ export function BlogPage() {
   const visiblePosts = activeCategory
     ? postViews.filter((p) => p.category.id === activeCategory)
     : postViews;
+  // The featured treatment is always the overall newest post, shown only
+  // when no filter is active — a featured card that doesn't match the
+  // active filter would read as a bug, not a feature.
+  const featured = !activeCategory ? visiblePosts[0] : undefined;
+  const gridPosts = featured ? visiblePosts.slice(1) : visiblePosts;
 
   // Filtered views are query params on the canonical /blog, not separate
   // pages — usePageMeta below hardcodes path: '/blog' deliberately, so a
@@ -242,23 +249,59 @@ export function BlogPage() {
 
   return (
     <div className="min-h-screen bg-board">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="bg-board-light rounded-lg p-4 sm:p-8 mb-8 border border-chalk/10">
-          <div className="flex items-center gap-3 mb-4">
-            <Book className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-bold text-chalk">Blog</h1>
+      {/* Hero band — the same ambient vocabulary (floodlights + grid paper)
+          as the homepage hero, so the blog reads as the same site instead
+          of a bolted-on afterthought. */}
+      <div className="relative bg-board overflow-hidden border-b border-chalk/10">
+        <div className="absolute inset-0 pointer-events-none" style={floodlights} aria-hidden="true" />
+        <div className="absolute inset-0 pointer-events-none" style={gridPaper} aria-hidden="true" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16">
+          <div className="flex items-center gap-2 mb-3">
+            <Book className="h-5 w-5 text-primary" />
+            <p className="font-label text-sm text-primary font-semibold tracking-widest uppercase">The Chalkboard</p>
           </div>
-          <p className="text-chalk/70 text-lg max-w-3xl">
+          <h1 className="font-display text-4xl sm:text-5xl text-chalk">Coaching, drawn up.</h1>
+          <p className="mt-4 font-editorial text-lg text-chalk/70 max-w-2xl">
             Insights, strategies, and expert advice for youth football coaches and players.
           </p>
         </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Error State */}
         {error && (
           <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
             {error}
           </div>
+        )}
+
+        {/* Featured post — the newest post, full width. Dates here are
+            relative ("4 days ago"); grid cards below use an absolute date
+            instead — formatDistanceToNow on all of them turned a dated
+            archive into "2 months ago / 2 months ago / 3 months ago", which
+            is less informative and reads staler than it is. */}
+        {!loading && featured && (
+          <Link to={`/blog/${featured.slug}`} className="group block mb-10">
+            <article className="overflow-hidden rounded-xl border border-chalk/10 bg-board-light transition-colors hover:border-primary/30 lg:flex">
+              <div className="relative aspect-video lg:aspect-auto lg:w-3/5 shrink-0">
+                <BlogCoverArt slug={featured.slug} className="absolute inset-0 block w-full h-full" />
+              </div>
+              <div className="p-5 sm:p-7 lg:flex-1 lg:flex lg:flex-col lg:justify-center">
+                <p className="font-label text-xs uppercase tracking-widest text-primary">Latest</p>
+                <h2 className="mt-2 font-display text-2xl sm:text-3xl text-chalk group-hover:text-primary transition-colors">
+                  {featured.title}
+                </h2>
+                <p className="mt-3 font-editorial text-chalk/70 line-clamp-3">
+                  {featured.description || plainExcerpt(featured.content, 200)}
+                </p>
+                <p className="mt-4 font-label text-xs text-chalk/50">
+                  {featured.category.label}
+                  {' · '}
+                  {formatDistanceToNow(new Date(featured.published_at), { addSuffix: true })}
+                </p>
+              </div>
+            </article>
+          </Link>
         )}
 
         {/* Category filter — only categories actually present, with counts.
@@ -340,7 +383,7 @@ export function BlogPage() {
         ) : (
           /* Blog Posts Grid */
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {visiblePosts.map((post) => (
+            {gridPosts.map((post) => (
               <Link key={post.id} to={`/blog/${post.slug}`} className="block group">
                 <article className="h-full flex flex-col bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
                   <div className="aspect-video overflow-hidden">
@@ -370,7 +413,7 @@ export function BlogPage() {
                       </div>
                       <span className="text-sm text-chalk/70">
                         <Calendar className="h-4 w-4 inline mr-1" />
-                        {formatDistanceToNow(new Date(post.published_at), { addSuffix: true })}
+                        {format(new Date(post.published_at), 'MMM d, yyyy')}
                       </span>
                     </div>
                   </div>
