@@ -1,29 +1,43 @@
 import React, { useId, useMemo } from 'react';
 import { coverParams, COVER_VIEW_BOX } from '../../lib/blogCover';
-import { GRID_PITCH_PX, GRID_LINE_COLOR, CONE_AMBER, TURF_DARK, TURF_CHALK } from '../../lib/ambient';
+import { GRID_PITCH_PX, GRID_LINE_COLOR, CONE_AMBER } from '../../lib/ambient';
 
 type Props = {
   slug: string;
   className?: string;
-  /** Animate the routes drawing in — reserved for the post hero (one
-   *  cover, a moment of arrival), never the index grid's 13 cards at once.
+  /** Animate the route drawing in — reserved for the post hero (one cover,
+   *  a moment of arrival), never the index grid's 13 cards at once.
    *  Respects prefers-reduced-motion via the existing .draw-in class. */
   animate?: boolean;
 };
 
 /**
- * Deterministic, per-slug generated cover art. Inline SVG, not canvas or a
- * rasterized image — see blogCover.ts's doc comment for why. Decorative
- * only: aria-hidden, no <title>, no alt text. The art sits inside a link
- * whose accessible name is already the post title; describing generated
- * abstract shapes ("navy field, amber floodlights, three green routes")
- * would be noise to someone scanning a grid of these, not information.
+ * Deterministic, per-slug generated cover art — see blogCover.ts's doc
+ * comment for the design reasoning (v2, after the first version read as
+ * generic/cluttered per direct feedback). One mark per cover: a faint
+ * origin dot, one long confident route stroke, one green arrowhead, a few
+ * restrained yard-hash ticks — exactly Logo.tsx's and Hero.tsx's own
+ * existing brand vocabulary, extended here rather than inventing a new,
+ * busier one.
+ *
+ * Decorative only: aria-hidden, no <title>, no alt text — it sits inside a
+ * link whose accessible name is already the post title.
  */
 export function BlogCoverArt({ slug, className, animate = false }: Props) {
   const params = useMemo(() => coverParams(slug), [slug]);
   const uid = useId();
   const gridId = `${uid}-grid`;
   const coneIds = params.cones.map((_, i) => `${uid}-cone-${i}`);
+
+  const routeTransform = [
+    `translate(${params.transform.tx} ${params.transform.ty})`,
+    `scale(${params.transform.scale})`,
+    params.transform.mirror ? 'translate(480 0) scale(-1 1)' : '',
+  ].filter(Boolean).join(' ');
+
+  const hashX = params.hashes.side === 'left' ? 60 : 1540;
+  const hashSpacing = 70;
+  const hashStart = 300;
 
   return (
     <svg
@@ -60,24 +74,8 @@ export function BlogCoverArt({ slug, className, animate = false }: Props) {
       {/* Ground */}
       <rect width="1600" height="900" fill="#101D2E" />
 
-      {/* Turf band — a suggestion of field, not a literal diagram */}
-      <rect y={params.turf.top} width="1600" height={params.turf.height} fill={TURF_DARK} />
-      {Array.from({ length: params.turf.lineCount }).map((_, i) => {
-        const x = ((i + 1) / (params.turf.lineCount + 1)) * 1600;
-        return (
-          <line
-            key={i}
-            x1={x}
-            y1={params.turf.top}
-            x2={x}
-            y2={params.turf.top + params.turf.height}
-            stroke={TURF_CHALK}
-            strokeWidth={2}
-          />
-        );
-      })}
-
-      {/* Floodlight cones */}
+      {/* Floodlight cones, then grid paper on top — same order and values
+          as the homepage hero's own ambient treatment. */}
       {params.cones.map((cone, i) => (
         <ellipse
           key={coneIds[i]}
@@ -88,46 +86,45 @@ export function BlogCoverArt({ slug, className, animate = false }: Props) {
           fill={`url(#${coneIds[i]})`}
         />
       ))}
-
-      {/* Grid paper overlay, on top of the turf/cones like the homepage hero */}
       <rect width="1600" height="900" fill={`url(#${gridId})`} />
 
-      {/* Ghost mark — a faint football silhouette, pure texture */}
-      <g
-        transform={`translate(${params.ghost.x} ${params.ghost.y}) rotate(${params.ghost.rotate}) scale(${params.ghost.size / 200})`}
-        opacity={0.045}
-      >
-        <ellipse cx="0" cy="0" rx="100" ry="58" fill="#F8F6F1" />
-        <line x1="-55" y1="0" x2="55" y2="0" stroke="#101D2E" strokeWidth="4" />
-        <line x1="-14" y1="-10" x2="-14" y2="10" stroke="#101D2E" strokeWidth="3" />
-        <line x1="0" y1="-12" x2="0" y2="12" stroke="#101D2E" strokeWidth="3" />
-        <line x1="14" y1="-10" x2="14" y2="10" stroke="#101D2E" strokeWidth="3" />
+      {/* Yard-hash ticks — Logo.tsx's exact motif (3-4 short pairs down one
+          edge), the one piece of literal football detail, kept small and
+          restrained rather than a full field/turf illustration. */}
+      <g stroke="#F8F6F1" strokeOpacity="0.14" strokeWidth="4" strokeLinecap="round">
+        {Array.from({ length: params.hashes.count }).map((_, i) => (
+          <line
+            key={i}
+            x1={hashX - 18}
+            y1={hashStart + i * hashSpacing}
+            x2={hashX + 18}
+            y2={hashStart + i * hashSpacing}
+          />
+        ))}
       </g>
 
-      {/* Chalk sweep — one diagonal stroke, present on roughly a third of covers */}
-      {params.sweep && (
-        <path d={params.sweep.d} stroke="#F8F6F1" strokeOpacity="0.05" strokeWidth="140" strokeLinecap="round" />
-      )}
-
-      {/* Routes */}
-      {params.routes.map((route, i) => (
-        <g key={i}>
-          <path
-            d={route.d}
-            fill="none"
-            stroke="#1FA75D"
-            strokeWidth="7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={animate ? 'draw-in' : undefined}
-            style={animate ? ({ '--draw-length': 400 } as React.CSSProperties) : undefined}
-            pathLength={animate ? 400 : undefined}
-          />
-          <g transform={`translate(${route.arrow.x} ${route.arrow.y}) rotate(${route.arrow.angle})`}>
-            <path d="M0,-11 L18,0 L0,11 Z" fill="#1FA75D" />
-          </g>
+      {/* The one deliberate mark: origin dot, one long route, one arrowhead —
+          Hero.tsx's doodle recipe, scaled up and varied per slug. */}
+      <g transform={routeTransform}>
+        <circle cx="20" cy={params.route.origin.y} r="9" fill="none" stroke="#F8F6F1" strokeOpacity="0.3" strokeWidth="5" />
+        <path
+          d={params.route.d}
+          fill="none"
+          stroke="#F8F6F1"
+          strokeOpacity="0.3"
+          strokeWidth="7"
+          strokeLinecap="round"
+          className={animate ? 'draw-in' : undefined}
+          style={animate ? ({ '--draw-length': 1400 } as React.CSSProperties) : undefined}
+          pathLength={animate ? 1400 : undefined}
+        />
+        <g
+          transform={`translate(${params.route.end.x} ${params.route.end.y}) rotate(${params.route.endAngle})`}
+          className={animate ? 'arrow-in' : undefined}
+        >
+          <path d="M24 0 L0 -12 L0 12 Z" fill="#1FA75D" fillOpacity="0.85" />
         </g>
-      ))}
+      </g>
     </svg>
   );
 }

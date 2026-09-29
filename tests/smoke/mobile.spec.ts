@@ -632,11 +632,12 @@ test('blog cover art: the same slug renders identical art on the index card and 
     });
   });
 
-  // stroke="#1FA75D" selects a route path specifically — the grid pattern's
-  // own <path> (inside <defs>) has a fixed `d` on every cover regardless of
-  // slug, so matching "any path" here would pass vacuously. Not scoped to
-  // `article`: the post hero's cover sits in a sibling div before <article>.
-  const routePath = 'svg path[stroke="#1FA75D"]';
+  // stroke="#F8F6F1" (the hex form) selects the route path specifically —
+  // the grid pattern's own <path> (inside <defs>) uses the rgba() form of
+  // the same color and has fixed geometry regardless of slug, so matching
+  // "any path" here would pass vacuously. Not scoped to `article`: the post
+  // hero's cover sits in a sibling div before <article>.
+  const routePath = 'svg path[stroke="#F8F6F1"]';
 
   await page.goto('/blog', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Determinism Post')).toBeVisible();
