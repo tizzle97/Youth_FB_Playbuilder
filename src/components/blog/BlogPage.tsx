@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Book, Tag, Calendar, User, Eye, Newspaper } from 'lucide-react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
+import {
+  Book, Tag, Calendar, User, Eye, Newspaper, List as ListIcon, Wand2, ArrowRight,
+  Link2, Share2,
+} from 'lucide-react';
+import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { formatDistanceToNow, format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
-import { parseSections } from '../../lib/blogMarkdown';
-import { promoteImplicitHeadings, plainExcerpt } from '../../lib/blogText';
-import { categorize, type Category, type CategoryId } from '../../lib/blogTaxonomy';
+import { parseSections, headingOutline } from '../../lib/blogMarkdown';
+import { promoteImplicitHeadings, plainExcerpt, readingTime } from '../../lib/blogText';
+import { categorize, relatedScore, type Category, type CategoryId } from '../../lib/blogTaxonomy';
 import { BlogCoverArt } from './BlogCoverArt';
 import { floodlights, gridPaper } from '../../lib/ambient';
-import { format } from 'date-fns';
 
 interface BlogPost {
   id: string;
@@ -59,14 +61,85 @@ function useBlogLinkBehavior(
   });
 }
 
+type ListedPost = { slug: string; title: string; description: string | null; published_at: string };
+
+type CtaContent = { headline: string; body: string; href: string; action: string };
+
+/** Maps a post's topic to a real in-product feature. All targets are real
+ *  routes — there's no `id="pricing"` anchor anywhere in the app, so
+ *  `/#pricing` would silently do nothing. */
+function ctaFor(title: string, category: CategoryId): CtaContent {
+  if (/wristband/i.test(title)) {
+    return {
+      headline: 'Ready to build one?',
+      body: 'Print a wristband sheet straight from your playbook.',
+      href: '/playbooks',
+      action: 'Build a wristband sheet',
+    };
+  }
+  if (category === 'offense' || category === 'defense') {
+    return {
+      headline: 'See it on the field.',
+      body: 'Draw this play in the free play designer.',
+      href: '/designer',
+      action: 'Draw this play in the designer',
+    };
+  }
+  if (category === 'practice') {
+    return {
+      headline: 'Plan your next practice.',
+      body: 'Organize your plays into a practice-ready playbook.',
+      href: '/playbooks',
+      action: 'Build a practice playbook',
+    };
+  }
+  if (category === 'rules' || category === 'team') {
+    return {
+      headline: 'Need more plays?',
+      body: 'Browse real plays other coaches have shared.',
+      href: '/plays?tab=community',
+      action: 'Browse the play library',
+    };
+  }
+  return {
+    headline: 'Try the play designer.',
+    body: 'Sketch your own plays in minutes, free.',
+    href: '/designer',
+    action: 'Open the play designer',
+  };
+}
+
+function BlogPostCta({ cta }: { cta: CtaContent }) {
+  return (
+    <aside className="not-prose my-10 flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4">
+      <Wand2 className="h-6 w-6 shrink-0 text-primary" />
+      <div className="min-w-0">
+        <p className="text-sm text-chalk">
+          <span className="font-semibold text-primary">{cta.headline}</span> {cta.body}
+        </p>
+        <Link
+          to={cta.href}
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-dark transition-colors"
+        >
+          {cta.action} <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </aside>
+  );
+}
+
 /** Single post at /blog/:slug — a real, crawlable, shareable URL. */
 export function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const articleRef = useRef<HTMLDivElement>(null);
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [otherPosts, setOtherPosts] = useState<ListedPost[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,10 +160,74 @@ export function BlogPostPage() {
     return () => { cancelled = true; };
   }, [slug]);
 
+  // For related-post ranking and prev/next. categorize() scores well on
+  // title+description alone (the authoring agent's descriptions reliably
+  // name concepts), so this deliberately doesn't pull every post's full
+  // content just to populate a sidebar.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('slug, title, description, published_at')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false });
+      if (cancelled) return;
+      // A single-object mock (as tests/smoke/mobile.spec.ts's long-URL test
+      // uses, shaped for the .maybeSingle() query above) would otherwise
+      // throw on .filter() below — guard defensively against any non-array
+      // shape, real or mocked.
+      setOtherPosts(Array.isArray(data) ? data : []);
+    })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
   const sections = useMemo(
     () => (post ? parseSections(promoteImplicitHeadings(post.content)) : []),
     [post],
   );
+  const outline = useMemo(
+    () => (post ? headingOutline(promoteImplicitHeadings(post.content)) : []),
+    [post],
+  );
+  const category = useMemo(() => (post ? categorize(post) : null), [post]);
+  const minutes = useMemo(() => (post ? readingTime(post.content) : 0), [post]);
+  const cta = useMemo(() => (post && category ? ctaFor(post.title, category.id) : null), [post, category]);
+
+  const others = otherPosts.filter((p) => p.slug !== slug);
+  const related = post
+    ? others
+        .map((p) => ({ post: p, score: relatedScore(post, p) }))
+        .sort((a, b) => b.score - a.score || +new Date(b.post.published_at) - +new Date(a.post.published_at))
+        .slice(0, 3)
+        .map((r) => r.post)
+    : [];
+  // `others` (not otherPosts) — otherPosts' own query has no slug filter, so
+  // it already includes the current post; appending `post` again without
+  // excluding it first would put it in this list twice, and prev/next could
+  // then point at the post itself (its own duplicate entry).
+  const chronological = [...others, ...(post ? [{ slug: post.slug, title: post.title, description: post.description, published_at: post.published_at }] : [])]
+    .sort((a, b) => +new Date(b.published_at) - +new Date(a.published_at));
+  const currentIndex = post ? chronological.findIndex((p) => p.slug === post.slug) : -1;
+  const newer = currentIndex > 0 ? chronological[currentIndex - 1] : null;
+  const older = currentIndex >= 0 && currentIndex < chronological.length - 1 ? chronological[currentIndex + 1] : null;
+
+  const backHref = (location.state as { from?: string } | null)?.from ?? '/blog';
+
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail (permissions, insecure context) — show the
+      // fallback <input readOnly> so the reader can select-and-copy
+      // manually instead of the click silently doing nothing.
+      setCopyFailed(true);
+    }
+  };
+
   useBlogLinkBehavior(articleRef, navigate);
 
   usePageMeta({
@@ -112,30 +249,53 @@ export function BlogPostPage() {
       : null,
   });
 
+  const midCtaIndex = sections.length > 2 ? 1 : null;
+
   return (
     <div className="min-h-screen bg-board">
-      {/* max-w-[42rem] targets ~68 characters at the article's text size —
-          the old max-w-4xl (896px) ran ~105ch, well past comfortable
-          reading measure. Step 6 wraps this in a wider page shell for a
-          sidebar; the article column itself stays this width. */}
-      <div className="max-w-[42rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Link to="/blog" className="inline-block mb-6 text-primary hover:text-primary-dark transition-colors">
-          ← Back to Blog
-        </Link>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-sm text-chalk/60">
+          <Link to="/" className="hover:text-chalk transition-colors">Home</Link>
+          <span aria-hidden="true">/</span>
+          <Link to={backHref} className="hover:text-chalk transition-colors">Blog</Link>
+          {post && (
+            <>
+              <span aria-hidden="true">/</span>
+              <span className="truncate max-w-[16rem] text-chalk/80">{post.title}</span>
+            </>
+          )}
+        </nav>
 
         {loading ? (
-          <div className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 animate-pulse">
+          <div className="max-w-[42rem] bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 animate-pulse">
             <div className="h-8 bg-chalk/10 rounded w-2/3 mb-6"></div>
             <div className="h-4 bg-chalk/10 rounded w-full mb-3"></div>
             <div className="h-4 bg-chalk/10 rounded w-5/6"></div>
           </div>
         ) : error ? (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{error}</div>
+          <div className="max-w-[42rem] p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{error}</div>
         ) : !post ? (
           <div className="text-center py-12">
             <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
             <h1 className="text-lg font-medium text-chalk mb-2">Post not found</h1>
-            <p className="text-chalk/70">This post may have been removed or the link is incorrect.</p>
+            <p className="text-chalk/70 mb-4">This post may have been removed or the link is incorrect.</p>
+            <Link to="/blog" className="text-primary hover:text-primary-dark transition-colors">
+              ← Back to all posts
+            </Link>
+            {otherPosts.length > 0 && (
+              <div className="mt-10 max-w-2xl mx-auto text-left">
+                <p className="font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">Recent posts</p>
+                <ul className="space-y-3">
+                  {otherPosts.slice(0, 3).map((p) => (
+                    <li key={p.slug}>
+                      <Link to={`/blog/${p.slug}`} className="text-chalk hover:text-primary transition-colors">
+                        {p.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -145,33 +305,141 @@ export function BlogPostPage() {
             <div className="aspect-[2/1] xs:aspect-[21/9] rounded-lg overflow-hidden border border-chalk/10 mb-6">
               <BlogCoverArt slug={post.slug} className="block w-full h-full" animate />
             </div>
-            <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10">
-            <header className="mb-8">
-              <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
-              <div className="flex items-center gap-4 text-sm text-chalk/70">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    Published {formatDistanceToNow(new Date(post.published_at), { addSuffix: true })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <User className="h-4 w-4" />
-                  <span>Playbuilder Pro</span>
-                </div>
-              </div>
-            </header>
 
-            <div
-              ref={articleRef}
-              className="prose prose-invert prose-article max-w-none break-words font-editorial text-[17px] sm:text-lg leading-[1.75]"
-            >
-              {/* Sanitized by sanitizeBlogHtml() inside parseSections() before it ever reaches here. */}
-              {sections.map((section, i) => (
-                <div key={section.id ?? `lead-${i}`} dangerouslySetInnerHTML={{ __html: section.html }} />
-              ))}
+            <div className="lg:grid lg:grid-cols-[1fr_18rem] lg:gap-10 lg:items-start">
+              <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 lg:max-w-[42rem]">
+                <header className="mb-8">
+                  <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-label text-xs text-chalk/50">
+                    {category && <span className="text-primary">{category.label}</span>}
+                    <span aria-hidden="true">·</span>
+                    <time dateTime={post.published_at}>{format(new Date(post.published_at), 'MMMM d, yyyy')}</time>
+                    <span aria-hidden="true">·</span>
+                    <span>{minutes} min read</span>
+                  </div>
+                  <p className="mt-2 text-sm text-chalk/60">By the Playbuilder Pro coaching team</p>
+                </header>
+
+                <div
+                  ref={articleRef}
+                  className="prose prose-invert prose-article max-w-none break-words font-editorial text-[17px] sm:text-lg leading-[1.75]"
+                >
+                  {/* Sanitized by sanitizeBlogHtml() inside parseSections() before it ever reaches here. */}
+                  {sections.map((section, i) => (
+                    <React.Fragment key={section.id ?? `lead-${i}`}>
+                      <div id={section.id ?? undefined} dangerouslySetInnerHTML={{ __html: section.html }} />
+                      {cta && midCtaIndex === i && <BlogPostCta cta={cta} />}
+                    </React.Fragment>
+                  ))}
+                  {cta && <BlogPostCta cta={cta} />}
+                </div>
+
+                <div className="not-prose mt-10 flex flex-wrap items-center gap-2 border-t border-chalk/10 pt-6">
+                  <span className="font-label text-xs uppercase tracking-widest text-chalk/50 flex items-center gap-1.5 mr-1">
+                    <Share2 className="h-3.5 w-3.5" /> Share
+                  </span>
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(shareUrl)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    X
+                  </a>
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    Facebook
+                  </a>
+                  <a
+                    href={`mailto:?subject=${encodeURIComponent(post.title)}&body=${encodeURIComponent(shareUrl)}`}
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    Email
+                  </a>
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    className="tap-target inline-flex items-center gap-1.5 rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    {copied ? 'Copied' : 'Copy link'}
+                  </button>
+                  {copyFailed && (
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      aria-label="Post URL — select and copy"
+                      onFocus={(e) => e.currentTarget.select()}
+                      autoFocus
+                      className="mt-2 w-full px-3 py-1.5 bg-board border border-chalk/20 rounded-md text-sm text-chalk"
+                    />
+                  )}
+                </div>
+              </article>
+
+              <aside className="mt-8 lg:mt-0 lg:sticky lg:top-24 space-y-6">
+                {outline.length >= 3 && (
+                  <div className="bg-board-light rounded-lg p-5 border border-chalk/10">
+                    <p className="flex items-center gap-2 font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">
+                      <ListIcon className="h-3.5 w-3.5" /> On this page
+                    </p>
+                    <ul className="space-y-2 text-sm">
+                      {outline.map((h) => (
+                        <li key={h.id}>
+                          <a href={`#${h.id}`} className="text-chalk/70 hover:text-primary transition-colors">
+                            {h.text}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {related.length > 0 && (
+                  <div className="bg-board-light rounded-lg p-5 border border-chalk/10">
+                    <p className="font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">
+                      More from the Playbook
+                    </p>
+                    <ul className="space-y-4">
+                      {related.map((r) => (
+                        <li key={r.slug}>
+                          <Link to={`/blog/${r.slug}`} className="group block">
+                            <p className="text-sm font-medium text-chalk group-hover:text-primary transition-colors line-clamp-2">
+                              {r.title}
+                            </p>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </aside>
             </div>
-            </article>
+
+            {(older || newer) && (
+              <nav className="mt-12 grid gap-4 border-t border-chalk/10 pt-8 sm:grid-cols-2" aria-label="More posts">
+                {older ? (
+                  <Link to={`/blog/${older.slug}`} className="group block">
+                    <p className="font-label text-xs text-chalk/50">Previous</p>
+                    <p className="font-display text-base text-chalk group-hover:text-primary transition-colors">
+                      {older.title}
+                    </p>
+                  </Link>
+                ) : <div />}
+                {newer ? (
+                  <Link to={`/blog/${newer.slug}`} className="group block sm:text-right">
+                    <p className="font-label text-xs text-chalk/50">Next</p>
+                    <p className="font-display text-base text-chalk group-hover:text-primary transition-colors">
+                      {newer.title}
+                    </p>
+                  </Link>
+                ) : <div />}
+              </nav>
+            )}
           </>
         )}
       </div>

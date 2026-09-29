@@ -538,7 +538,11 @@ test('blog markdown: headings, lists, bold, and links all render as real element
   await expect(article.getByRole('heading', { level: 2, name: 'Section One' })).toBeVisible();
   await expect(article.getByRole('heading', { level: 3, name: 'Subsection' })).toBeVisible();
   await expect(article.locator('li')).toHaveCount(4); // 2 ul + 2 ol
-  await expect(article.getByRole('link', { name: 'designer' })).toBeVisible();
+  // exact: true — the post page's own in-content product CTA also links to
+  // /designer with an accessible name containing "designer" ("Open the play
+  // designer"), so a loose substring match here is ambiguous between the
+  // two, unrelated links.
+  await expect(article.getByRole('link', { name: 'designer', exact: true })).toBeVisible();
   await expect(article.locator('strong', { hasText: 'bold' })).toBeVisible();
   await expect(article.locator('blockquote')).toBeVisible();
 
@@ -644,6 +648,84 @@ test('blog cover art: the same slug renders identical art on the index card and 
 
   expect(cardPathD).toBeTruthy();
   expect(cardPathD).toBe(heroPathD);
+});
+
+test('blog post page: related posts and prev/next are populated from real sibling data, excluding the current post', async ({ page }) => {
+  // Regression: prev/next was built from [...otherPosts, post] without
+  // first excluding the current post from otherPosts — but otherPosts'
+  // query has no slug filter, so it already included the current post,
+  // putting it in the list twice. findIndex() then located the wrong
+  // occurrence and "Previous" pointed at the post itself.
+  const posts = [
+    { id: 'p1', slug: 'oldest-post', title: 'Oldest Zone Defense Post', description: 'About zone defense.', content: 'zone defense content', author_id: 'x', published_at: '2025-01-01T00:00:00Z', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' },
+    { id: 'p2', slug: 'middle-post', title: 'Man-to-Man Defense Basics', description: 'About man defense.', content: 'man to man defense content', author_id: 'x', published_at: '2025-06-01T00:00:00Z', created_at: '2025-06-01T00:00:00Z', updated_at: '2025-06-01T00:00:00Z' },
+    { id: 'p3', slug: 'newest-post', title: 'Newest Practice Drills', description: 'About practice.', content: 'practice drills content', author_id: 'x', published_at: '2025-09-01T00:00:00Z', created_at: '2025-09-01T00:00:00Z', updated_at: '2025-09-01T00:00:00Z' },
+  ];
+  await page.route('**/rest/v1/blog_posts**', (route) => {
+    const url = route.request().url();
+    if (url.includes('slug=eq.')) {
+      const slug = decodeURIComponent(url.match(/slug=eq\.([^&]+)/)?.[1] ?? '');
+      const match = posts.find((p) => p.slug === slug);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(match ?? null) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posts) });
+  });
+
+  await page.goto('/blog/middle-post', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Man-to-Man Defense Basics' })).toBeVisible();
+
+  // Related: "Oldest Zone Defense Post" shares the Defense category with
+  // this post (man-to-man); "Newest Practice Drills" doesn't. Scoped to the
+  // "More from" card specifically — with only 3 posts in this fixture, the
+  // same title also legitimately appears in prev/next below.
+  const relatedCard = page.locator('text=More from the Playbook').locator('..');
+  await expect(relatedCard.getByText('Oldest Zone Defense Post')).toBeVisible();
+
+  // Prev/next must point at the two OTHER posts, never at the current one.
+  await expect(page.getByText('Previous')).toBeVisible();
+  await expect(page.getByText('Next')).toBeVisible();
+  const prevNextText = await page.locator('nav[aria-label="More posts"]').innerText();
+  expect(prevNextText).toContain('Oldest Zone Defense Post');
+  expect(prevNextText).toContain('Newest Practice Drills');
+  expect(prevNextText).not.toContain('Man-to-Man Defense Basics');
+});
+
+test('blog post page: sidebar (TOC, related, CTA) holds at 320px with no horizontal scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  const posts = [
+    { id: 'p1', slug: 'other-post', title: 'A Different Post About Zone Defense Concepts', description: 'zone defense', content: 'zone defense content', author_id: 'x', published_at: '2025-01-01T00:00:00Z', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' },
+    {
+      id: 'p2', slug: 'main-post',
+      title: 'A Very Long Post Title About Beating Zone Defense That Wraps Across Several Lines On A Narrow Phone Screen',
+      description: 'zone defense', author_id: 'x',
+      published_at: '2025-06-01T00:00:00Z', created_at: '2025-06-01T00:00:00Z', updated_at: '2025-06-01T00:00:00Z',
+      content: [
+        'Lead paragraph about zone defense concepts for this test post.',
+        'First section heading', 'Body text for the first section, about zone defense.',
+        'Second section heading', 'Body text for the second section, still about zone defense.',
+        'Third section heading', 'Body text for the third section, wrapping up zone defense.',
+      ].join('\n\n'),
+    },
+  ];
+  await page.route('**/rest/v1/blog_posts**', (route) => {
+    const url = route.request().url();
+    if (url.includes('slug=eq.')) {
+      const slug = decodeURIComponent(url.match(/slug=eq\.([^&]+)/)?.[1] ?? '');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posts.find((p) => p.slug === slug) ?? null) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posts) });
+  });
+
+  await page.goto('/blog/main-post', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('h2')).toHaveCount(3); // implicit headings promoted
+  await expect(page.getByText('On this page')).toBeVisible();
+
+  const { scrollW, clientW } = await page.evaluate(() => ({
+    scrollW: document.documentElement.scrollWidth,
+    clientW: document.documentElement.clientWidth,
+  }));
+  expect(scrollW).toBeLessThanOrEqual(clientW + 1);
 });
 
 /* ── Blog post typography on phones (B-49) ──────────────────────────────────
