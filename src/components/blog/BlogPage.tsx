@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Book, Tag, Calendar, User, Eye } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import { parseSections } from '../../lib/blogMarkdown';
+import { promoteImplicitHeadings, plainExcerpt } from '../../lib/blogText';
 
 interface BlogPost {
   id: string;
@@ -18,18 +20,46 @@ interface BlogPost {
   updated_at: string;
 }
 
-function formatContent(content: string) {
-  // Simple formatting: convert line breaks to paragraphs
-  return content.split('\n\n').map((paragraph, index) => (
-    <p key={index} className="mb-4 text-chalk/90 leading-relaxed">
-      {paragraph}
-    </p>
-  ));
+/** External links get target=_blank+rel (DOMPurify strips those attributes
+ *  from content, so they can't be content-controlled); same-origin links are
+ *  intercepted so an in-post link to e.g. /designer is a client-side
+ *  transition instead of a full reload. Delegated on the container rather
+ *  than per-anchor, since the anchors come from dangerouslySetInnerHTML. */
+function useBlogLinkBehavior(
+  containerRef: React.RefObject<HTMLElement>,
+  navigate: ReturnType<typeof useNavigate>,
+) {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    for (const a of Array.from(container.querySelectorAll('a[href]'))) {
+      const href = a.getAttribute('href') ?? '';
+      if (/^https?:\/\//i.test(href)) {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+      }
+    }
+
+    const onClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement)?.closest?.('a[href]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') ?? '';
+      if (href.startsWith('/') && !href.startsWith('//')) {
+        e.preventDefault();
+        navigate(href);
+      }
+    };
+    container.addEventListener('click', onClick);
+    return () => container.removeEventListener('click', onClick);
+  });
 }
 
 /** Single post at /blog/:slug — a real, crawlable, shareable URL. */
 export function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const articleRef = useRef<HTMLDivElement>(null);
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +83,15 @@ export function BlogPostPage() {
     return () => { cancelled = true; };
   }, [slug]);
 
+  const sections = useMemo(
+    () => (post ? parseSections(promoteImplicitHeadings(post.content)) : []),
+    [post],
+  );
+  useBlogLinkBehavior(articleRef, navigate);
+
   usePageMeta({
     title: post?.title,
-    description: post?.description || post?.content.slice(0, 155),
+    description: post?.description || (post ? plainExcerpt(post.content) : undefined),
     path: `/blog/${slug}`,
     jsonLd: post
       ? {
@@ -74,7 +110,11 @@ export function BlogPostPage() {
 
   return (
     <div className="min-h-screen bg-board">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* max-w-[42rem] targets ~68 characters at the article's text size —
+          the old max-w-4xl (896px) ran ~105ch, well past comfortable
+          reading measure. Step 6 wraps this in a wider page shell for a
+          sidebar; the article column itself stays this width. */}
+      <div className="max-w-[42rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Link to="/blog" className="inline-block mb-6 text-primary hover:text-primary-dark transition-colors">
           ← Back to Blog
         </Link>
@@ -111,7 +151,15 @@ export function BlogPostPage() {
               </div>
             </header>
 
-            <div className="prose prose-invert break-words">{formatContent(post.content)}</div>
+            <div
+              ref={articleRef}
+              className="prose prose-invert prose-article max-w-none break-words font-editorial text-[17px] sm:text-lg leading-[1.75]"
+            >
+              {/* Sanitized by sanitizeBlogHtml() inside parseSections() before it ever reaches here. */}
+              {sections.map((section, i) => (
+                <div key={section.id ?? `lead-${i}`} dangerouslySetInnerHTML={{ __html: section.html }} />
+              ))}
+            </div>
           </article>
         )}
       </div>
@@ -162,7 +210,7 @@ export function BlogPage() {
         <div className="bg-board-light rounded-lg p-4 sm:p-8 mb-8 border border-chalk/10">
           <div className="flex items-center gap-3 mb-4">
             <Book className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-chalk font-bold text-chalk">Blog</h1>
+            <h1 className="text-3xl font-bold text-chalk">Blog</h1>
           </div>
           <p className="text-chalk/70 text-lg max-w-3xl">
             Insights, strategies, and expert advice for youth football coaches and players.

@@ -170,3 +170,71 @@ body {
 .community-post-content u {
   text-decoration: underline;
 }
+
+/* Blog article typography. `prose prose-invert` (the @tailwindcss/typography
+   plugin) supplies the structure; these variables supply the brand's voice.
+   Overriding the plugin's CSS variables beats stacking two dozen `prose-*:`
+   modifiers on the element: every color lives in one place, and the JSX
+   stays legible. Guarded by tests/smoke/mobile.spec.ts — a GFM `<table>` or
+   fenced `<pre>` block must scroll inside the column rather than widening
+   the document at 320px. */
+.prose-article {
+  --tw-prose-invert-body: rgb(248 246 241 / 0.85);
+  --tw-prose-invert-headings: #F8F6F1;
+  --tw-prose-invert-links: #1FA75D;
+  --tw-prose-invert-bold: #F8F6F1;
+  --tw-prose-invert-counters: rgb(31 167 93 / 0.85);
+  --tw-prose-invert-bullets: rgb(31 167 93 / 0.6);
+  --tw-prose-invert-hr: rgb(248 246 241 / 0.1);
+  --tw-prose-invert-quotes: rgb(248 246 241 / 0.85);
+  --tw-prose-invert-quote-borders: rgb(31 167 93 / 0.5);
+  --tw-prose-invert-code: #1FA75D;
+  --tw-prose-invert-pre-bg: #101D2E;
+  --tw-prose-invert-th-borders: rgb(248 246 241 / 0.2);
+  --tw-prose-invert-td-borders: rgb(248 246 241 / 0.1);
+}
+.prose-article :is(h2, h3, h4) {
+  font-family: Anton, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  scroll-margin-top: 6rem; /* clears the sticky navbar when a TOC/anchor link lands here */
+}
+.prose-article h2 {
+  font-size: 1.625rem;
+  line-height: 1.2;
+  margin-top: 3rem;
+}
+.prose-article h3 {
+  font-family: 'Inter var', sans-serif;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.prose-article a {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  text-decoration-color: rgb(31 167 93 / 0.45);
+}
+.prose-article a:hover {
+  text-decoration-color: #1FA75D;
+}
+.prose-article blockquote {
+  background: rgb(31 167 93 / 0.06);
+  border-left-width: 2px;
+  padding: 0.25rem 1.25rem;
+  font-style: normal;
+  font-weight: 400;
+}
+/* A GFM table or fenced code block must scroll itself, not the page. */
+.prose-article table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+}
+.prose-article pre {
+  overflow-x: auto;
+}
+@media (min-width: 640px) {
+  .prose-article h2 {
+    font-size: 1.875rem;
+  }
+}

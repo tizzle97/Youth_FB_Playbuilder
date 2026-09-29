@@ -35,8 +35,11 @@ export default {
         sans: ['Inter var', 'sans-serif'],
         display: ['Anton', 'sans-serif'],
         label: ['"JetBrains Mono"', 'monospace'],
-        // Marketing-copy body face for the homepage only — everywhere else
-        // (designer, dashboards, forms) stays on `font-sans` (Inter var).
+        // Marketing and editorial body face — the homepage's marketing copy
+        // and blog article bodies/deks. Everywhere else (designer,
+        // dashboards, forms, blog chrome like pills/meta/buttons) stays on
+        // `font-sans` (Inter var); headings stay on `font-display` (Anton)
+        // even in editorial contexts.
         editorial: ['Fraunces', 'Georgia', 'serif'],
       },
       aspectRatio: {

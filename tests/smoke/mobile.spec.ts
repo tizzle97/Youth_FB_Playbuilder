@@ -492,6 +492,123 @@ test('taps get no default highlight flash and the page does not rubber-band', as
   expect(styles.overscrollY).toBe('none');
 });
 
+/** Mocks `/blog/:slug` with a single post (matches BlogPostPage's
+ *  `.maybeSingle()` GET). Used by the markdown-rendering tests below. */
+async function mockBlogPost(page: Page, overrides: Partial<{
+  slug: string; title: string; content: string; description: string | null;
+}>) {
+  const post = {
+    id: 'post-1',
+    title: 'Test Post',
+    content: '',
+    slug: 'test-post',
+    description: null,
+    author_id: 'someone',
+    published_at: '2025-09-01T00:00:00Z',
+    created_at: '2025-09-01T00:00:00Z',
+    updated_at: '2025-09-01T00:00:00Z',
+    ...overrides,
+  };
+  await page.route('**/rest/v1/blog_posts**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(post) }));
+  return post;
+}
+
+/* ── Blog markdown rendering (step 1 of the blog editorial redesign) ───────
+   formatContent() used to split content on blank lines into identical <p>
+   tags — no headings, lists, bold, or links were possible no matter what
+   the content contained. These guard the replacement: a real CommonMark
+   renderer (marked + sanitizeBlogHtml), a heuristic that promotes
+   heading-shaped plain paragraphs to real <h2>s for the 13 already-published
+   posts (and any future post the agent writes without markdown), and that
+   raw HTML in content is neutered regardless of either path. */
+
+test('blog markdown: headings, lists, bold, and links all render as real elements', async ({ page }) => {
+  const post = await mockBlogPost(page, {
+    slug: 'markdown-post',
+    title: 'A post with real markdown',
+    content:
+      '## Section One\n\nSome **bold** text and a [designer](/designer) link.\n\n' +
+      '### Subsection\n\n- a\n- b\n\n1. first\n2. second\n\n> a quote',
+  });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  const article = page.locator('article');
+
+  await expect(article.getByRole('heading', { level: 2, name: 'Section One' })).toBeVisible();
+  await expect(article.getByRole('heading', { level: 3, name: 'Subsection' })).toBeVisible();
+  await expect(article.locator('li')).toHaveCount(4); // 2 ul + 2 ol
+  await expect(article.getByRole('link', { name: 'designer' })).toBeVisible();
+  await expect(article.locator('strong', { hasText: 'bold' })).toBeVisible();
+  await expect(article.locator('blockquote')).toBeVisible();
+
+  const bodyText = await article.innerText();
+  expect(bodyText).not.toContain('##');
+  expect(bodyText).not.toContain('**');
+});
+
+test('blog markdown: plain prose with no markdown still renders as real paragraphs', async ({ page }) => {
+  // Most of the 13 live posts (and, if the authoring agent is never updated
+  // to emit markdown, every future post) look exactly like this.
+  const paragraphs = Array.from({ length: 6 }, (_, i) => `This is plain paragraph number ${i + 1} of the post.`);
+  const post = await mockBlogPost(page, {
+    slug: 'plain-prose-post',
+    title: 'A post with plain prose',
+    content: paragraphs.join('\n\n'),
+  });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  const article = page.locator('article');
+  await expect(page.getByRole('heading', { name: post.title })).toBeVisible();
+
+  expect(await article.locator('p').count()).toBeGreaterThanOrEqual(5);
+  await expect(article.locator('h2')).toHaveCount(0);
+  const bodyText = await article.innerText();
+  expect(bodyText).not.toContain('#');
+});
+
+test('blog markdown: heading-shaped plain paragraphs are promoted to real <h2>s', async ({ page }) => {
+  // The load-bearing graceful-degradation guarantee: 5 of the 13 live posts
+  // have section headings written as ordinary short paragraphs (no markdown
+  // syntax at all) — promoteImplicitHeadings() must turn these into real
+  // headings with zero data changes and zero agent involvement.
+  const content = [
+    'This is the lead paragraph introducing the topic in a sentence or two.',
+    'Why this matters',
+    'A paragraph explaining why the first heading-like line above matters, with enough text to read like real prose.',
+    'The pre-snap clues',
+    'A paragraph explaining the second heading-like line, again long enough to read as a real paragraph and not a heading itself.',
+    'Putting it into practice',
+    'A closing paragraph that wraps up the post with the third heading-like line already promoted above it.',
+  ].join('\n\n');
+  const post = await mockBlogPost(page, { slug: 'implicit-headings-post', title: 'Implicit headings', content });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  const article = page.locator('article');
+  await expect(article.locator('h2')).toHaveCount(3);
+  await expect(article.getByRole('heading', { level: 2, name: 'Why this matters' })).toBeVisible();
+  await expect(article.getByRole('heading', { level: 2, name: 'The pre-snap clues' })).toBeVisible();
+  await expect(article.getByRole('heading', { level: 2, name: 'Putting it into practice' })).toBeVisible();
+});
+
+test('blog markdown: raw HTML in content is neutered by sanitization', async ({ page }) => {
+  const post = await mockBlogPost(page, {
+    slug: 'malicious-post',
+    title: 'A post with embedded HTML',
+    content:
+      'Some intro text.\n\n<script>window.__xssFired = true;</script>\n\n' +
+      '<img src="x" onerror="window.__xssFired = true;">\n\nMore text after it.',
+  });
+
+  await page.goto(`/blog/${post.slug}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('article')).toBeVisible();
+
+  expect(await page.locator('article script').count()).toBe(0);
+  expect(await page.locator('article [onerror]').count()).toBe(0);
+  const fired = await page.evaluate(() => (window as unknown as { __xssFired?: boolean }).__xssFired);
+  expect(fired).toBeUndefined();
+});
+
 /* ── Blog post typography on phones (B-49) ──────────────────────────────────
    `prose prose-invert` was inert (no `@tailwindcss/typography` plugin
    registered), so a post carrying a long unbroken token — a URL with no
@@ -520,6 +637,14 @@ test('a long unbroken URL in a blog post does not push the page sideways', async
 
   await page.goto('/blog/long-link-post', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'A post with a long link' })).toBeVisible();
+
+  // GFM now autolinks the bare URL into a real <a>, and the blog's link
+  // behavior effect adds target/rel to it (DOMPurify strips those
+  // attributes from content, so they're added post-sanitization) — assert
+  // that happened, not just that the page didn't overflow.
+  const link = page.locator('article a', { hasText: longUrl });
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', /noopener/);
 
   const { scrollW, clientW } = await page.evaluate(() => ({
     scrollW: document.documentElement.scrollWidth,
