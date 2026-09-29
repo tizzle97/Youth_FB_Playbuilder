@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Book, Tag, Calendar, User, Eye } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Book, Tag, Calendar, User, Eye, Newspaper, List as ListIcon, Wand2, ArrowRight,
+  Link2, Share2,
+} from 'lucide-react';
+import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { formatDistanceToNow, format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
+import { parseSections, headingOutline } from '../../lib/blogMarkdown';
+import { promoteImplicitHeadings, plainExcerpt, readingTime, stripMarkdown } from '../../lib/blogText';
+import { categorize, relatedScore, type Category, type CategoryId } from '../../lib/blogTaxonomy';
+import { BlogCoverArt } from './BlogCoverArt';
+import { floodlights, gridPaper } from '../../lib/ambient';
+import { resolveDiagrams } from '../../lib/blogDiagrams';
+import { PLAY_SCENES, type PlaySceneKey } from '../../lib/blogPlayScenes';
+import { PlayDiagramCard } from '../PlayDiagramCard';
 
 interface BlogPost {
   id: string;
@@ -18,21 +29,120 @@ interface BlogPost {
   updated_at: string;
 }
 
-function formatContent(content: string) {
-  // Simple formatting: convert line breaks to paragraphs
-  return content.split('\n\n').map((paragraph, index) => (
-    <p key={index} className="mb-4 text-chalk/90 leading-relaxed">
-      {paragraph}
-    </p>
-  ));
+/** External links get target=_blank+rel (DOMPurify strips those attributes
+ *  from content, so they can't be content-controlled); same-origin links are
+ *  intercepted so an in-post link to e.g. /designer is a client-side
+ *  transition instead of a full reload. Delegated on the container rather
+ *  than per-anchor, since the anchors come from dangerouslySetInnerHTML. */
+function useBlogLinkBehavior(
+  containerRef: React.RefObject<HTMLElement>,
+  navigate: ReturnType<typeof useNavigate>,
+) {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    for (const a of Array.from(container.querySelectorAll('a[href]'))) {
+      const href = a.getAttribute('href') ?? '';
+      if (/^https?:\/\//i.test(href)) {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+      }
+    }
+
+    const onClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement)?.closest?.('a[href]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') ?? '';
+      if (href.startsWith('/') && !href.startsWith('//')) {
+        e.preventDefault();
+        navigate(href);
+      }
+    };
+    container.addEventListener('click', onClick);
+    return () => container.removeEventListener('click', onClick);
+  });
+}
+
+type ListedPost = { slug: string; title: string; description: string | null; published_at: string };
+
+type CtaContent = { headline: string; body: string; href: string; action: string };
+
+/** Maps a post's topic to a real in-product feature. All targets are real
+ *  routes — there's no `id="pricing"` anchor anywhere in the app, so
+ *  `/#pricing` would silently do nothing. */
+function ctaFor(title: string, category: CategoryId): CtaContent {
+  if (/wristband/i.test(title)) {
+    return {
+      headline: 'Ready to build one?',
+      body: 'Print a wristband sheet straight from your playbook.',
+      href: '/playbooks',
+      action: 'Build a wristband sheet',
+    };
+  }
+  if (category === 'offense' || category === 'defense') {
+    return {
+      headline: 'See it on the field.',
+      body: 'Draw this play in the free play designer.',
+      href: '/designer',
+      action: 'Draw this play in the designer',
+    };
+  }
+  if (category === 'practice') {
+    return {
+      headline: 'Plan your next practice.',
+      body: 'Organize your plays into a practice-ready playbook.',
+      href: '/playbooks',
+      action: 'Build a practice playbook',
+    };
+  }
+  if (category === 'rules' || category === 'team') {
+    return {
+      headline: 'Need more plays?',
+      body: 'Browse real plays other coaches have shared.',
+      href: '/plays?tab=community',
+      action: 'Browse the play library',
+    };
+  }
+  return {
+    headline: 'Try the play designer.',
+    body: 'Sketch your own plays in minutes, free.',
+    href: '/designer',
+    action: 'Open the play designer',
+  };
+}
+
+function BlogPostCta({ cta }: { cta: CtaContent }) {
+  return (
+    <aside className="not-prose my-10 flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4">
+      <Wand2 className="h-6 w-6 shrink-0 text-primary" />
+      <div className="min-w-0">
+        <p className="text-sm text-chalk">
+          <span className="font-semibold text-primary">{cta.headline}</span> {cta.body}
+        </p>
+        <Link
+          to={cta.href}
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-dark transition-colors"
+        >
+          {cta.action} <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </aside>
+  );
 }
 
 /** Single post at /blog/:slug — a real, crawlable, shareable URL. */
 export function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const articleRef = useRef<HTMLDivElement>(null);
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [otherPosts, setOtherPosts] = useState<ListedPost[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,82 +163,405 @@ export function BlogPostPage() {
     return () => { cancelled = true; };
   }, [slug]);
 
+  // For related-post ranking and prev/next. categorize() scores well on
+  // title+description alone (the authoring agent's descriptions reliably
+  // name concepts), so this deliberately doesn't pull every post's full
+  // content just to populate a sidebar.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('slug, title, description, published_at')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false });
+      if (cancelled) return;
+      // A single-object mock (as tests/smoke/mobile.spec.ts's long-URL test
+      // uses, shaped for the .maybeSingle() query above) would otherwise
+      // throw on .filter() below — guard defensively against any non-array
+      // shape, real or mocked.
+      setOtherPosts(Array.isArray(data) ? data : []);
+    })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  const sections = useMemo(
+    () => (post ? parseSections(promoteImplicitHeadings(post.content)) : []),
+    [post],
+  );
+  const outline = useMemo(
+    () => (post ? headingOutline(promoteImplicitHeadings(post.content)) : []),
+    [post],
+  );
+  const category = useMemo(() => (post ? categorize(post) : null), [post]);
+  const minutes = useMemo(() => (post ? readingTime(post.content) : 0), [post]);
+  const cta = useMemo(() => (post && category ? ctaFor(post.title, category.id) : null), [post, category]);
+
+  const others = otherPosts.filter((p) => p.slug !== slug);
+  const related = post
+    ? others
+        .map((p) => ({ post: p, score: relatedScore(post, p) }))
+        .sort((a, b) => b.score - a.score || +new Date(b.post.published_at) - +new Date(a.post.published_at))
+        .slice(0, 3)
+        .map((r) => r.post)
+    : [];
+  // `others` (not otherPosts) — otherPosts' own query has no slug filter, so
+  // it already includes the current post; appending `post` again without
+  // excluding it first would put it in this list twice, and prev/next could
+  // then point at the post itself (its own duplicate entry).
+  const chronological = [...others, ...(post ? [{ slug: post.slug, title: post.title, description: post.description, published_at: post.published_at }] : [])]
+    .sort((a, b) => +new Date(b.published_at) - +new Date(a.published_at));
+  const currentIndex = post ? chronological.findIndex((p) => p.slug === post.slug) : -1;
+  const newer = currentIndex > 0 ? chronological[currentIndex - 1] : null;
+  const older = currentIndex >= 0 && currentIndex < chronological.length - 1 ? chronological[currentIndex + 1] : null;
+
+  const backHref = (location.state as { from?: string } | null)?.from ?? '/blog';
+
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail (permissions, insecure context) — show the
+      // fallback <input readOnly> so the reader can select-and-copy
+      // manually instead of the click silently doing nothing.
+      setCopyFailed(true);
+    }
+  };
+
+  useBlogLinkBehavior(articleRef, navigate);
+
   usePageMeta({
     title: post?.title,
-    description: post?.description || post?.content.slice(0, 155),
+    description: post?.description || (post ? plainExcerpt(post.content) : undefined),
     path: `/blog/${slug}`,
-    jsonLd: post
+    // @graph rather than two script tags — usePageMeta takes one jsonLd
+    // object and JSON.stringifies whatever it's handed.
+    jsonLd: post && category
       ? {
           '@context': 'https://schema.org',
-          '@type': 'Article',
-          headline: post.title,
-          description: post.description || undefined,
-          datePublished: post.published_at,
-          dateModified: post.updated_at,
-          author: { '@type': 'Organization', name: 'Playbuilder Pro' },
-          publisher: { '@type': 'Organization', name: 'Playbuilder Pro', url: 'https://playbuilderpro.com' },
-          mainEntityOfPage: `https://playbuilderpro.com/blog/${post.slug}`,
+          '@graph': [
+            {
+              '@type': 'Article',
+              headline: post.title,
+              description: post.description || undefined,
+              // The site's one static OG image — genuinely honest (it's what
+              // link previews show anyway) since there's no per-post image:
+              // this is a client-rendered SPA, so social scrapers (which
+              // don't run JS) never see the per-post meta usePageMeta sets
+              // post-hydration regardless, and the generated cover art is
+              // inline SVG with no fetchable URL a scraper could use even if
+              // they did. Google renders JS and indexes this correctly, so
+              // search is fine; only social previews stay site-wide.
+              image: 'https://playbuilderpro.com/og-image.png',
+              datePublished: post.published_at,
+              dateModified: post.updated_at,
+              author: { '@type': 'Organization', name: 'Playbuilder Pro' },
+              publisher: {
+                '@type': 'Organization',
+                name: 'Playbuilder Pro',
+                url: 'https://playbuilderpro.com',
+                logo: { '@type': 'ImageObject', url: 'https://playbuilderpro.com/og-image.png' },
+              },
+              mainEntityOfPage: `https://playbuilderpro.com/blog/${post.slug}`,
+              articleSection: category.label,
+              wordCount: stripMarkdown(post.content).split(/\s+/).filter(Boolean).length,
+              keywords: category.label,
+              inLanguage: 'en-US',
+              isAccessibleForFree: true,
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://playbuilderpro.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://playbuilderpro.com/blog' },
+                { '@type': 'ListItem', position: 3, name: post.title, item: `https://playbuilderpro.com/blog/${post.slug}` },
+              ],
+            },
+          ],
         }
       : null,
   });
 
+  const midCtaIndex = sections.length > 2 ? 1 : null;
+  const diagramsBySection = useMemo(
+    () => (post ? resolveDiagrams(post, sections) : new Map<number, PlaySceneKey[]>()),
+    [post, sections],
+  );
+
   return (
     <div className="min-h-screen bg-board">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Link to="/blog" className="inline-block mb-6 text-primary hover:text-primary-dark transition-colors">
-          ← Back to Blog
-        </Link>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-sm text-chalk/60">
+          <Link to="/" className="hover:text-chalk transition-colors">Home</Link>
+          <span aria-hidden="true">/</span>
+          <Link to={backHref} className="hover:text-chalk transition-colors">Blog</Link>
+          {post && (
+            <>
+              <span aria-hidden="true">/</span>
+              <span className="truncate max-w-[16rem] text-chalk/80">{post.title}</span>
+            </>
+          )}
+        </nav>
 
         {loading ? (
-          <div className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 animate-pulse">
+          <div className="max-w-[42rem] bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 animate-pulse">
             <div className="h-8 bg-chalk/10 rounded w-2/3 mb-6"></div>
             <div className="h-4 bg-chalk/10 rounded w-full mb-3"></div>
             <div className="h-4 bg-chalk/10 rounded w-5/6"></div>
           </div>
         ) : error ? (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{error}</div>
+          <div className="max-w-[42rem] p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{error}</div>
         ) : !post ? (
           <div className="text-center py-12">
             <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
             <h1 className="text-lg font-medium text-chalk mb-2">Post not found</h1>
-            <p className="text-chalk/70">This post may have been removed or the link is incorrect.</p>
+            <p className="text-chalk/70 mb-4">This post may have been removed or the link is incorrect.</p>
+            <Link to="/blog" className="text-primary hover:text-primary-dark transition-colors">
+              ← Back to all posts
+            </Link>
+            {otherPosts.length > 0 && (
+              <div className="mt-10 max-w-2xl mx-auto text-left">
+                <p className="font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">Recent posts</p>
+                <ul className="space-y-3">
+                  {otherPosts.slice(0, 3).map((p) => (
+                    <li key={p.slug}>
+                      <Link to={`/blog/${p.slug}`} className="text-chalk hover:text-primary transition-colors">
+                        {p.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
-          <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10">
-            <header className="mb-8">
-              <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
-              <div className="flex items-center gap-4 text-sm text-chalk/70">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    Published {formatDistanceToNow(new Date(post.published_at), { addSuffix: true })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <User className="h-4 w-4" />
-                  <span>Playbuilder Pro</span>
-                </div>
-              </div>
-            </header>
+          <>
+            {/* Title lives below the cover, never overlaid on it — legibility
+                over generated art can't be inspected for a post that doesn't
+                exist yet, and it's the likeliest way to break at 320px. */}
+            <div className="aspect-[2/1] xs:aspect-[21/9] rounded-lg overflow-hidden border border-chalk/10 mb-6">
+              <BlogCoverArt slug={post.slug} className="block w-full h-full" animate />
+            </div>
 
-            <div className="prose prose-invert break-words">{formatContent(post.content)}</div>
-          </article>
+            <div className="lg:grid lg:grid-cols-[1fr_18rem] lg:gap-10 lg:items-start">
+              <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10 lg:max-w-[42rem]">
+                <header className="mb-8">
+                  <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-label text-xs text-chalk/50">
+                    {category && <span className="text-primary">{category.label}</span>}
+                    <span aria-hidden="true">·</span>
+                    <time dateTime={post.published_at}>{format(new Date(post.published_at), 'MMMM d, yyyy')}</time>
+                    <span aria-hidden="true">·</span>
+                    <span>{minutes} min read</span>
+                  </div>
+                  <p className="mt-2 text-sm text-chalk/60">By the Playbuilder Pro coaching team</p>
+                </header>
+
+                <div
+                  ref={articleRef}
+                  className="prose prose-invert prose-article max-w-none break-words font-editorial text-[17px] sm:text-lg leading-[1.75]"
+                >
+                  {/* Sanitized by sanitizeBlogHtml() inside parseSections() before it ever reaches here. */}
+                  {sections.map((section, i) => (
+                    <React.Fragment key={section.id ?? `lead-${i}`}>
+                      <div id={section.id ?? undefined} dangerouslySetInnerHTML={{ __html: section.html }} />
+                      {(diagramsBySection.get(i) ?? []).map((sceneKey) => {
+                        const scene = PLAY_SCENES[sceneKey];
+                        return (
+                          <div key={sceneKey} className="not-prose my-8 max-w-sm mx-auto">
+                            <PlayDiagramCard
+                              icons={scene.icons}
+                              paths={scene.paths}
+                              zones={scene.zones}
+                              label={scene.label}
+                              alt={scene.alt}
+                              animate="inView"
+                            />
+                          </div>
+                        );
+                      })}
+                      {cta && midCtaIndex === i && <BlogPostCta cta={cta} />}
+                    </React.Fragment>
+                  ))}
+                  {cta && <BlogPostCta cta={cta} />}
+                </div>
+
+                <div className="not-prose mt-10 flex flex-wrap items-center gap-2 border-t border-chalk/10 pt-6">
+                  <span className="font-label text-xs uppercase tracking-widest text-chalk/50 flex items-center gap-1.5 mr-1">
+                    <Share2 className="h-3.5 w-3.5" /> Share
+                  </span>
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(shareUrl)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    X
+                  </a>
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    Facebook
+                  </a>
+                  <a
+                    href={`mailto:?subject=${encodeURIComponent(post.title)}&body=${encodeURIComponent(shareUrl)}`}
+                    className="tap-target rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    Email
+                  </a>
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    className="tap-target inline-flex items-center gap-1.5 rounded-md border border-chalk/15 px-3 py-1.5 text-sm text-chalk/70 hover:border-chalk/30 hover:text-chalk transition-colors"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    {copied ? 'Copied' : 'Copy link'}
+                  </button>
+                  {copyFailed && (
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      aria-label="Post URL — select and copy"
+                      onFocus={(e) => e.currentTarget.select()}
+                      autoFocus
+                      className="mt-2 w-full px-3 py-1.5 bg-board border border-chalk/20 rounded-md text-sm text-chalk"
+                    />
+                  )}
+                </div>
+              </article>
+
+              <aside className="mt-8 lg:mt-0 lg:sticky lg:top-24 space-y-6">
+                {outline.length >= 3 && (
+                  <div className="bg-board-light rounded-lg p-5 border border-chalk/10">
+                    <p className="flex items-center gap-2 font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">
+                      <ListIcon className="h-3.5 w-3.5" /> On this page
+                    </p>
+                    <ul className="space-y-2 text-sm">
+                      {outline.map((h) => (
+                        <li key={h.id}>
+                          <a href={`#${h.id}`} className="text-chalk/70 hover:text-primary transition-colors">
+                            {h.text}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {related.length > 0 && (
+                  <div className="bg-board-light rounded-lg p-5 border border-chalk/10">
+                    <p className="font-label text-xs uppercase tracking-widest text-chalk/50 mb-3">
+                      More from the Playbook
+                    </p>
+                    <ul className="space-y-4">
+                      {related.map((r) => (
+                        <li key={r.slug}>
+                          <Link to={`/blog/${r.slug}`} className="group block">
+                            <p className="text-sm font-medium text-chalk group-hover:text-primary transition-colors line-clamp-2">
+                              {r.title}
+                            </p>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </aside>
+            </div>
+
+            {(older || newer) && (
+              <nav className="mt-12 grid gap-4 border-t border-chalk/10 pt-8 sm:grid-cols-2" aria-label="More posts">
+                {older ? (
+                  <Link to={`/blog/${older.slug}`} className="group block">
+                    <p className="font-label text-xs text-chalk/50">Previous</p>
+                    <p className="font-display text-base text-chalk group-hover:text-primary transition-colors">
+                      {older.title}
+                    </p>
+                  </Link>
+                ) : <div />}
+                {newer ? (
+                  <Link to={`/blog/${newer.slug}`} className="group block sm:text-right">
+                    <p className="font-label text-xs text-chalk/50">Next</p>
+                    <p className="font-display text-base text-chalk group-hover:text-primary transition-colors">
+                      {newer.title}
+                    </p>
+                  </Link>
+                ) : <div />}
+              </nav>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
+type BlogPostView = BlogPost & { category: Category };
+
 export function BlogPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeCategory = searchParams.get('category') as CategoryId | null;
 
+  // Derived once per fetch, not per render — a regex sweep over every post's
+  // title/description on every keystroke of a filter would be the kind of
+  // thing that makes a page feel cheap.
+  const postViews = useMemo<BlogPostView[]>(
+    () => posts.map((p) => ({ ...p, category: categorize(p) })),
+    [posts],
+  );
+  const availableCategories = useMemo(() => {
+    const counts = new Map<CategoryId, { category: Category; count: number }>();
+    for (const p of postViews) {
+      const entry = counts.get(p.category.id);
+      if (entry) entry.count += 1;
+      else counts.set(p.category.id, { category: p.category, count: 1 });
+    }
+    return Array.from(counts.values());
+  }, [postViews]);
+  const visiblePosts = activeCategory
+    ? postViews.filter((p) => p.category.id === activeCategory)
+    : postViews;
+  // The featured treatment is always the overall newest post, shown only
+  // when no filter is active — a featured card that doesn't match the
+  // active filter would read as a bug, not a feature.
+  const featured = !activeCategory ? visiblePosts[0] : undefined;
+  const gridPosts = featured ? visiblePosts.slice(1) : visiblePosts;
+
+  // Filtered views are query params on the canonical /blog, not separate
+  // pages — usePageMeta below hardcodes path: '/blog' deliberately, so a
+  // filtered view never self-canonicalizes into a thin duplicate URL.
   usePageMeta({
     title: 'Blog — Youth & Flag Football Coaching Tips',
     description:
       'Coaching tips, play concepts, drills, and strategy for youth and flag football coaches, from the team behind Playbuilder Pro.',
+    // Canonical stays plain /blog regardless of an active ?category= filter
+    // — a filtered view is a query param on this same page, never its own
+    // indexable URL, so this must not read from useSearchParams.
     path: '/blog',
+    jsonLd: postViews.length > 0
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Blog',
+          name: 'Playbuilder Pro Blog',
+          url: 'https://playbuilderpro.com/blog',
+          blogPost: postViews.map((p) => ({
+            '@type': 'BlogPosting',
+            headline: p.title,
+            url: `https://playbuilderpro.com/blog/${p.slug}`,
+            datePublished: p.published_at,
+            description: p.description || undefined,
+          })),
+        }
+      : null,
   });
 
   useEffect(() => {
@@ -157,18 +590,25 @@ export function BlogPage() {
 
   return (
     <div className="min-h-screen bg-board">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="bg-board-light rounded-lg p-4 sm:p-8 mb-8 border border-chalk/10">
-          <div className="flex items-center gap-3 mb-4">
-            <Book className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-chalk font-bold text-chalk">Blog</h1>
+      {/* Hero band — the same ambient vocabulary (floodlights + grid paper)
+          as the homepage hero, so the blog reads as the same site instead
+          of a bolted-on afterthought. */}
+      <div className="relative bg-board overflow-hidden border-b border-chalk/10">
+        <div className="absolute inset-0 pointer-events-none" style={floodlights} aria-hidden="true" />
+        <div className="absolute inset-0 pointer-events-none" style={gridPaper} aria-hidden="true" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16">
+          <div className="flex items-center gap-2 mb-3">
+            <Book className="h-5 w-5 text-primary" />
+            <p className="font-label text-sm text-primary font-semibold tracking-widest uppercase">The Chalkboard</p>
           </div>
-          <p className="text-chalk/70 text-lg max-w-3xl">
+          <h1 className="font-display text-4xl sm:text-5xl text-chalk">Coaching, drawn up.</h1>
+          <p className="mt-4 font-editorial text-lg text-chalk/70 max-w-2xl">
             Insights, strategies, and expert advice for youth football coaches and players.
           </p>
         </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Error State */}
         {error && (
           <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
@@ -176,43 +616,127 @@ export function BlogPage() {
           </div>
         )}
 
+        {/* Featured post — the newest post, full width. Dates here are
+            relative ("4 days ago"); grid cards below use an absolute date
+            instead — formatDistanceToNow on all of them turned a dated
+            archive into "2 months ago / 2 months ago / 3 months ago", which
+            is less informative and reads staler than it is. */}
+        {!loading && featured && (
+          <Link to={`/blog/${featured.slug}`} className="group block mb-10">
+            <article className="overflow-hidden rounded-xl border border-chalk/10 bg-board-light transition-colors hover:border-primary/30 lg:flex">
+              <div className="relative aspect-video lg:aspect-auto lg:w-3/5 shrink-0">
+                <BlogCoverArt slug={featured.slug} className="absolute inset-0 block w-full h-full" />
+              </div>
+              <div className="p-5 sm:p-7 lg:flex-1 lg:flex lg:flex-col lg:justify-center">
+                <p className="font-label text-xs uppercase tracking-widest text-primary">Latest</p>
+                <h2 className="mt-2 font-display text-2xl sm:text-3xl text-chalk group-hover:text-primary transition-colors">
+                  {featured.title}
+                </h2>
+                <p className="mt-3 font-editorial text-chalk/70 line-clamp-3">
+                  {featured.description || plainExcerpt(featured.content, 200)}
+                </p>
+                <p className="mt-4 font-label text-xs text-chalk/50">
+                  {featured.category.label}
+                  {' · '}
+                  <time dateTime={featured.published_at}>
+                    {formatDistanceToNow(new Date(featured.published_at), { addSuffix: true })}
+                  </time>
+                </p>
+              </div>
+            </article>
+          </Link>
+        )}
+
+        {/* Category filter — only categories actually present, with counts.
+            flex-wrap (not a horizontal scroller) so pills can never cause
+            horizontal overflow at 320px. */}
+        {!loading && availableCategories.length > 1 && (
+          <nav aria-label="Filter posts by category" className="mb-8 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchParams((p) => { p.delete('category'); return p; })}
+              aria-pressed={!activeCategory}
+              className={`tap-target rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                !activeCategory
+                  ? 'border-primary/40 bg-primary/15 text-primary'
+                  : 'border-chalk/15 text-chalk/70 hover:border-chalk/30 hover:text-chalk'
+              }`}
+            >
+              All <span className={!activeCategory ? 'text-primary/60' : 'text-chalk/40'}>{postViews.length}</span>
+            </button>
+            {availableCategories.map(({ category, count }) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setSearchParams((p) => { p.set('category', category.id); return p; })}
+                aria-pressed={activeCategory === category.id}
+                className={`tap-target rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeCategory === category.id
+                    ? 'border-primary/40 bg-primary/15 text-primary'
+                    : 'border-chalk/15 text-chalk/70 hover:border-chalk/30 hover:text-chalk'
+                }`}
+              >
+                {category.label}{' '}
+                <span className={activeCategory === category.id ? 'text-primary/60' : 'text-chalk/40'}>{count}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+
         {/* Loading State */}
         {loading ? (
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="bg-board-light rounded-lg overflow-hidden border border-chalk/10 animate-pulse">
-                <div className="h-48 bg-chalk/10"></div>
-                <div className="p-6">
-                  <div className="h-4 bg-chalk/10 rounded w-2/3 mb-4"></div>
-                  <div className="h-4 bg-chalk/10 rounded w-1/2 mb-2"></div>
-                  <div className="h-4 bg-chalk/10 rounded w-3/4"></div>
+                <div className="aspect-video bg-chalk/10"></div>
+                <div className="p-4">
+                  <div className="h-5 bg-chalk/10 rounded w-3/4 mb-3"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-full mb-2"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-5/6 mb-4"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-1/3"></div>
                 </div>
               </div>
             ))}
           </div>
         ) : posts.length === 0 ? (
-          /* Empty State */
+          /* Empty State — no posts at all */
           <div className="text-center py-12">
-            <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
+            <Newspaper className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-chalk mb-2">No blog posts yet</h3>
             <p className="text-chalk/70">
               Check back soon for insights and strategies from our coaching experts.
             </p>
           </div>
+        ) : visiblePosts.length === 0 ? (
+          /* Empty State — filter matched nothing. Distinct from "no posts at
+             all": reusing that state here would read as a broken page. */
+          <div className="text-center py-12">
+            <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-chalk mb-2">
+              No posts in {availableCategories.find((c) => c.category.id === activeCategory)?.category.label ?? 'this category'} yet
+            </h3>
+            <button
+              type="button"
+              onClick={() => setSearchParams((p) => { p.delete('category'); return p; })}
+              className="text-primary hover:text-primary-dark transition-colors"
+            >
+              Show all posts
+            </button>
+          </div>
         ) : (
           /* Blog Posts Grid */
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {gridPosts.map((post) => (
               <Link key={post.id} to={`/blog/${post.slug}`} className="block group">
-                <article className="h-full bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
-                  <div className="h-48 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                    <Book className="h-16 w-16 text-primary/40" />
+                <article className="h-full flex flex-col bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
+                  <div className="aspect-video overflow-hidden">
+                    <BlogCoverArt slug={post.slug} className="block w-full h-full" />
                   </div>
-                  <div className="p-6">
+                  <div className="p-6 flex flex-1 flex-col">
                     <div className="flex flex-wrap gap-2 mb-4">
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                         <Tag className="h-3 w-3 mr-1" />
-                        Coaching Tips
+                        {post.category.label}
                       </span>
                     </div>
 
@@ -220,10 +744,10 @@ export function BlogPage() {
                       {post.title}
                     </h2>
                     <p className="text-chalk/70 mb-4 line-clamp-3">
-                      {post.description || `${post.content.substring(0, 150)}...`}
+                      {post.description || plainExcerpt(post.content, 150)}
                     </p>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-chalk/10">
+                    <div className="mt-auto flex items-center justify-between pt-4 border-t border-chalk/10">
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-chalk/70">
                           <User className="h-4 w-4 inline mr-1" />
@@ -232,7 +756,7 @@ export function BlogPage() {
                       </div>
                       <span className="text-sm text-chalk/70">
                         <Calendar className="h-4 w-4 inline mr-1" />
-                        {formatDistanceToNow(new Date(post.published_at), { addSuffix: true })}
+                        <time dateTime={post.published_at}>{format(new Date(post.published_at), 'MMM d, yyyy')}</time>
                       </span>
                     </div>
                   </div>

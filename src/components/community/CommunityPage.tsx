@@ -114,7 +114,7 @@ export function CommunityPage() {
           <div className="flex-1">
             <div className="bg-board-light rounded-lg p-6 mb-8 border border-chalk/10">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <h1 className="text-3xl font-chalk font-bold text-chalk flex items-center gap-3">
+                <h1 className="text-3xl font-bold text-chalk flex items-center gap-3">
                   <MessageSquare className="h-8 w-8 text-primary" />
                   Community Forum
                 </h1>
@@ -157,7 +157,7 @@ export function CommunityPage() {
             <div className="bg-board-light rounded-lg p-6 border border-chalk/10">
               <div className="flex items-center gap-2 mb-4">
                 <Award className="h-5 w-5 text-primary" />
-                <h2 className="text-xl font-chalk font-bold text-chalk">Top Contributors</h2>
+                <h2 className="text-xl font-bold text-chalk">Top Contributors</h2>
               </div>
               <TopContributors />
             </div>

@@ -1,6 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { renderScene } from '../lib/renderPlayScene';
-import type { PathItem, PlayerIcon, Pt } from '../lib/renderPlayScene';
+import { PlayDiagramCard } from './PlayDiagramCard';
+import type { PathItem, PlayerIcon } from '../lib/renderPlayScene';
 
 /**
  * Homepage hero demo — a real play, rendered by the same renderScene the
@@ -14,6 +13,11 @@ import type { PathItem, PlayerIcon, Pt } from '../lib/renderPlayScene';
  * out, flat). Receivers line up on the LOS (the field's "20" line, at
  * FIELD_YARDS_ABOVE_LOS / TOTAL_FIELD_YARDS of the height); only the QB sits
  * behind it. The snapper (C) has no route, same as a real snap.
+ *
+ * A thin wrapper over PlayDiagramCard (generalized for blog use — see
+ * blogPlayScenes.ts) with this fixed sample and Hero's own mount-driven
+ * choreography. Kept separate so the blog redesign can't touch this page's
+ * render path or its smoke coverage.
  */
 const LOS_Y = 17 / 30; // FIELD_YARDS_ABOVE_LOS / TOTAL_FIELD_YARDS, kept in sync with renderPlayScene's field
 
@@ -61,47 +65,6 @@ const DEMO_PATHS: PathItem[] = [
   },
 ];
 
-const CANVAS_W = 800;
-const CANVAS_H = 620;
-const DRAW_MS = 1100;
-
-function pathLength(points: Pt[]): number {
-  let len = 0;
-  for (let i = 1; i < points.length; i++) {
-    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-  }
-  return len;
-}
-
-/** Points from the start of the route up through progress `t` (0–1) of its
- *  total length, interpolating the final partial segment — used to render
- *  the route mid-stroke for the draw-in animation. */
-function sliceByProgress(points: Pt[], t: number): Pt[] {
-  if (t >= 1) return points;
-  const target = pathLength(points) * t;
-  let travelled = 0;
-  const out: Pt[] = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    const segLen = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-    if (travelled + segLen >= target) {
-      const remaining = target - travelled;
-      const frac = segLen === 0 ? 0 : remaining / segLen;
-      out.push({
-        x: points[i - 1].x + (points[i].x - points[i - 1].x) * frac,
-        y: points[i - 1].y + (points[i].y - points[i - 1].y) * frac,
-      });
-      return out;
-    }
-    travelled += segLen;
-    out.push(points[i]);
-  }
-  return out;
-}
-
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-
-const CARD_FADE_MS = 500;
-
 type HeroPlayCardProps = {
   /** Delay before the card itself fades in ("lights on"). Routes start
    *  drawing CARD_FADE_MS after that, once the card has fully appeared —
@@ -110,56 +73,14 @@ type HeroPlayCardProps = {
 };
 
 export function HeroPlayCard({ revealDelayMs = 0 }: HeroPlayCardProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion) {
-      renderScene(ctx, CANVAS_W, CANVAS_H, DEMO_PATHS, DEMO_ICONS);
-      return;
-    }
-
-    let frame = 0;
-    let cancelled = false;
-    const startDrawing = () => {
-      let start = 0;
-      const tick = (now: number) => {
-        if (!start) start = now;
-        const t = easeOut(Math.min(1, (now - start) / DRAW_MS));
-        const animatedPaths = DEMO_PATHS.map((p) => ({ ...p, points: sliceByProgress(p.points, t) }));
-        renderScene(ctx, CANVAS_W, CANVAS_H, animatedPaths, DEMO_ICONS);
-        if (t < 1) frame = requestAnimationFrame(tick);
-      };
-      frame = requestAnimationFrame(tick);
-    };
-
-    // Render the field + standing icons immediately (no routes yet) so the
-    // card isn't blank while it waits out its reveal + start delay.
-    renderScene(ctx, CANVAS_W, CANVAS_H, DEMO_PATHS.map((p) => ({ ...p, points: sliceByProgress(p.points, 0) })), DEMO_ICONS);
-    const timeout = window.setTimeout(() => { if (!cancelled) startDrawing(); }, revealDelayMs + CARD_FADE_MS);
-    return () => { cancelled = true; window.clearTimeout(timeout); cancelAnimationFrame(frame); };
-  }, [revealDelayMs]);
-
   return (
-    <div
-      className="card-lights-on rounded-xl border-2 border-board/15 bg-white shadow-xl p-3"
-      style={{ '--reveal-delay': `${revealDelayMs}ms` } as React.CSSProperties}
-    >
-      <p className="font-label text-xs tracking-widest uppercase text-board/50 mb-2 px-1">
-        Trips Rt &middot; Flood
-      </p>
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        className="w-full h-auto rounded-md"
-        role="img"
-        aria-label="Sample play diagram: trips right formation with a slant, out, and flat route flood, drawn in Playbuilder Pro"
-      />
-    </div>
+    <PlayDiagramCard
+      icons={DEMO_ICONS}
+      paths={DEMO_PATHS}
+      label="Trips Rt · Flood"
+      alt="Sample play diagram: trips right formation with a slant, out, and flat route flood, drawn in Playbuilder Pro"
+      animate="mount"
+      revealDelayMs={revealDelayMs}
+    />
   );
 }

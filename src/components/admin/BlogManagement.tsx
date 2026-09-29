@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Eye, Calendar, User } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, Calendar, User, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { getSafeErrorMessage } from '../../lib/errors';
+import { promoteImplicitHeadings } from '../../lib/blogText';
 
 /** URL-safe slug from a title, e.g. "5 Best Flag Plays!" -> "5-best-flag-plays". */
 function slugify(title: string): string {
@@ -93,13 +94,24 @@ function CreatePostModal({ isOpen, onClose, onSave, editingPost }: CreatePostMod
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-chalk mb-2">
-                Content
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-chalk">
+                  Content
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setContent((c) => promoteImplicitHeadings(c))}
+                  title="Promotes short, unpunctuated standalone lines that look like section headings into real ## headings. No-ops if the post already has any heading."
+                  className="tap-target inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary-dark transition-colors"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Suggest headings
+                </button>
+              </div>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Write your blog post content here..."
+                placeholder="Write your blog post content here... (markdown supported: ## headings, **bold**, [links](/path), lists)"
                 rows={15}
                 className="w-full px-3 py-2 bg-board border border-chalk/20 rounded-lg text-chalk focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               />
