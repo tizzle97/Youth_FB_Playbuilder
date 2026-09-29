@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { parseSections, headingOutline } from '../../lib/blogMarkdown';
-import { promoteImplicitHeadings, plainExcerpt, readingTime } from '../../lib/blogText';
+import { promoteImplicitHeadings, plainExcerpt, readingTime, stripMarkdown } from '../../lib/blogText';
 import { categorize, relatedScore, type Category, type CategoryId } from '../../lib/blogTaxonomy';
 import { BlogCoverArt } from './BlogCoverArt';
 import { floodlights, gridPaper } from '../../lib/ambient';
@@ -237,17 +237,50 @@ export function BlogPostPage() {
     title: post?.title,
     description: post?.description || (post ? plainExcerpt(post.content) : undefined),
     path: `/blog/${slug}`,
-    jsonLd: post
+    // @graph rather than two script tags — usePageMeta takes one jsonLd
+    // object and JSON.stringifies whatever it's handed.
+    jsonLd: post && category
       ? {
           '@context': 'https://schema.org',
-          '@type': 'Article',
-          headline: post.title,
-          description: post.description || undefined,
-          datePublished: post.published_at,
-          dateModified: post.updated_at,
-          author: { '@type': 'Organization', name: 'Playbuilder Pro' },
-          publisher: { '@type': 'Organization', name: 'Playbuilder Pro', url: 'https://playbuilderpro.com' },
-          mainEntityOfPage: `https://playbuilderpro.com/blog/${post.slug}`,
+          '@graph': [
+            {
+              '@type': 'Article',
+              headline: post.title,
+              description: post.description || undefined,
+              // The site's one static OG image — genuinely honest (it's what
+              // link previews show anyway) since there's no per-post image:
+              // this is a client-rendered SPA, so social scrapers (which
+              // don't run JS) never see the per-post meta usePageMeta sets
+              // post-hydration regardless, and the generated cover art is
+              // inline SVG with no fetchable URL a scraper could use even if
+              // they did. Google renders JS and indexes this correctly, so
+              // search is fine; only social previews stay site-wide.
+              image: 'https://playbuilderpro.com/og-image.png',
+              datePublished: post.published_at,
+              dateModified: post.updated_at,
+              author: { '@type': 'Organization', name: 'Playbuilder Pro' },
+              publisher: {
+                '@type': 'Organization',
+                name: 'Playbuilder Pro',
+                url: 'https://playbuilderpro.com',
+                logo: { '@type': 'ImageObject', url: 'https://playbuilderpro.com/og-image.png' },
+              },
+              mainEntityOfPage: `https://playbuilderpro.com/blog/${post.slug}`,
+              articleSection: category.label,
+              wordCount: stripMarkdown(post.content).split(/\s+/).filter(Boolean).length,
+              keywords: category.label,
+              inLanguage: 'en-US',
+              isAccessibleForFree: true,
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://playbuilderpro.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://playbuilderpro.com/blog' },
+                { '@type': 'ListItem', position: 3, name: post.title, item: `https://playbuilderpro.com/blog/${post.slug}` },
+              ],
+            },
+          ],
         }
       : null,
   });
@@ -510,7 +543,25 @@ export function BlogPage() {
     title: 'Blog — Youth & Flag Football Coaching Tips',
     description:
       'Coaching tips, play concepts, drills, and strategy for youth and flag football coaches, from the team behind Playbuilder Pro.',
+    // Canonical stays plain /blog regardless of an active ?category= filter
+    // — a filtered view is a query param on this same page, never its own
+    // indexable URL, so this must not read from useSearchParams.
     path: '/blog',
+    jsonLd: postViews.length > 0
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Blog',
+          name: 'Playbuilder Pro Blog',
+          url: 'https://playbuilderpro.com/blog',
+          blogPost: postViews.map((p) => ({
+            '@type': 'BlogPosting',
+            headline: p.title,
+            url: `https://playbuilderpro.com/blog/${p.slug}`,
+            datePublished: p.published_at,
+            description: p.description || undefined,
+          })),
+        }
+      : null,
   });
 
   useEffect(() => {
@@ -587,7 +638,9 @@ export function BlogPage() {
                 <p className="mt-4 font-label text-xs text-chalk/50">
                   {featured.category.label}
                   {' · '}
-                  {formatDistanceToNow(new Date(featured.published_at), { addSuffix: true })}
+                  <time dateTime={featured.published_at}>
+                    {formatDistanceToNow(new Date(featured.published_at), { addSuffix: true })}
+                  </time>
                 </p>
               </div>
             </article>
@@ -703,7 +756,7 @@ export function BlogPage() {
                       </div>
                       <span className="text-sm text-chalk/70">
                         <Calendar className="h-4 w-4 inline mr-1" />
-                        {format(new Date(post.published_at), 'MMM d, yyyy')}
+                        <time dateTime={post.published_at}>{format(new Date(post.published_at), 'MMM d, yyyy')}</time>
                       </span>
                     </div>
                   </div>
