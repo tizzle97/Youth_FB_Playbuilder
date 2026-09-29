@@ -609,6 +609,43 @@ test('blog markdown: raw HTML in content is neutered by sanitization', async ({ 
   expect(fired).toBeUndefined();
 });
 
+test('blog cover art: the same slug renders identical art on the index card and the post hero', async ({ page }) => {
+  // BlogCoverArt is a pure function of slug (blogCover.ts's coverParams), so
+  // the same slug must produce byte-identical SVG geometry wherever it's
+  // used — a reader should recognize a post by its cover.
+  const post = {
+    id: 'post-1', title: 'Determinism Post', slug: 'determinism-post', description: null,
+    author_id: 'someone', published_at: '2025-09-01T00:00:00Z',
+    created_at: '2025-09-01T00:00:00Z', updated_at: '2025-09-01T00:00:00Z',
+    content: 'Some content for this post.',
+  };
+  await page.route('**/rest/v1/blog_posts**', (route) => {
+    const isSingle = route.request().url().includes('slug=eq.');
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(isSingle ? post : [post]),
+    });
+  });
+
+  // stroke="#1FA75D" selects a route path specifically — the grid pattern's
+  // own <path> (inside <defs>) has a fixed `d` on every cover regardless of
+  // slug, so matching "any path" here would pass vacuously. Not scoped to
+  // `article`: the post hero's cover sits in a sibling div before <article>.
+  const routePath = 'svg path[stroke="#1FA75D"]';
+
+  await page.goto('/blog', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('Determinism Post')).toBeVisible();
+  const cardPathD = await page.locator(routePath).first().getAttribute('d');
+
+  await page.goto('/blog/determinism-post', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Determinism Post' })).toBeVisible();
+  const heroPathD = await page.locator(routePath).first().getAttribute('d');
+
+  expect(cardPathD).toBeTruthy();
+  expect(cardPathD).toBe(heroPathD);
+});
+
 /* ── Blog post typography on phones (B-49) ──────────────────────────────────
    `prose prose-invert` was inert (no `@tailwindcss/typography` plugin
    registered), so a post carrying a long unbroken token — a URL with no

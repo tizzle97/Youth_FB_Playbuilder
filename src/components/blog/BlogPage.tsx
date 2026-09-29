@@ -7,6 +7,7 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { parseSections } from '../../lib/blogMarkdown';
 import { promoteImplicitHeadings, plainExcerpt } from '../../lib/blogText';
+import { BlogCoverArt } from './BlogCoverArt';
 
 interface BlogPost {
   id: string;
@@ -134,7 +135,14 @@ export function BlogPostPage() {
             <p className="text-chalk/70">This post may have been removed or the link is incorrect.</p>
           </div>
         ) : (
-          <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10">
+          <>
+            {/* Title lives below the cover, never overlaid on it — legibility
+                over generated art can't be inspected for a post that doesn't
+                exist yet, and it's the likeliest way to break at 320px. */}
+            <div className="aspect-[2/1] xs:aspect-[21/9] rounded-lg overflow-hidden border border-chalk/10 mb-6">
+              <BlogCoverArt slug={post.slug} className="block w-full h-full" animate />
+            </div>
+            <article className="bg-board-light rounded-lg p-4 sm:p-8 border border-chalk/10">
             <header className="mb-8">
               <h1 className="text-3xl font-bold text-chalk mb-4 break-words">{post.title}</h1>
               <div className="flex items-center gap-4 text-sm text-chalk/70">
@@ -160,7 +168,8 @@ export function BlogPostPage() {
                 <div key={section.id ?? `lead-${i}`} dangerouslySetInnerHTML={{ __html: section.html }} />
               ))}
             </div>
-          </article>
+            </article>
+          </>
         )}
       </div>
     </div>
@@ -253,8 +262,8 @@ export function BlogPage() {
             {posts.map((post) => (
               <Link key={post.id} to={`/blog/${post.slug}`} className="block group">
                 <article className="h-full bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
-                  <div className="h-48 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                    <Book className="h-16 w-16 text-primary/40" />
+                  <div className="aspect-video overflow-hidden">
+                    <BlogCoverArt slug={post.slug} className="block w-full h-full" />
                   </div>
                   <div className="p-6">
                     <div className="flex flex-wrap gap-2 mb-4">
