@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Book, Tag, Calendar, User, Eye } from 'lucide-react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Book, Tag, Calendar, User, Eye, Newspaper } from 'lucide-react';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { parseSections } from '../../lib/blogMarkdown';
 import { promoteImplicitHeadings, plainExcerpt } from '../../lib/blogText';
+import { categorize, type Category, type CategoryId } from '../../lib/blogTaxonomy';
 import { BlogCoverArt } from './BlogCoverArt';
 
 interface BlogPost {
@@ -176,11 +177,38 @@ export function BlogPostPage() {
   );
 }
 
+type BlogPostView = BlogPost & { category: Category };
+
 export function BlogPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeCategory = searchParams.get('category') as CategoryId | null;
 
+  // Derived once per fetch, not per render — a regex sweep over every post's
+  // title/description on every keystroke of a filter would be the kind of
+  // thing that makes a page feel cheap.
+  const postViews = useMemo<BlogPostView[]>(
+    () => posts.map((p) => ({ ...p, category: categorize(p) })),
+    [posts],
+  );
+  const availableCategories = useMemo(() => {
+    const counts = new Map<CategoryId, { category: Category; count: number }>();
+    for (const p of postViews) {
+      const entry = counts.get(p.category.id);
+      if (entry) entry.count += 1;
+      else counts.set(p.category.id, { category: p.category, count: 1 });
+    }
+    return Array.from(counts.values());
+  }, [postViews]);
+  const visiblePosts = activeCategory
+    ? postViews.filter((p) => p.category.id === activeCategory)
+    : postViews;
+
+  // Filtered views are query params on the canonical /blog, not separate
+  // pages — usePageMeta below hardcodes path: '/blog' deliberately, so a
+  // filtered view never self-canonicalizes into a thin duplicate URL.
   usePageMeta({
     title: 'Blog — Youth & Flag Football Coaching Tips',
     description:
@@ -233,43 +261,96 @@ export function BlogPage() {
           </div>
         )}
 
+        {/* Category filter — only categories actually present, with counts.
+            flex-wrap (not a horizontal scroller) so pills can never cause
+            horizontal overflow at 320px. */}
+        {!loading && availableCategories.length > 1 && (
+          <nav aria-label="Filter posts by category" className="mb-8 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchParams((p) => { p.delete('category'); return p; })}
+              aria-pressed={!activeCategory}
+              className={`tap-target rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                !activeCategory
+                  ? 'border-primary/40 bg-primary/15 text-primary'
+                  : 'border-chalk/15 text-chalk/70 hover:border-chalk/30 hover:text-chalk'
+              }`}
+            >
+              All <span className={!activeCategory ? 'text-primary/60' : 'text-chalk/40'}>{postViews.length}</span>
+            </button>
+            {availableCategories.map(({ category, count }) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setSearchParams((p) => { p.set('category', category.id); return p; })}
+                aria-pressed={activeCategory === category.id}
+                className={`tap-target rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeCategory === category.id
+                    ? 'border-primary/40 bg-primary/15 text-primary'
+                    : 'border-chalk/15 text-chalk/70 hover:border-chalk/30 hover:text-chalk'
+                }`}
+              >
+                {category.label}{' '}
+                <span className={activeCategory === category.id ? 'text-primary/60' : 'text-chalk/40'}>{count}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+
         {/* Loading State */}
         {loading ? (
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="bg-board-light rounded-lg overflow-hidden border border-chalk/10 animate-pulse">
-                <div className="h-48 bg-chalk/10"></div>
-                <div className="p-6">
-                  <div className="h-4 bg-chalk/10 rounded w-2/3 mb-4"></div>
-                  <div className="h-4 bg-chalk/10 rounded w-1/2 mb-2"></div>
-                  <div className="h-4 bg-chalk/10 rounded w-3/4"></div>
+                <div className="aspect-video bg-chalk/10"></div>
+                <div className="p-4">
+                  <div className="h-5 bg-chalk/10 rounded w-3/4 mb-3"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-full mb-2"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-5/6 mb-4"></div>
+                  <div className="h-3 bg-chalk/10 rounded w-1/3"></div>
                 </div>
               </div>
             ))}
           </div>
         ) : posts.length === 0 ? (
-          /* Empty State */
+          /* Empty State — no posts at all */
           <div className="text-center py-12">
-            <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
+            <Newspaper className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-chalk mb-2">No blog posts yet</h3>
             <p className="text-chalk/70">
               Check back soon for insights and strategies from our coaching experts.
             </p>
           </div>
+        ) : visiblePosts.length === 0 ? (
+          /* Empty State — filter matched nothing. Distinct from "no posts at
+             all": reusing that state here would read as a broken page. */
+          <div className="text-center py-12">
+            <Eye className="h-12 w-12 text-chalk/30 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-chalk mb-2">
+              No posts in {availableCategories.find((c) => c.category.id === activeCategory)?.category.label ?? 'this category'} yet
+            </h3>
+            <button
+              type="button"
+              onClick={() => setSearchParams((p) => { p.delete('category'); return p; })}
+              className="text-primary hover:text-primary-dark transition-colors"
+            >
+              Show all posts
+            </button>
+          </div>
         ) : (
           /* Blog Posts Grid */
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {visiblePosts.map((post) => (
               <Link key={post.id} to={`/blog/${post.slug}`} className="block group">
-                <article className="h-full bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
+                <article className="h-full flex flex-col bg-board-light rounded-lg overflow-hidden border border-chalk/10 hover:border-primary/30 transition-colors">
                   <div className="aspect-video overflow-hidden">
                     <BlogCoverArt slug={post.slug} className="block w-full h-full" />
                   </div>
-                  <div className="p-6">
+                  <div className="p-6 flex flex-1 flex-col">
                     <div className="flex flex-wrap gap-2 mb-4">
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                         <Tag className="h-3 w-3 mr-1" />
-                        Coaching Tips
+                        {post.category.label}
                       </span>
                     </div>
 
@@ -277,10 +358,10 @@ export function BlogPage() {
                       {post.title}
                     </h2>
                     <p className="text-chalk/70 mb-4 line-clamp-3">
-                      {post.description || `${post.content.substring(0, 150)}...`}
+                      {post.description || plainExcerpt(post.content, 150)}
                     </p>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-chalk/10">
+                    <div className="mt-auto flex items-center justify-between pt-4 border-t border-chalk/10">
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-chalk/70">
                           <User className="h-4 w-4 inline mr-1" />
