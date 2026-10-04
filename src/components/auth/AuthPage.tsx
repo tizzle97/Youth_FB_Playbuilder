@@ -19,6 +19,8 @@ export function AuthPage() {
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
   const nextPath = safeNextPath(searchParams.get('next'));
+  // Set by Pricing's Upgrade button for a signed-out visitor.
+  const proIntent = searchParams.get('intent') === 'pro';
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUsername = e.target.value;
@@ -89,7 +91,12 @@ export function AuthPage() {
           options: {
             data: {
               username
-            }
+            },
+            // Without this the confirmation link lands on the Site URL and the
+            // `next` destination is lost — which breaks the Upgrade flow
+            // whenever email confirmation is on. Supabase falls back to
+            // the Site URL if this isn't on its Redirect URLs allowlist.
+            ...(searchParams.get('next') ? { emailRedirectTo: `${window.location.origin}${nextPath}` } : {}),
           }
         });
 
@@ -155,6 +162,13 @@ export function AuthPage() {
                 ? 'Create your account' 
                 : 'Sign in to your account'}
           </h2>
+          {proIntent && !isResetMode && (
+            <p className="mt-4 text-center text-sm text-chalk bg-primary/10 border border-primary/30 rounded-lg px-4 py-3">
+              {isSignUp
+                ? <>Step 1 of 2: create your free account. Then you'll continue to <span className="font-semibold text-primary">Pro checkout ($39/yr)</span>.</>
+                : <>Sign in, then you'll continue to <span className="font-semibold text-primary">Pro checkout ($39/yr)</span>.</>}
+            </p>
+          )}
           {!isResetMode && (
             <p className="mt-2 text-center text-sm text-chalk/70">
               {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
