@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { useEntitlement, FREE_LIMITS } from '../lib/entitlements';
 import { BILLING_ENABLED, startProCheckout } from '../lib/billing';
@@ -26,13 +26,22 @@ const proFeatures = [
   'Clean output (no footer credit)',
 ];
 
+/** Where a signed-out visitor who clicked Upgrade lands after creating an
+ *  account (or confirming it by email): back here, with the consent step
+ *  opened for them. */
+const UPGRADE_RETURN_PATH = '/?upgrade=pro';
+
 export function Pricing() {
-  const { isFoundingMember, isPro } = useEntitlement();
+  const { loading: entitlementLoading, isFoundingMember, isPro } = useEntitlement();
   const [user, setUser] = useState<User | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showConsent, setShowConsent] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const wantsUpgrade = searchParams.get('upgrade') === 'pro';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -43,6 +52,40 @@ export function Pricing() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // React Router doesn't scroll to a hash, so `/#pricing` (the link paid ads
+  // point at) would otherwise land on the hero.
+  useEffect(() => {
+    if (location.hash === '#pricing') sectionRef.current?.scrollIntoView();
+  }, [location.hash]);
+
+  // Back from sign-up via UPGRADE_RETURN_PATH: pick up where the Upgrade click
+  // left off. Waits for the entitlement read so a Pro/Founding account isn't
+  // shown a checkout it doesn't need, and consumes the param so a refresh
+  // doesn't reopen the modal.
+  useEffect(() => {
+    if (!wantsUpgrade || !user || entitlementLoading) return;
+    setSearchParams((params) => {
+      params.delete('upgrade');
+      return params;
+    }, { replace: true });
+    if (BILLING_ENABLED && !isPro) {
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setShowConsent(true);
+    }
+  }, [wantsUpgrade, user, entitlementLoading, isPro, setSearchParams]);
+
+  const handleUpgradeClick = async () => {
+    // Checkout needs an account (create-checkout-session 401s without one), and
+    // a visitor from an ad is always signed out. Read the session fresh rather
+    // than trusting `user`, which is still null for a moment after mount.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      navigate(`/auth?mode=signup&intent=pro&next=${encodeURIComponent(UPGRADE_RETURN_PATH)}`);
+      return;
+    }
+    setShowConsent(true);
+  };
 
   const handleUpgrade = async () => {
     try {
@@ -56,7 +99,7 @@ export function Pricing() {
   };
 
   return (
-    <div className="py-16 bg-board-light border-t border-chalk/10">
+    <div id="pricing" ref={sectionRef} className="py-16 bg-board-light border-t border-chalk/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <h2 className="font-display text-3xl text-chalk">Simple Pricing</h2>
@@ -144,7 +187,7 @@ export function Pricing() {
             ) : BILLING_ENABLED ? (
               <>
                 <button
-                  onClick={() => setShowConsent(true)}
+                  onClick={handleUpgradeClick}
                   disabled={checkoutBusy}
                   className="mt-8 w-full rounded-lg px-4 py-2 text-center font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-wait"
                 >
