@@ -6,6 +6,7 @@ import { DesignerToolbar } from './DesignerToolbar';
 import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
+import { SignupToSaveModal } from './SignupToSaveModal';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
 import type { CanvasHandle, DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
@@ -14,6 +15,8 @@ import { getSafeErrorMessage } from '../../lib/errors';
 import { getUserPreferences, saveUserPreferences, type UserPreferences } from '../../lib/userPreferences';
 import type { CustomRoster } from './rosters';
 import { usePageMeta } from '../../lib/seo';
+import { stashPendingPlay, takePendingPlay } from '../../lib/pendingPlay';
+import { trackEvent } from '../../lib/analytics';
 
 // Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
 // are dropped on large screens — the scene fully re-renders on every drag
@@ -72,6 +75,11 @@ export function PlayDesigner() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  // Save while signed out opens this instead of the Save modal.
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false);
+  // A draft parked before sign-up was just put back on the canvas — once the
+  // coach is signed in, open the Save modal so finishing the save is one click.
+  const [restoredDraft, setRestoredDraft] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isEditingExistingPlay, setIsEditingExistingPlay] = useState(false);
   const [editingPlayId, setEditingPlayId] = useState<string | null>(null);
@@ -207,6 +215,28 @@ export function PlayDesigner() {
 
     return () => { cancelled = true; };
   }, [searchParams]);
+
+  // Back from sign-up (or sign-in) with a play parked by goToAuth below: put
+  // it back. Skipped when a specific play/template was asked for, and
+  // takePendingPlay() removes the draft, so it's restored at most once.
+  useEffect(() => {
+    if (searchParams.get('play') || searchParams.get('template')) return;
+    const draft = takePendingPlay();
+    if (!draft) return;
+    setPlayType(draft.playType);
+    if (draft.metadata) setCurrentPlayMetadata((prev) => ({ ...prev, ...draft.metadata }));
+    setPendingLoad({ paths: draft.paths, playerIcons: draft.playerIcons, zones: draft.zones, textBoxes: draft.textBoxes });
+    setRestoredDraft(true);
+    trackEvent('draft_restored');
+    // Mount-only: a later ?play= navigation must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!restoredDraft || !user) return;
+    setRestoredDraft(false);
+    setShowSaveModal(true);
+  }, [restoredDraft, user]);
 
   // Apply a fetched play onto the canvas once it is mounted
   useEffect(() => {
@@ -461,6 +491,30 @@ export function PlayDesigner() {
     }
   }, [user, editingPlayId, playType, searchParams, navigate]);
 
+  const handleSaveClick = () => {
+    if (user) {
+      setShowSaveModal(true);
+      return;
+    }
+    setShowSignupPrompt(true);
+    trackEvent('save_blocked_signed_out');
+  };
+
+  /** Park the drawing, then send the coach to /auth with a way back here. */
+  const goToAuth = (mode: 'signup' | 'signin') => {
+    const scene = {
+      paths: canvasRef.current?.getPaths?.() ?? [],
+      playerIcons: canvasRef.current?.getIcons?.() ?? [],
+      zones: canvasRef.current?.getZones?.() ?? [],
+      textBoxes: canvasRef.current?.getTextBoxes?.() ?? [],
+    };
+    const hasContent = scene.paths.length + scene.playerIcons.length + scene.zones.length + scene.textBoxes.length > 0;
+    if (hasContent) stashPendingPlay({ ...scene, playType, metadata: currentPlayMetadata });
+    trackEvent('save_prompt_choice', { choice: mode });
+    const next = encodeURIComponent('/designer');
+    navigate(mode === 'signup' ? `/auth?mode=signup&next=${next}` : `/auth?next=${next}`);
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-board flex items-center justify-center">
       <div className="text-chalk">Loading…</div>
@@ -516,10 +570,9 @@ export function PlayDesigner() {
             Playbooks
           </button>
           <button
-            onClick={() => setShowSaveModal(true)}
-            disabled={!user}
-            title={user ? 'Save play' : 'Sign in to save'}
-            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleSaveClick}
+            title="Save play"
+            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
           >
             <Save className="h-4 w-4" />
             <span className="hidden sm:inline">{isEditingExistingPlay ? 'Update' : 'Save'}</span>
@@ -713,6 +766,13 @@ export function PlayDesigner() {
           onUpdateMetadata={setCurrentPlayMetadata}
           userHasAccount={!!user}
           preferences={preferences}
+        />
+      )}
+      {showSignupPrompt && (
+        <SignupToSaveModal
+          onSignUp={() => goToAuth('signup')}
+          onSignIn={() => goToAuth('signin')}
+          onCancel={() => setShowSignupPrompt(false)}
         />
       )}
       <SavePlayModal
