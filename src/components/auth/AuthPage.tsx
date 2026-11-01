@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { getSafeErrorMessage } from '../../lib/errors';
 import { usePageMeta } from '../../lib/seo';
 import { safeNextPath } from '../../lib/nextPath';
+import { trackEvent } from '../../lib/analytics';
 
 export function AuthPage() {
   usePageMeta({ title: 'Sign In', path: '/auth' });
@@ -117,10 +118,14 @@ export function AuthPage() {
           }
         } else if (signUpData.session) {
           // Email confirmation disabled — user is signed in immediately
+          trackEvent('sign_up', { method: 'email', needs_confirmation: false });
           setSuccess('Account created successfully! Welcome!');
           setTimeout(() => navigate(nextPath), 1500);
         } else {
-          // Email confirmation required — tell the user what to actually do
+          // Email confirmation required — tell the user what to actually do.
+          // GA's recommended sign-up event; this is the last moment the site
+          // sees the coach before they leave for their inbox.
+          trackEvent('sign_up', { method: 'email', needs_confirmation: true });
           setSuccess('Account created! Please check your email and click the confirmation link before signing in.');
           setTimeout(() => {
             setIsSignUp(false);
@@ -140,6 +145,7 @@ export function AuthPage() {
             setError(getSafeErrorMessage(signInError, 'Failed to sign in'));
           }
         } else if (data.user) {
+          trackEvent('login', { method: 'email' });
           navigate(nextPath);
         }
       }
