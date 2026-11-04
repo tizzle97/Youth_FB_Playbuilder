@@ -666,8 +666,7 @@ export function PlayDesigner() {
             the navy board with the hero's grid paper, so the white field
             reads as a sheet on it — it used to be bg-white, the field's own
             color, and the two fused into one white slab. CSS only: the field
-            itself stays print-white, and nothing here touches canvas drawing
-            (see the PR #152 notes before changing that). */}
+            itself stays print-white. */}
         <main
           ref={canvasContainerRef}
           className="flex-1 bg-board overflow-auto flex sm:p-4"
