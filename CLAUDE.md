@@ -195,6 +195,27 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
+- **The designer's letterbox is a CSS surface; the field stays print-white.**
+  The field is aspect-locked to the 1650×1275 export, so `<main>` in
+  `PlayDesigner.tsx` letterboxes it — as the navy `board` with the hero's
+  `gridPaper` (`src/lib/ambient.ts`) and a framed, padded field at `sm+`
+  (it was `bg-white` and fused with the field). The padding is read by both the
+  fit and the zoom-anchor math (`containerPadding()`); guarded by
+  `tests/smoke/designer-letterbox.spec.ts`.
+- **⚠ Never tap-test the mobile designer on a Netlify deploy preview.**
+  Deploy previews inject Netlify's Drawer (`<script src="/.netlify/scripts/cdp">`),
+  which on a phone adds an **invisible 48px iframe across the bottom of the
+  screen** — exactly over the mobile toolbar's chip row (player chips,
+  Offense/Defense/Special Teams). Taps go into the iframe, so the page never
+  sees them; the row "wakes up" only when a draw tool grows the toolbar above
+  the strip. Production doesn't load the script. This is what killed PR #152
+  ("lit turf", closed 2026-09-24 after ~8 rounds of on-device bisection that
+  ruled out every code change, down to pure canvas colours — because none of
+  it was the cause) and was found 2026-11-04 by hit-testing the preview
+  (`document.elementFromPoint` at a chip → `IFRAME`). Disable the Drawer for
+  previews (Netlify → Project configuration → Build & deploy → Deploy
+  Previews → Netlify Drawer), or test on a local network dev server. #152's
+  branch (`feat/designer-lit-turf`) may well have been fine.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized
