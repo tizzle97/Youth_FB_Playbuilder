@@ -195,6 +195,24 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
+- **The designer's letterbox is a CSS surface; the field stays print-white.**
+  The field is aspect-locked to the 1650×1275 export, so `<main>` in
+  `PlayDesigner.tsx` letterboxes it — as the navy `board` with the hero's
+  `gridPaper` (`src/lib/ambient.ts`) and a framed, padded field at `sm+`
+  (it was `bg-white` and fused with the field). The padding is read by both the
+  fit and the zoom-anchor math (`containerPadding()`); guarded by
+  `tests/smoke/designer-letterbox.spec.ts`.
+- **⚠ Restyling the designer: read this first.** PR #152 ("lit turf": a dark
+  on-screen field theme, retina canvas backing, framed deck, toolbar restyle)
+  was closed unmerged 2026-09-24. On real iOS Safari it left the mobile
+  toolbar's chip row (player chips, Offense/Defense/Special Teams) dead to
+  touch on a fresh load; it never reproduced in Chromium or WebKit emulation,
+  and ~8 rounds of on-device bisection never found the cause — stripped down to
+  the turf colour math alone it *still* reproduced. So: keep canvas rendering
+  and the toolbars out of visual-polish changes where possible, have the user
+  tap-test the Netlify deploy preview on an iPhone before merging, and if it
+  breaks, start from live Safari Web Inspector (USB), not screenshot relay.
+  Full history is in the PR #152 thread.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized

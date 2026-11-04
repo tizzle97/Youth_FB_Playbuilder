@@ -17,12 +17,26 @@ import type { CustomRoster } from './rosters';
 import { usePageMeta } from '../../lib/seo';
 import { stashPendingPlay, takePendingPlay } from '../../lib/pendingPlay';
 import { trackEvent } from '../../lib/analytics';
+import { gridPaper } from '../../lib/ambient';
 
 // Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
 // are dropped on large screens — the scene fully re-renders on every drag
 // frame, so an oversized bitmap makes dragging visibly laggy.
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 const MAX_CANVAS_PIXELS = 6_000_000;
+
+/** The scroll container's padding (the inset framing the field on the board
+ *  at sm+, zero on phones). clientWidth/Height include it, and the field's
+ *  scroll origin is offset by it, so both the fit and the zoom anchor read it. */
+function containerPadding(el: HTMLElement) {
+  const cs = getComputedStyle(el);
+  return {
+    left: parseFloat(cs.paddingLeft) || 0,
+    top: parseFloat(cs.paddingTop) || 0,
+    x: (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0),
+    y: (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0),
+  };
+}
 
 export function PlayDesigner() {
   usePageMeta({ title: 'Play Designer', description: 'Draw football plays on a real field — routes, formations, and zones — then save, print, or export.', path: '/designer' });
@@ -264,8 +278,9 @@ export function PlayDesigner() {
     const update = () => {
       const el = canvasContainerRef.current;
       if (!el) return;
-      const maxW = Math.max(320, el.clientWidth);
-      const maxH = Math.max(320, el.clientHeight);
+      const pad = containerPadding(el);
+      const maxW = Math.max(320, el.clientWidth - pad.x);
+      const maxH = Math.max(320, el.clientHeight - pad.y);
       const ratio = EXPORT_WIDTH / EXPORT_HEIGHT;
       const w = Math.min(maxW, maxH * ratio);
       setCanvasSize({ width: w, height: w / ratio });
@@ -307,15 +322,20 @@ export function PlayDesigner() {
     pinchAnchorRef.current = null;
     if (!el || prev === zoom) return;
     const k = zoom / prev;
+    // The field starts `pad` into the scroll content, and only the field
+    // scales — so scale the distance from the field's edge, not from 0.
+    const pad = containerPadding(el);
+    const rescale = (scroll: number, viewport: number, offset: number) =>
+      (scroll + viewport - offset) * k + offset - viewport;
     if (anchor) {
       const rect = el.getBoundingClientRect();
       const viewportX = anchor.clientX - rect.left;
       const viewportY = anchor.clientY - rect.top;
-      el.scrollLeft = (el.scrollLeft + viewportX) * k - viewportX;
-      el.scrollTop = (el.scrollTop + viewportY) * k - viewportY;
+      el.scrollLeft = rescale(el.scrollLeft, viewportX, pad.left);
+      el.scrollTop = rescale(el.scrollTop, viewportY, pad.top);
     } else {
-      el.scrollLeft = (el.scrollLeft + el.clientWidth / 2) * k - el.clientWidth / 2;
-      el.scrollTop = (el.scrollTop + el.clientHeight / 2) * k - el.clientHeight / 2;
+      el.scrollLeft = rescale(el.scrollLeft, el.clientWidth / 2, pad.left);
+      el.scrollTop = rescale(el.scrollTop, el.clientHeight / 2, pad.top);
     }
   }, [zoom]);
 
@@ -641,13 +661,19 @@ export function PlayDesigner() {
         </aside>
 
         {/* Scroll container: m-auto centers the canvas while it fits; once
-            zoomed past the container it overflows and drag-to-pan scrolls. */}
+            zoomed past the container it overflows and drag-to-pan scrolls.
+            The letterbox (the field is aspect-locked to the print sheet) is
+            the navy board with the hero's grid paper, so the white field
+            reads as a sheet on it — it used to be bg-white, the field's own
+            color, and the two fused into one white slab. CSS only: the field
+            itself stays print-white, and nothing here touches canvas drawing
+            (see the PR #152 notes before changing that). */}
         <main
           ref={canvasContainerRef}
-          className="flex-1 bg-white overflow-auto flex"
-          style={{ minHeight: 0 }}
+          className="flex-1 bg-board overflow-auto flex sm:p-4"
+          style={{ minHeight: 0, ...gridPaper }}
         >
-          <div className="m-auto">
+          <div className="m-auto shrink-0 ring-1 ring-chalk/20 shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
             <Canvas
               ref={canvasRef}
               id="play-canvas"
