@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut } from 'lucide-react';
-import { Logo } from '../Logo';
+import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut, Maximize, Minimize } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { SignupToSaveModal } from './SignupToSaveModal';
+import { FloatingPanel } from './FloatingPanel';
+import { useViewportGestures } from './useViewportGestures';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
 import type { CanvasHandle, DrawMode, CapStyle, LineStyle, IconShape, PlayerIcon } from './Canvas';
 import { supabase } from '../../lib/supabase';
@@ -21,8 +22,31 @@ import { trackEvent } from '../../lib/analytics';
 // Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
 // are dropped on large screens — the scene fully re-renders on every drag
 // frame, so an oversized bitmap makes dragging visibly laggy.
-const ZOOM_LEVELS = [1, 1.5, 2, 3];
+// Button steps above "fill the screen" (cover), as multiples of it.
+const ZOOM_STEPS_OVER_COVER = [1.5, 2, 3];
 const MAX_CANVAS_PIXELS = 6_000_000;
+
+// Upright phones dock the tools horizontally along the bottom; everything
+// wider — including a phone held sideways, which has room beside the field —
+// gets the vertical panel (it scrolls when the screen is short).
+const DOCK_QUERY = '(max-width: 639px)';
+// Where the action buttons drop their text labels.
+const COMPACT_ACTIONS_QUERY = '(max-width: 899px), (max-height: 599px)';
+const MOVE_HINT_KEY = 'pbp-designer-move-hint-seen';
+// Two fingers pan until their spread changes by this factor; then they zoom.
+const PINCH_ENGAGE = 1.1;
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
 
 export function PlayDesigner() {
   usePageMeta({ title: 'Play Designer', description: 'Draw football plays on a real field — routes, formations, and zones — then save, print, or export.', path: '/designer' });
@@ -31,6 +55,12 @@ export function PlayDesigner() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<CanvasHandle>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
+  // The scroll container's own size — what "cover" is measured against.
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  // Set whenever the view should be recentred once the next zoom lands (load,
+  // resize/rotation, the fit/fill toggle).
+  const centerPendingRef = useRef(true);
+  const [fitTick, setFitTick] = useState(0);
   // Canvas zoom: multiplies the letterboxed base size; the container scrolls
   // (drag-to-pan in Select mode) when the zoomed canvas overflows it.
   const [zoom, setZoom] = useState(1);
@@ -269,6 +299,7 @@ export function PlayDesigner() {
       const ratio = EXPORT_WIDTH / EXPORT_HEIGHT;
       const w = Math.min(maxW, maxH * ratio);
       setCanvasSize({ width: w, height: w / ratio });
+      setViewport({ width: el.clientWidth, height: el.clientHeight });
     };
     update();
     const ro = new ResizeObserver(update);
@@ -276,11 +307,20 @@ export function PlayDesigner() {
     return () => ro.disconnect();
   }, []);
 
+  // `zoom` multiplies the "whole play" size (canvasSize), so 1 shows the
+  // entire play. The default is `cover`: the smallest zoom at which the play
+  // area covers the whole screen — the screen is a window onto the play area,
+  // overflowing in one direction only, with no unusable space around it. The
+  // label shows zoom relative to cover, so the default reads 100%.
+  const cover = viewport.width > 0
+    ? Math.max(1, viewport.width / canvasSize.width, viewport.height / canvasSize.height)
+    : 1;
   // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS) —
   // these back the button pill's fixed steps. Pinch (below) zooms
   // continuously between 1 and the top of this range instead.
-  const zoomLevels = ZOOM_LEVELS.filter(
-    (z) => z === 1 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS,
+  const zoomLevels = [1, cover, ...ZOOM_STEPS_OVER_COVER.map((m) => m * cover)].filter(
+    (z, i, all) => (i < 2 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS)
+      && all.findIndex((o) => Math.abs(o - z) < 0.001) === i,
   );
   const zoomMax = zoomLevels[zoomLevels.length - 1] ?? 1;
   // A pinch usually leaves `zoom` between two button steps, so the pill's
@@ -307,17 +347,45 @@ export function PlayDesigner() {
     pinchAnchorRef.current = null;
     if (!el || prev === zoom) return;
     const k = zoom / prev;
-    if (anchor) {
-      const rect = el.getBoundingClientRect();
-      const viewportX = anchor.clientX - rect.left;
-      const viewportY = anchor.clientY - rect.top;
-      el.scrollLeft = (el.scrollLeft + viewportX) * k - viewportX;
-      el.scrollTop = (el.scrollTop + viewportY) * k - viewportY;
-    } else {
-      el.scrollLeft = (el.scrollLeft + el.clientWidth / 2) * k - el.clientWidth / 2;
-      el.scrollTop = (el.scrollTop + el.clientHeight / 2) * k - el.clientHeight / 2;
-    }
-  }, [zoom]);
+    // While the field is smaller than the screen on an axis it's centred
+    // (m-auto), so its edge is `offset` into the scroll box, not at 0; scale
+    // the distance from the field's edge, before and after, or the anchored
+    // point drifts whenever a zoom crosses "smaller than the screen".
+    const offset = (view: number, field: number) => Math.max(0, (view - field) / 2);
+    const rescale = (scroll: number, at: number, view: number, field: number) =>
+      (scroll + at - offset(view, field * prev)) * k + offset(view, field * zoom) - at;
+    const rect = el.getBoundingClientRect();
+    const atX = anchor ? anchor.clientX - rect.left : el.clientWidth / 2;
+    const atY = anchor ? anchor.clientY - rect.top : el.clientHeight / 2;
+    el.scrollLeft = rescale(el.scrollLeft, atX, el.clientWidth, canvasSize.width);
+    el.scrollTop = rescale(el.scrollTop, atY, el.clientHeight, canvasSize.height);
+  }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps -- runs per zoom change; sizes are read as of it
+
+  // Fill the screen on load and whenever a resize/rotation changes the fit.
+  useLayoutEffect(() => {
+    if (viewport.width === 0) return;
+    centerPendingRef.current = true;
+    setZoom(cover);
+    setFitTick((t) => t + 1);
+  }, [canvasSize, viewport]); // eslint-disable-line react-hooks/exhaustive-deps -- cover derives from these
+
+  // Centre the view when asked to. Runs after the zoom effect above, so it
+  // wins over that effect's anchoring for a load/resize/toggle.
+  useLayoutEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el || !centerPendingRef.current) return;
+    centerPendingRef.current = false;
+    el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    el.scrollTop = (el.scrollHeight - el.clientHeight) / 2;
+  }, [zoom, fitTick]);
+
+  // The % button / 0 key: toggle between the whole play and filling the screen.
+  const showingWholePlay = Math.abs(zoom - 1) < 0.001;
+  const handleFit = useCallback(() => {
+    centerPendingRef.current = true;
+    setZoom((z) => (Math.abs(z - 1) < 0.001 ? cover : 1));
+    setFitTick((t) => t + 1);
+  }, [cover]);
 
   // If a resize/rotation shrinks the allowed range below the current zoom
   // (e.g. rotating a phone to landscape), clamp back into range. Only clamps
@@ -331,22 +399,115 @@ export function PlayDesigner() {
   // (>1 spreading, <1 pinching in) plus the current midpoint in client px.
   // Zooming continuously (not stepped) and anchoring on the midpoint is what
   // makes the content appear to stay pinned under the fingers.
-  const handlePinch = useCallback((scaleRatio: number, midClientX: number, midClientY: number) => {
-    setZoom((z) => {
-      const next = Math.min(zoomMax, Math.max(1, z * scaleRatio));
-      if (next !== z) pinchAnchorRef.current = { clientX: midClientX, clientY: midClientY };
-      return next;
-    });
+  //
+  //
+  // A gesture's zoom is the zoom it started at times the product of every
+  // ratio since — unclamped while it runs, so the clamp only applies to what's
+  // shown. Each finger reports its moves separately, so the spread wobbles
+  // event to event even when both move together to pan, and a gesture always
+  // ends half a wobble off. Two fingers therefore only pan until the spread
+  // has really changed (PINCH_ENGAGE); a trackpad pinch / ctrl+wheel is a
+  // deliberate zoom and skips that (`immediate`).
+  const pinchGestureRef = useRef<{ startZoom: number; product: number; engaged: boolean } | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const handlePinch = useCallback((scaleRatio: number, midClientX: number, midClientY: number, immediate = false) => {
+    const g = pinchGestureRef.current ?? { startZoom: zoomRef.current, product: 1, engaged: false };
+    pinchGestureRef.current = g;
+    g.product *= scaleRatio;
+    if (!g.engaged && !immediate && Math.abs(Math.log(g.product)) < Math.log(PINCH_ENGAGE)) return;
+    g.engaged = true;
+    // Computed outside setZoom's updater: React runs updaters twice in
+    // development, which would apply every ratio twice.
+    const next = Math.min(zoomMax, Math.max(1, g.startZoom * g.product));
+    if (next === zoomRef.current) return;
+    pinchAnchorRef.current = { clientX: midClientX, clientY: midClientY };
+    zoomRef.current = next;
+    setZoom(next);
   }, [zoomMax]);
+  const handlePinchEnd = useCallback(() => { pinchGestureRef.current = null; }, []);
 
-  // Select-mode drag on empty field pans the scroll container (content
-  // follows the pointer). No-op at 1x — nothing overflows.
+  // Moving the view (content follows the pointer): Select-mode drag on empty
+  // field, two fingers on the canvas, and every gesture in
+  // useViewportGestures. Works at 1× too — the surround margin always leaves
+  // room to scroll.
   const handlePan = useCallback((dxPx: number, dyPx: number) => {
     const el = canvasContainerRef.current;
     if (!el) return;
     el.scrollLeft -= dxPx;
     el.scrollTop -= dyPx;
   }, []);
+
+  const dock = useMediaQuery(DOCK_QUERY);
+  const compact = useMediaQuery(COMPACT_ACTIONS_QUERY);
+
+  // The on-screen part of the play area, clear of floating panels spanning the
+  // middle of the screen, in canvas-local px — where the canvas puts its
+  // instruction and Finish/Cancel bars now that the play area is usually
+  // larger than the screen. Recomputed as the view or a panel moves.
+  const [visibleArea, setVisibleArea] = useState<{ top: number; bottom: number; centerX: number } | undefined>();
+  useEffect(() => {
+    const main = canvasContainerRef.current;
+    if (!main) return;
+    let frame: number | null = null;
+    const measure = () => {
+      frame = null;
+      const field = document.getElementById('play-canvas');
+      if (!field) return;
+      const c = field.getBoundingClientRect();
+      const vw = main.clientWidth;
+      const vh = main.clientHeight;
+      let topInset = 0;
+      let bottomInset = 0;
+      document.querySelectorAll<HTMLElement>('[data-floating-panel]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left > vw / 2 || r.right < vw / 2) return; // not over the centre line
+        if (r.top < vh / 2) topInset = Math.max(topInset, r.bottom + 8);
+        else bottomInset = Math.max(bottomInset, vh - r.top + 8);
+      });
+      const left = Math.max(0, -c.left);
+      const right = Math.min(c.width, vw - c.left);
+      setVisibleArea({
+        top: Math.max(0, topInset - c.top),
+        bottom: Math.min(c.height, vh - bottomInset - c.top),
+        centerX: (left + right) / 2,
+      });
+    };
+    const schedule = () => { if (frame === null) frame = requestAnimationFrame(measure); };
+    schedule();
+    main.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    // Panels move or collapse on a pointerup.
+    window.addEventListener('pointerup', schedule);
+    return () => {
+      main.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('pointerup', schedule);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [zoom, canvasSize, dock]);
+
+  const viewportGestures = useViewportGestures(canvasContainerRef, {
+    onPan: handlePan, onPinch: handlePinch, onPinchEnd: handlePinchEnd, onFit: handleFit,
+  });
+
+
+  // One-time tip on touch screens: in drawing tools one finger draws, so two
+  // fingers is the way to move around.
+  const [showMoveHint, setShowMoveHint] = useState(false);
+  useEffect(() => {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    try {
+      if (localStorage.getItem(MOVE_HINT_KEY)) return;
+    } catch {
+      return;
+    }
+    setShowMoveHint(true);
+  }, []);
+  const dismissMoveHint = () => {
+    setShowMoveHint(false);
+    try { localStorage.setItem(MOVE_HINT_KEY, '1'); } catch { /* storage blocked */ }
+  };
 
   // Bridge for the Playwright smoke suite (tests/smoke): exposes real canvas
   // state so tests assert on data instead of sampling pixels. import.meta.env.DEV
@@ -360,6 +521,9 @@ export function PlayDesigner() {
         zones: canvasRef.current?.getZones?.() ?? [],
         textBoxes: canvasRef.current?.getTextBoxes?.() ?? [],
       }),
+      // Export output, for the byte-identity guard in designer-fullscreen.spec.ts.
+      exportImage: (w?: number, h?: number) => canvasRef.current?.exportImage?.(w, h) ?? '',
+      loadState: (data: Parameters<CanvasHandle['loadState']>[0]) => canvasRef.current?.loadState(data),
     };
     return () => { delete (window as any).__PBP_TEST__; };
   }, []);
@@ -521,240 +685,198 @@ export function PlayDesigner() {
     </div>
   );
 
+  // One toolbar, rendered once in the floating panel (it used to be mounted
+  // twice: desktop sidebar + phone bottom bar).
+  const toolbarProps: React.ComponentProps<typeof DesignerToolbar> = {
+    playType,
+    onSetPlayType: setPlayType,
+    playTypeLocked,
+    gameType: currentPlayMetadata.gameType,
+    onSetGameType: handleSetGameType,
+    onStampFormation: handleStampFormation,
+    getCurrentIcons: () => canvasRef.current?.getIcons() ?? [],
+    drawingMode,
+    setDrawingMode,
+    drawMode,
+    setDrawMode,
+    capStyle,
+    setCapStyle,
+    lineStyle,
+    setLineStyle,
+    routeColorMode,
+    setRouteColorMode,
+    deleteRouteMode,
+    setDeleteRouteMode,
+    recolorRouteMode,
+    setRecolorRouteMode,
+    copyRouteMode,
+    setCopyRouteMode,
+    copyRouteMirror,
+    setCopyRouteMirror,
+    zoneMode,
+    setZoneMode,
+    deleteZoneMode,
+    setDeleteZoneMode,
+    textMode,
+    setTextMode,
+    snapEnabled,
+    setSnapEnabled,
+    selectedPlayer: selectedPlayer?.letter || null,
+    onSelectPlayer: setSelectedPlayer,
+    customRoster: preferences?.custom_roster ?? null,
+    onRosterChange: user ? handleRosterChange : undefined,
+    onUndo: () => canvasRef.current?.undo(),
+    onRedo: () => canvasRef.current?.redo(),
+    onClear: () => canvasRef.current?.clear(),
+    onClearRoutes: () => canvasRef.current?.clearRoutes(),
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+  };
+
+  const zoomPill = (
+    <>
+      <button
+        title="Zoom out"
+        disabled={zoomOutTarget === null}
+        onClick={() => zoomOutTarget !== null && setZoom(zoomOutTarget)}
+        className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <ZoomOut className="h-4 w-4" />
+      </button>
+      <button
+        title={showingWholePlay ? 'Fill the screen' : 'Show the whole play'}
+        onClick={handleFit}
+        className="tap-target flex items-center justify-center gap-1 min-w-[44px] px-1 text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
+      >
+        {showingWholePlay ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />}
+        {Math.round((zoom / cover) * 100)}%
+      </button>
+      <button
+        title="Zoom in"
+        disabled={zoomInTarget === null}
+        onClick={() => zoomInTarget !== null && setZoom(zoomInTarget)}
+        className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <ZoomIn className="h-4 w-4" />
+      </button>
+    </>
+  );
+
+  const actionBtn = 'tap-target flex items-center justify-center gap-1 px-2.5 py-1.5 text-sm text-chalk rounded-lg hover:bg-white/10 transition-colors';
+
   return (
     // z-50: must outrank Navbar's sticky z-40 so this still fully covers it — see
     // the z-index note in Navbar.tsx.
-    <div className="fixed inset-0 z-50 flex flex-col bg-board overflow-hidden">
+    //
+    // Full screen: the play area is the canvas, and the screen is a window
+    // onto it. By default it's drawn just large enough to cover the whole
+    // screen (see `cover`), so every visible pixel is usable field and the
+    // view moves around inside it; scrolling stops at its edges. The tools
+    // float over it.
+    <div className="fixed inset-0 z-50 bg-board overflow-hidden">
+      <main
+        ref={canvasContainerRef}
+        {...viewportGestures.handlers}
+        className="absolute inset-0 overflow-auto touch-none flex"
+        style={{
+          scrollbarWidth: 'none',
+          cursor: viewportGestures.panning ? 'grabbing' : viewportGestures.spaceHeld ? 'grab' : undefined,
+        }}
+      >
+        {/* m-auto centres the play area while it's smaller than the screen
+            (only when zoomed out toward the whole play). */}
+        <div className="m-auto shrink-0">
+              <Canvas
+                ref={canvasRef}
+                id="play-canvas"
+                width={canvasSize.width * zoom}
+                height={canvasSize.height * zoom}
+                drawingMode={drawingMode}
+                drawMode={drawMode}
+                capStyle={capStyle}
+                lineStyle={lineStyle}
+                routeColorMode={routeColorMode}
+                deleteRouteMode={deleteRouteMode}
+                recolorRouteMode={recolorRouteMode}
+                copyRouteMode={copyRouteMode}
+                copyRouteMirror={copyRouteMirror}
+                zoneMode={zoneMode}
+                deleteZoneMode={deleteZoneMode}
+                textMode={textMode}
+                snapEnabled={snapEnabled}
+                selectedPlayer={selectedPlayer}
+                setSelectedPlayer={setSelectedPlayer}
+                onDrawingComplete={() => {}}
+                onHistoryChange={setHistory}
+                onPan={handlePan}
+                onPinch={handlePinch}
+              onPinchEnd={handlePinchEnd}
+              visibleArea={visibleArea}
+              />
+        </div>
+      </main>
 
-      {/* ── HEADER ─────────────────────────────────────────────── */}
-      {/* pt uses calc(...+env(safe-area-inset-top)) rather than a separate
-          pt-[...] utility alongside py-2 — both would set padding-top, and
-          which one wins depends on Tailwind's generated CSS order, not
-          className order, so stacking them is a real footgun. See the
-          longer note on this same fix in Navbar.tsx: without it, this
-          header's buttons render under the iOS status bar once the site is
-          added to the home screen (apple-mobile-web-app-status-bar-style is
-          "black-translucent" in index.html). */}
-      <header className="shrink-0 bg-board-light border-b border-chalk/10 px-3 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-2 z-30">
-        {/* Home */}
-        <button
-          onClick={() => navigate('/')}
-          className="tap-target flex items-center justify-center p-2 text-chalk/60 hover:text-chalk rounded-lg hover:bg-white/10"
-          title="Back to Home"
-        >
-          <Home className="h-5 w-5" />
+      {/* ── FLOATING ACTIONS ───────────────────────────────────── */}
+      <FloatingPanel storageKey="pbp-designer-actions" anchor="top-right" label="Play actions" layout="row">
+        <button onClick={() => navigate('/')} className={actionBtn} title="Back to Home">
+          <Home className="h-5 w-5 text-chalk/70" />
         </button>
-
-        {/* Title */}
-        <div className="flex items-center gap-1.5 mr-auto min-w-0">
-          <Logo className="h-6 w-6 text-chalk shrink-0" />
-          <span className="font-bold text-chalk text-sm sm:text-base truncate">
-            Play Designer
-            {isEditingExistingPlay && <span className="font-normal text-chalk/50 ml-1 text-xs hidden sm:inline">(editing)</span>}
-          </span>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <button
-            onClick={handleNewPlay}
-            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
-          >
-            New
-          </button>
-          <button
-            onClick={() => navigate('/playbooks')}
-            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
-          >
-            <BookOpen className="h-4 w-4" />
-            Playbooks
-          </button>
-          <button
-            onClick={handleSaveClick}
-            title="Save play"
-            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
-          >
-            <Save className="h-4 w-4" />
-            <span className="hidden sm:inline">{isEditingExistingPlay ? 'Update' : 'Save'}</span>
-          </button>
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-board border border-chalk/20 text-chalk rounded-lg hover:bg-board-light transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
-        </div>
-      </header>
-
-      {/* ── SIDEBAR + CANVAS ───────────────────────────────────── */}
-      {/* Desktop: toolbar in a left sidebar so the full viewport height goes
-          to the aspect-locked canvas | Mobile: bottom bar (below) */}
-      <div className="relative flex-1 flex min-h-0">
-        <aside className="hidden sm:block w-52 shrink-0 bg-board-light border-r border-chalk/10 px-2.5 py-3 z-20 overflow-y-auto">
-          <DesignerToolbar
-            orientation="vertical"
-            playType={playType}
-            onSetPlayType={setPlayType}
-            playTypeLocked={playTypeLocked}
-            gameType={currentPlayMetadata.gameType}
-            onSetGameType={handleSetGameType}
-            onStampFormation={handleStampFormation}
-            getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
-            drawingMode={drawingMode}
-            setDrawingMode={setDrawingMode}
-            drawMode={drawMode}
-            setDrawMode={setDrawMode}
-            capStyle={capStyle}
-            setCapStyle={setCapStyle}
-            lineStyle={lineStyle}
-            setLineStyle={setLineStyle}
-            routeColorMode={routeColorMode}
-            setRouteColorMode={setRouteColorMode}
-            deleteRouteMode={deleteRouteMode}
-            setDeleteRouteMode={setDeleteRouteMode}
-            recolorRouteMode={recolorRouteMode}
-            setRecolorRouteMode={setRecolorRouteMode}
-            copyRouteMode={copyRouteMode}
-            setCopyRouteMode={setCopyRouteMode}
-            copyRouteMirror={copyRouteMirror}
-            setCopyRouteMirror={setCopyRouteMirror}
-            zoneMode={zoneMode}
-            setZoneMode={setZoneMode}
-            deleteZoneMode={deleteZoneMode}
-            setDeleteZoneMode={setDeleteZoneMode}
-            textMode={textMode}
-            setTextMode={setTextMode}
-            snapEnabled={snapEnabled}
-            setSnapEnabled={setSnapEnabled}
-            selectedPlayer={selectedPlayer?.letter || null}
-            onSelectPlayer={setSelectedPlayer}
-            customRoster={preferences?.custom_roster ?? null}
-            onRosterChange={user ? handleRosterChange : undefined}
-            onUndo={() => canvasRef.current?.undo()}
-            onRedo={() => canvasRef.current?.redo()}
-            onClear={() => canvasRef.current?.clear()}
-            onClearRoutes={() => canvasRef.current?.clearRoutes()}
-            canUndo={history.canUndo}
-            canRedo={history.canRedo}
-          />
-        </aside>
-
-        {/* Scroll container: m-auto centers the canvas while it fits; once
-            zoomed past the container it overflows and drag-to-pan scrolls. */}
-        <main
-          ref={canvasContainerRef}
-          className="flex-1 bg-white overflow-auto flex"
-          style={{ minHeight: 0 }}
+        {!compact && (
+          <>
+            <button onClick={handleNewPlay} className={actionBtn} title="New play">New</button>
+            <button onClick={() => navigate('/playbooks')} className={actionBtn} title="Playbooks">
+              <BookOpen className="h-4 w-4" />
+              Playbooks
+            </button>
+          </>
+        )}
+        {dock && <div className="flex items-center">{zoomPill}</div>}
+        <button
+          onClick={handleSaveClick}
+          title="Save play"
+          className="tap-target flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
         >
-          <div className="m-auto">
-            <Canvas
-              ref={canvasRef}
-              id="play-canvas"
-              width={canvasSize.width * zoom}
-              height={canvasSize.height * zoom}
-              drawingMode={drawingMode}
-              drawMode={drawMode}
-              capStyle={capStyle}
-              lineStyle={lineStyle}
-              routeColorMode={routeColorMode}
-              deleteRouteMode={deleteRouteMode}
-              recolorRouteMode={recolorRouteMode}
-              copyRouteMode={copyRouteMode}
-              copyRouteMirror={copyRouteMirror}
-              zoneMode={zoneMode}
-              deleteZoneMode={deleteZoneMode}
-              textMode={textMode}
-              snapEnabled={snapEnabled}
-              selectedPlayer={selectedPlayer}
-              setSelectedPlayer={setSelectedPlayer}
-              onDrawingComplete={() => {}}
-              onHistoryChange={setHistory}
-              onPan={handlePan}
-              onPinch={handlePinch}
-            />
-          </div>
-        </main>
+          <Save className="h-4 w-4" />
+          {!compact && <span>{isEditingExistingPlay ? 'Update' : 'Save'}</span>}
+        </button>
+        <button onClick={() => setShowExportModal(true)} className={actionBtn} title="Export">
+          <Download className="h-4 w-4" />
+          {!compact && <span>Export</span>}
+        </button>
+      </FloatingPanel>
 
-        {/* ── ZOOM CONTROLS ─────────────────────────────────────── */}
+      {/* ── FLOATING TOOLS ─────────────────────────────────────── */}
+      {/* A vertical panel where there's room; a horizontal dock on upright
+          phones. Each layout remembers its own spot. */}
+      <FloatingPanel
+        storageKey={dock ? 'pbp-designer-tools-dock' : 'pbp-designer-tools-panel'}
+        anchor={dock ? 'bottom-center' : 'top-left'}
+        label="Tools"
+        layout="column"
+        collapsible
+        className={dock ? 'w-[calc(100vw-20px)]' : 'w-52 max-h-[calc(100dvh-20px)]'}
+      >
+        <div className={dock ? 'px-3 pt-1.5 pb-2' : 'px-2.5 pt-2 pb-3 overflow-y-auto min-h-0'}>
+          <DesignerToolbar {...toolbarProps} orientation={dock ? undefined : 'vertical'} />
+        </div>
+      </FloatingPanel>
+
+      {/* ── ZOOM (bottom-right; when the tools dock along the bottom it lives
+          in the actions instead) ── */}
+      {!dock && (
         <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg px-1 py-1">
-          <button
-            title="Zoom out"
-            disabled={zoomOutTarget === null}
-            onClick={() => zoomOutTarget !== null && setZoom(zoomOutTarget)}
-            className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <button
-            title="Reset zoom"
-            onClick={() => setZoom(1)}
-            className="tap-target flex items-center justify-center min-w-[44px] text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            title="Zoom in"
-            disabled={zoomInTarget === null}
-            onClick={() => zoomInTarget !== null && setZoom(zoomInTarget)}
-            className="tap-target flex items-center justify-center p-1.5 rounded-full text-chalk/70 hover:text-chalk hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ZoomIn className="h-4 w-4" />
+          {zoomPill}
+        </div>
+      )}
+
+      {showMoveHint && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-[calc(4.5rem+env(safe-area-inset-top))] z-40 w-max max-w-[calc(100vw-24px)] flex items-center gap-3 rounded-full bg-board-light/95 border border-chalk/15 shadow-lg pl-4 pr-2 py-1.5 text-xs text-chalk/90">
+          <span>Two fingers to move around · pinch to zoom</span>
+          <button onClick={dismissMoveHint} className="tap-target px-2 text-chalk/60 hover:text-chalk" title="Dismiss tip">
+            Got it
           </button>
         </div>
-      </div>
-
-      {/* ── MOBILE BOTTOM TOOLBAR ──────────────────────────────── */}
-      <div className="
-        sm:hidden shrink-0 bg-board-light border-t border-chalk/10 px-3 py-2 z-20
-        pb-[env(safe-area-inset-bottom,8px)]
-      ">
-        <DesignerToolbar
-          playType={playType}
-          onSetPlayType={setPlayType}
-          playTypeLocked={playTypeLocked}
-          gameType={currentPlayMetadata.gameType}
-          onSetGameType={handleSetGameType}
-          onStampFormation={handleStampFormation}
-          getCurrentIcons={() => canvasRef.current?.getIcons() ?? []}
-          drawingMode={drawingMode}
-          setDrawingMode={setDrawingMode}
-          drawMode={drawMode}
-          setDrawMode={setDrawMode}
-          capStyle={capStyle}
-          setCapStyle={setCapStyle}
-          lineStyle={lineStyle}
-          setLineStyle={setLineStyle}
-          routeColorMode={routeColorMode}
-          setRouteColorMode={setRouteColorMode}
-          deleteRouteMode={deleteRouteMode}
-          setDeleteRouteMode={setDeleteRouteMode}
-          recolorRouteMode={recolorRouteMode}
-          setRecolorRouteMode={setRecolorRouteMode}
-          copyRouteMode={copyRouteMode}
-          setCopyRouteMode={setCopyRouteMode}
-          copyRouteMirror={copyRouteMirror}
-          setCopyRouteMirror={setCopyRouteMirror}
-          zoneMode={zoneMode}
-          setZoneMode={setZoneMode}
-          deleteZoneMode={deleteZoneMode}
-          setDeleteZoneMode={setDeleteZoneMode}
-          textMode={textMode}
-          setTextMode={setTextMode}
-          snapEnabled={snapEnabled}
-          setSnapEnabled={setSnapEnabled}
-          selectedPlayer={selectedPlayer?.letter || null}
-          onSelectPlayer={setSelectedPlayer}
-          customRoster={preferences?.custom_roster ?? null}
-          onRosterChange={user ? handleRosterChange : undefined}
-          onUndo={() => canvasRef.current?.undo()}
-          onRedo={() => canvasRef.current?.redo()}
-          onClear={() => canvasRef.current?.clear()}
-          onClearRoutes={() => canvasRef.current?.clearRoutes()}
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-        />
-      </div>
+      )}
 
       {/* ── MODALS ─────────────────────────────────────────────── */}
       {showExportModal && (

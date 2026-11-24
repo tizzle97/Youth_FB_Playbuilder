@@ -195,6 +195,45 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
+- **The designer is full screen; the screen is a window onto the play area.**
+  By default the 30-yard play area (aspect-locked to the 1650×1275 print sheet)
+  is drawn at `cover` — just large enough to cover the whole screen, so it
+  overflows one way only and every visible pixel is usable field; scrolling
+  stops at its edges. `zoom` multiplies the "whole play" size (`zoom = 1` shows
+  it all); the label shows zoom ÷ cover, so the default reads 100%, and the %
+  button / `0` toggles whole play ↔ fill. A decorative surround around the
+  play area was tried and rejected (2026-11-24): the user wants usable space,
+  not drawn decoration. Moving: two fingers (touch), Select-drag on empty
+  field, Space/middle-drag in any tool, wheel/trackpad scroll; Ctrl/⌘+wheel
+  and trackpad pinch zoom. **Pinch maths runs once per animation frame**
+  (Canvas.tsx and `useViewportGestures.ts`): each finger's pointermove arrives
+  separately, and measuring per event saw one finger moved and the other not,
+  so every two-finger pan crept the zoom; `PINCH_ENGAGE` (10%) is a second
+  guard. The zoom anchor accounts for the m-auto centring offset while the
+  play area is smaller than the screen. Because the play area is usually
+  bigger than the screen, Canvas places its instruction and Finish/Cancel bars
+  inside `visibleArea` (on-screen and clear of floating panels), not at its
+  own edges. Tools and actions are `FloatingPanel`s (`useDraggablePanel.ts`,
+  positions in localStorage under `pbp-designer-tools-panel` / `-tools-dock` /
+  `pbp-designer-actions`): a vertical panel, or a bottom dock on upright
+  phones (`max-width: 639px`). Exports are untouched — `renderPlayScene.ts` is
+  unchanged — and `designer-fullscreen.spec.ts` pins `exportImage()` hashes
+  recorded on pre-change `main` **with webfonts loaded** (yard numbers use
+  Inter; an unloaded-font recording is a different image).
+- **⚠ Never tap-test the mobile designer on a Netlify deploy preview.**
+  Deploy previews inject Netlify's Drawer (`<script src="/.netlify/scripts/cdp">`),
+  which on a phone adds an **invisible 48px iframe across the bottom of the
+  screen** — exactly over the mobile toolbar's chip row (player chips,
+  Offense/Defense/Special Teams). Taps go into the iframe, so the page never
+  sees them; the row "wakes up" only when a draw tool grows the toolbar above
+  the strip. Production doesn't load the script. This is what killed PR #152
+  ("lit turf", closed 2026-09-24 after ~8 rounds of on-device bisection that
+  ruled out every code change, down to pure canvas colours — because none of
+  it was the cause) and was found 2026-11-04 by hit-testing the preview
+  (`document.elementFromPoint` at a chip → `IFRAME`). Disable the Drawer for
+  previews (Netlify → Project configuration → Build & deploy → Deploy
+  Previews → Netlify Drawer), or test on a local network dev server. #152's
+  branch (`feat/designer-lit-turf`) may well have been fine.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized

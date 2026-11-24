@@ -146,6 +146,13 @@ type CanvasProps = {
    *  midpoint in client (screen) px, so the parent can zoom continuously
    *  anchored under the fingers (rather than the fixed-step button pill). */
   onPinch?: (scaleRatio: number, midClientX: number, midClientY: number) => void;
+  /** The last finger of a pinch lifted. */
+  onPinchEnd?: () => void;
+  /** The part of the canvas actually on screen and clear of floating panels,
+   *  in canvas-local CSS px. When the play area is larger than the screen,
+   *  the instruction and Finish/Cancel bars stay inside it instead of at the
+   *  canvas's own (possibly off-screen) top and bottom edges. */
+  visibleArea?: { top: number; bottom: number; centerX: number };
   id?: string;
 };
 
@@ -175,7 +182,7 @@ export type CanvasHandle = {
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, onPinchEnd, visibleArea, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -324,6 +331,15 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // move event, so onPinch can report an incremental ratio; null right
     // after the second finger lands, before the first pinch move arrives.
     const pinchLastDistRef = useRef<number | null>(null);
+    // The two fingers' midpoint as of the last move event, so moving both
+    // fingers together pans the view (reported through onPan) while spreading
+    // them zooms — the same two-finger gesture a map app uses.
+    const pinchLastMidRef = useRef<{ x: number; y: number } | null>(null);
+    // Pinch maths runs once per animation frame, after every finger's move in
+    // that frame has landed. Each finger's pointermove arrives separately, so
+    // measuring on every event saw one finger moved and the other not yet —
+    // a spread that wobbled in and out and made a two-finger pan zoom.
+    const pinchFrameRef = useRef<number | null>(null);
 
     const pushSnapshot = useCallback(() => {
       setUndoStack((prev) => [...prev, {
@@ -1123,6 +1139,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (activePointersRef.current.size >= 2) {
         pinchActiveRef.current = true;
         pinchLastDistRef.current = null;
+        pinchLastMidRef.current = null;
         panLastRef.current = null;
         zoneGestureRef.current = null;
         setZoneDraft(null);
@@ -1414,6 +1431,19 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (onPan) panLastRef.current = { x: e.clientX, y: e.clientY };
     };
 
+    const runPinchFrame = () => {
+      pinchFrameRef.current = null;
+      if (!pinchActiveRef.current || activePointersRef.current.size < 2 || !onPinch) return;
+      const [a, b] = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      if (pinchLastMidRef.current) onPan?.(midX - pinchLastMidRef.current.x, midY - pinchLastMidRef.current.y);
+      if (pinchLastDistRef.current) onPinch(dist / pinchLastDistRef.current, midX, midY);
+      pinchLastDistRef.current = dist;
+      pinchLastMidRef.current = { x: midX, y: midY };
+    };
+
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (activePointersRef.current.has(e.pointerId)) {
         activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1423,13 +1453,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       // pointers (not just this event's pointer) and report an incremental
       // scale ratio. Suppresses every single-finger gesture below.
       if (pinchActiveRef.current) {
-        if (activePointersRef.current.size >= 2 && onPinch) {
-          const [a, b] = Array.from(activePointersRef.current.values());
-          const dist = Math.hypot(a.x - b.x, a.y - b.y);
-          const midX = (a.x + b.x) / 2;
-          const midY = (a.y + b.y) / 2;
-          if (pinchLastDistRef.current) onPinch(dist / pinchLastDistRef.current, midX, midY);
-          pinchLastDistRef.current = dist;
+        if (activePointersRef.current.size >= 2 && onPinch && pinchFrameRef.current === null) {
+          pinchFrameRef.current = requestAnimationFrame(runPinchFrame);
         }
         return;
       }
@@ -1572,13 +1597,20 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     };
 
     const handlePointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
+      // Apply the last frame's pinch movement before this finger leaves it.
+      if (pinchFrameRef.current !== null) {
+        cancelAnimationFrame(pinchFrameRef.current);
+        runPinchFrame();
+      }
       if (e) {
         (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
         activePointersRef.current.delete(e.pointerId);
       }
       if (activePointersRef.current.size === 0) {
+        if (pinchActiveRef.current) onPinchEnd?.();
         pinchActiveRef.current = false;
         pinchLastDistRef.current = null;
+        pinchLastMidRef.current = null;
       }
       if (pinchActiveRef.current) return; // one finger lifted, one still down — stay suppressed
 
@@ -1743,7 +1775,12 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // in-progress route started from — that's the icon a coach's eye/thumb is
     // on while drawing, and the one guaranteed to be near the bar when the
     // origin is placed deep (e.g. a safety near the bottom of the field).
-    const ACTION_BAR_DEFAULT_BOTTOM = 16; // matches the old bottom-4
+    // Both bars are placed within the on-screen part of the canvas (all of it
+    // unless the play area is larger than the screen).
+    const visTop = visibleArea?.top ?? 0;
+    const visBottom = visibleArea?.bottom ?? height;
+    const barCenterX = visibleArea?.centerX ?? width / 2;
+    const ACTION_BAR_DEFAULT_BOTTOM = 16 + (height - visBottom); // matches the old bottom-4
     const ACTION_BAR_EST_HEIGHT = 56;
     let actionBarBottom = ACTION_BAR_DEFAULT_BOTTOM;
     if (originIcon) {
@@ -1751,7 +1788,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const clearZoneStart = height - (ACTION_BAR_DEFAULT_BOTTOM + ACTION_BAR_EST_HEIGHT);
       if (iconScreenY + iconRadiusPx >= clearZoneStart) {
         const desiredBottom = height - (iconScreenY - iconRadiusPx - 10);
-        actionBarBottom = Math.max(ACTION_BAR_DEFAULT_BOTTOM, Math.min(desiredBottom, height - ACTION_BAR_EST_HEIGHT - 8));
+        actionBarBottom = Math.max(ACTION_BAR_DEFAULT_BOTTOM, Math.min(desiredBottom, height - visTop - ACTION_BAR_EST_HEIGHT - 8));
       }
     }
 
@@ -1762,15 +1799,16 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // under this bar. Unlike the Finish/Cancel bar above, this isn't tied to
     // one icon (the instruction bar shows in nearly every mode) — check all
     // of them, and push down below whichever one(s) actually intrude.
-    const TOP_BAR_DEFAULT_TOP = 12; // matches the old top-3
+    const TOP_BAR_DEFAULT_TOP = visTop + 12; // matches the old top-3
     const TOP_BAR_EST_HEIGHT = 56; // generous — this pill can wrap to two lines
     let instructionBarTop = TOP_BAR_DEFAULT_TOP;
     for (const icon of playerIcons) {
       const iconScreenY = icon.y * height;
       const iconTopEdge = iconScreenY - iconRadiusPx;
-      if (iconTopEdge <= TOP_BAR_DEFAULT_TOP + TOP_BAR_EST_HEIGHT) {
+      const iconBottomEdge = iconScreenY + iconRadiusPx;
+      if (iconBottomEdge >= TOP_BAR_DEFAULT_TOP && iconTopEdge <= TOP_BAR_DEFAULT_TOP + TOP_BAR_EST_HEIGHT) {
         const desiredTop = iconScreenY + iconRadiusPx + 10;
-        instructionBarTop = Math.max(instructionBarTop, Math.min(desiredTop, height - TOP_BAR_EST_HEIGHT - 8));
+        instructionBarTop = Math.max(instructionBarTop, Math.min(desiredTop, visBottom - TOP_BAR_EST_HEIGHT - 8));
       }
     }
 
@@ -1861,8 +1899,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         {/* ── Contextual instruction bar (top of canvas) ── */}
         {(savedFlash || conflictFlash || finishFirstFlash || deletedFlash || deletedZoneFlash || selfPasteFlash || instructionText) && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm"
-            style={{ top: instructionBarTop }}
+            className="absolute -translate-x-1/2 z-10 pointer-events-none px-3 w-full max-w-sm"
+            style={{ top: instructionBarTop, left: barCenterX }}
           >
             <div
               className={`text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg text-center leading-snug transition-colors duration-300 ${
@@ -1952,8 +1990,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         {/* ── Action bar (bottom of canvas): Finish + Cancel ── */}
         {drawingMode && (drawMode === 'waypoint' || drawMode === 'straight') && waypointPoints.length >= 1 && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 z-10"
-            style={{ bottom: actionBarBottom }}
+            className="absolute -translate-x-1/2 flex items-center gap-2 z-10"
+            style={{ bottom: actionBarBottom, left: barCenterX }}
           >
             {waypointPoints.length >= 2 && (
               <button
