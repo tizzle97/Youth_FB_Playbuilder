@@ -42,6 +42,9 @@ export function useViewportGestures(mainRef: React.RefObject<HTMLElement>, h: Vi
   const [panning, setPanning] = useState(false);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const last = useRef<{ midX: number; midY: number; dist: number } | null>(null);
+  // Processed once per animation frame, after every finger's move in it has
+  // landed (see the same note in Canvas.tsx).
+  const frame = useRef<number | null>(null);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -125,9 +128,8 @@ export function useViewportGestures(mainRef: React.RefObject<HTMLElement>, h: Vi
     track(e);
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!pointers.current.has(e.pointerId)) return;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const runFrame = () => {
+    frame.current = null;
     const now = snapshot();
     const prev = last.current;
     last.current = now;
@@ -136,9 +138,21 @@ export function useViewportGestures(mainRef: React.RefObject<HTMLElement>, h: Vi
     if (now.dist && prev.dist) handlers.current.onPinch(now.dist / prev.dist, now.midX, now.midY);
   };
 
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (frame.current === null) frame.current = requestAnimationFrame(runFrame);
+  };
+
   const onPointerEnd = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    // Apply the pending frame first, so the last movement isn't dropped.
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      runFrame();
+    }
     const wasPinch = pointers.current.size >= 2;
-    if (!pointers.current.delete(e.pointerId)) return;
+    pointers.current.delete(e.pointerId);
     // Re-baseline on the remaining finger, so lifting one doesn't jump the view.
     last.current = snapshot();
     if (wasPinch) handlers.current.onPinchEnd();

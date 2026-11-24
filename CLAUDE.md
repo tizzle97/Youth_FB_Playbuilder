@@ -195,29 +195,31 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
-- **The designer is full screen and moves like a map.** The 30-yard play
-  window (aspect-locked to the 1650×1275 print sheet) sits in `<main>`'s scroll
-  "world" with half a viewport of open surround on every side, so the view can
-  be moved at any zoom; the zoom-anchor maths scales from the field's origin
-  inside that margin (`(scroll + v − m)·k + m − v`), guarded by negative-checked
-  tests. Moving: two fingers or one finger on the surround (touch), Select-drag
-  on empty field, Space/middle-drag in any tool, wheel/trackpad scroll;
-  Ctrl/⌘+wheel and trackpad pinch zoom; `0` or the % button fits. Two fingers
-  only start zooming once their spread changes by `PINCH_ENGAGE` (10%) —
-  per-finger events make the spread wobble, and without it every two-finger
-  pan crept the zoom up. Gestures off the canvas live in
-  `useViewportGestures.ts`.
-  **The surround is decoration, never data:** `FieldBackdrop` draws the rest of
-  a real field (end zones, 40/50 numbers, faint outside the play window) with
-  `drawFieldSurround()` from the canvas's on-screen rect; the live canvas
-  passes `openEnds` so its top/bottom border is left off. `openEnds` must never
-  be set by anything that produces a file — `designer-fullscreen.spec.ts`
-  pins `exportImage()` hashes recorded on pre-change `main` **with webfonts
-  loaded** (yard numbers use Inter; an unloaded-font recording is a different
-  image). Tools and actions are `FloatingPanel`s (`useDraggablePanel.ts`,
-  positions in localStorage under `pbp-designer-tools-panel` /
-  `-tools-dock` / `pbp-designer-actions`): a vertical panel, or a bottom dock
-  on upright phones (`max-width: 639px`).
+- **The designer is full screen; the screen is a window onto the play area.**
+  By default the 30-yard play area (aspect-locked to the 1650×1275 print sheet)
+  is drawn at `cover` — just large enough to cover the whole screen, so it
+  overflows one way only and every visible pixel is usable field; scrolling
+  stops at its edges. `zoom` multiplies the "whole play" size (`zoom = 1` shows
+  it all); the label shows zoom ÷ cover, so the default reads 100%, and the %
+  button / `0` toggles whole play ↔ fill. A decorative surround around the
+  play area was tried and rejected (2026-11-24): the user wants usable space,
+  not drawn decoration. Moving: two fingers (touch), Select-drag on empty
+  field, Space/middle-drag in any tool, wheel/trackpad scroll; Ctrl/⌘+wheel
+  and trackpad pinch zoom. **Pinch maths runs once per animation frame**
+  (Canvas.tsx and `useViewportGestures.ts`): each finger's pointermove arrives
+  separately, and measuring per event saw one finger moved and the other not,
+  so every two-finger pan crept the zoom; `PINCH_ENGAGE` (10%) is a second
+  guard. The zoom anchor accounts for the m-auto centring offset while the
+  play area is smaller than the screen. Because the play area is usually
+  bigger than the screen, Canvas places its instruction and Finish/Cancel bars
+  inside `visibleArea` (on-screen and clear of floating panels), not at its
+  own edges. Tools and actions are `FloatingPanel`s (`useDraggablePanel.ts`,
+  positions in localStorage under `pbp-designer-tools-panel` / `-tools-dock` /
+  `pbp-designer-actions`): a vertical panel, or a bottom dock on upright
+  phones (`max-width: 639px`). Exports are untouched — `renderPlayScene.ts` is
+  unchanged — and `designer-fullscreen.spec.ts` pins `exportImage()` hashes
+  recorded on pre-change `main` **with webfonts loaded** (yard numbers use
+  Inter; an unloaded-font recording is a different image).
 - **⚠ Never tap-test the mobile designer on a Netlify deploy preview.**
   Deploy previews inject Netlify's Drawer (`<script src="/.netlify/scripts/cdp">`),
   which on a phone adds an **invisible 48px iframe across the bottom of the

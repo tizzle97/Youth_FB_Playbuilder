@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { Save, Download, BookOpen, Home, ZoomIn, ZoomOut, Maximize, Minimize } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DesignerToolbar } from './DesignerToolbar';
 import type { PlayType } from './DesignerToolbar';
 import { ExportModal } from './ExportModal';
 import { SavePlayModal } from './SavePlayModal';
 import { SignupToSaveModal } from './SignupToSaveModal';
-import { FieldBackdrop } from './FieldBackdrop';
 import { FloatingPanel } from './FloatingPanel';
 import { useViewportGestures } from './useViewportGestures';
 import { Canvas, EXPORT_WIDTH, EXPORT_HEIGHT } from './Canvas';
@@ -23,7 +22,8 @@ import { trackEvent } from '../../lib/analytics';
 // Zoom steps for the canvas. Levels whose bitmap would exceed the pixel cap
 // are dropped on large screens — the scene fully re-renders on every drag
 // frame, so an oversized bitmap makes dragging visibly laggy.
-const ZOOM_LEVELS = [1, 1.5, 2, 3];
+// Button steps above "fill the screen" (cover), as multiples of it.
+const ZOOM_STEPS_OVER_COVER = [1.5, 2, 3];
 const MAX_CANVAS_PIXELS = 6_000_000;
 
 // Upright phones dock the tools horizontally along the bottom; everything
@@ -55,11 +55,11 @@ export function PlayDesigner() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<CanvasHandle>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 480 });
-  // The scroll container's own size. Half of it is the margin of open
-  // surround on every side of the field, so the view can be moved until any
-  // edge of the play reaches the middle of the screen, at every zoom level.
+  // The scroll container's own size — what "cover" is measured against.
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  // Bumped by "Fit" to recentre even when the zoom is already 1.
+  // Set whenever the view should be recentred once the next zoom lands (load,
+  // resize/rotation, the fit/fill toggle).
+  const centerPendingRef = useRef(true);
   const [fitTick, setFitTick] = useState(0);
   // Canvas zoom: multiplies the letterboxed base size; the container scrolls
   // (drag-to-pan in Select mode) when the zoomed canvas overflows it.
@@ -307,11 +307,20 @@ export function PlayDesigner() {
     return () => ro.disconnect();
   }, []);
 
+  // `zoom` multiplies the "whole play" size (canvasSize), so 1 shows the
+  // entire play. The default is `cover`: the smallest zoom at which the play
+  // area covers the whole screen — the screen is a window onto the play area,
+  // overflowing in one direction only, with no unusable space around it. The
+  // label shows zoom relative to cover, so the default reads 100%.
+  const cover = viewport.width > 0
+    ? Math.max(1, viewport.width / canvasSize.width, viewport.height / canvasSize.height)
+    : 1;
   // Zoom levels available at the current base size (see MAX_CANVAS_PIXELS) —
   // these back the button pill's fixed steps. Pinch (below) zooms
   // continuously between 1 and the top of this range instead.
-  const zoomLevels = ZOOM_LEVELS.filter(
-    (z) => z === 1 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS,
+  const zoomLevels = [1, cover, ...ZOOM_STEPS_OVER_COVER.map((m) => m * cover)].filter(
+    (z, i, all) => (i < 2 || canvasSize.width * z * canvasSize.height * z <= MAX_CANVAS_PIXELS)
+      && all.findIndex((o) => Math.abs(o - z) < 0.001) === i,
   );
   const zoomMax = zoomLevels[zoomLevels.length - 1] ?? 1;
   // A pinch usually leaves `zoom` between two button steps, so the pill's
@@ -338,35 +347,45 @@ export function PlayDesigner() {
     pinchAnchorRef.current = null;
     if (!el || prev === zoom) return;
     const k = zoom / prev;
-    // Only the field scales; it starts `margin` into the scroll content, so
-    // scale the distance from the field's edge, not from 0 — otherwise every
-    // zoom step drifts the anchored point by margin·(k−1) px.
-    const rescale = (scroll: number, at: number, margin: number) => (scroll + at - margin) * k + margin - at;
-    const mx = el.clientWidth / 2;
-    const my = el.clientHeight / 2;
-    if (anchor) {
-      const rect = el.getBoundingClientRect();
-      el.scrollLeft = rescale(el.scrollLeft, anchor.clientX - rect.left, mx);
-      el.scrollTop = rescale(el.scrollTop, anchor.clientY - rect.top, my);
-    } else {
-      el.scrollLeft = rescale(el.scrollLeft, el.clientWidth / 2, mx);
-      el.scrollTop = rescale(el.scrollTop, el.clientHeight / 2, my);
-    }
-  }, [zoom]);
+    // While the field is smaller than the screen on an axis it's centred
+    // (m-auto), so its edge is `offset` into the scroll box, not at 0; scale
+    // the distance from the field's edge, before and after, or the anchored
+    // point drifts whenever a zoom crosses "smaller than the screen".
+    const offset = (view: number, field: number) => Math.max(0, (view - field) / 2);
+    const rescale = (scroll: number, at: number, view: number, field: number) =>
+      (scroll + at - offset(view, field * prev)) * k + offset(view, field * zoom) - at;
+    const rect = el.getBoundingClientRect();
+    const atX = anchor ? anchor.clientX - rect.left : el.clientWidth / 2;
+    const atY = anchor ? anchor.clientY - rect.top : el.clientHeight / 2;
+    el.scrollLeft = rescale(el.scrollLeft, atX, el.clientWidth, canvasSize.width);
+    el.scrollTop = rescale(el.scrollTop, atY, el.clientHeight, canvasSize.height);
+  }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps -- runs per zoom change; sizes are read as of it
 
-  // Centre the play on load, after a resize/rotation re-fits it, and on Fit.
-  // Runs after the zoom effect above so a Fit from a zoomed view wins.
+  // Fill the screen on load and whenever a resize/rotation changes the fit.
+  useLayoutEffect(() => {
+    if (viewport.width === 0) return;
+    centerPendingRef.current = true;
+    setZoom(cover);
+    setFitTick((t) => t + 1);
+  }, [canvasSize, viewport]); // eslint-disable-line react-hooks/exhaustive-deps -- cover derives from these
+
+  // Centre the view when asked to. Runs after the zoom effect above, so it
+  // wins over that effect's anchoring for a load/resize/toggle.
   useLayoutEffect(() => {
     const el = canvasContainerRef.current;
-    if (!el) return;
+    if (!el || !centerPendingRef.current) return;
+    centerPendingRef.current = false;
     el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
     el.scrollTop = (el.scrollHeight - el.clientHeight) / 2;
-  }, [canvasSize, viewport, fitTick]);
+  }, [zoom, fitTick]);
 
+  // The % button / 0 key: toggle between the whole play and filling the screen.
+  const showingWholePlay = Math.abs(zoom - 1) < 0.001;
   const handleFit = useCallback(() => {
-    setZoom(1);
+    centerPendingRef.current = true;
+    setZoom((z) => (Math.abs(z - 1) < 0.001 ? cover : 1));
     setFitTick((t) => t + 1);
-  }, []);
+  }, [cover]);
 
   // If a resize/rotation shrinks the allowed range below the current zoom
   // (e.g. rotating a phone to landscape), clamp back into range. Only clamps
@@ -419,12 +438,59 @@ export function PlayDesigner() {
     el.scrollTop -= dyPx;
   }, []);
 
+  const dock = useMediaQuery(DOCK_QUERY);
+  const compact = useMediaQuery(COMPACT_ACTIONS_QUERY);
+
+  // The on-screen part of the play area, clear of floating panels spanning the
+  // middle of the screen, in canvas-local px — where the canvas puts its
+  // instruction and Finish/Cancel bars now that the play area is usually
+  // larger than the screen. Recomputed as the view or a panel moves.
+  const [visibleArea, setVisibleArea] = useState<{ top: number; bottom: number; centerX: number } | undefined>();
+  useEffect(() => {
+    const main = canvasContainerRef.current;
+    if (!main) return;
+    let frame: number | null = null;
+    const measure = () => {
+      frame = null;
+      const field = document.getElementById('play-canvas');
+      if (!field) return;
+      const c = field.getBoundingClientRect();
+      const vw = main.clientWidth;
+      const vh = main.clientHeight;
+      let topInset = 0;
+      let bottomInset = 0;
+      document.querySelectorAll<HTMLElement>('[data-floating-panel]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left > vw / 2 || r.right < vw / 2) return; // not over the centre line
+        if (r.top < vh / 2) topInset = Math.max(topInset, r.bottom + 8);
+        else bottomInset = Math.max(bottomInset, vh - r.top + 8);
+      });
+      const left = Math.max(0, -c.left);
+      const right = Math.min(c.width, vw - c.left);
+      setVisibleArea({
+        top: Math.max(0, topInset - c.top),
+        bottom: Math.min(c.height, vh - bottomInset - c.top),
+        centerX: (left + right) / 2,
+      });
+    };
+    const schedule = () => { if (frame === null) frame = requestAnimationFrame(measure); };
+    schedule();
+    main.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    // Panels move or collapse on a pointerup.
+    window.addEventListener('pointerup', schedule);
+    return () => {
+      main.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('pointerup', schedule);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [zoom, canvasSize, dock]);
+
   const viewportGestures = useViewportGestures(canvasContainerRef, {
     onPan: handlePan, onPinch: handlePinch, onPinchEnd: handlePinchEnd, onFit: handleFit,
   });
 
-  const dock = useMediaQuery(DOCK_QUERY);
-  const compact = useMediaQuery(COMPACT_ACTIONS_QUERY);
 
   // One-time tip on touch screens: in drawing tools one finger draws, so two
   // fingers is the way to move around.
@@ -678,12 +744,12 @@ export function PlayDesigner() {
         <ZoomOut className="h-4 w-4" />
       </button>
       <button
-        title="Fit play to screen"
+        title={showingWholePlay ? 'Fill the screen' : 'Show the whole play'}
         onClick={handleFit}
         className="tap-target flex items-center justify-center gap-1 min-w-[44px] px-1 text-center text-[11px] font-medium text-chalk/80 hover:text-chalk transition-colors"
       >
-        <Maximize className="h-3.5 w-3.5" />
-        {Math.round(zoom * 100)}%
+        {showingWholePlay ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />}
+        {Math.round((zoom / cover) * 100)}%
       </button>
       <button
         title="Zoom in"
@@ -702,31 +768,24 @@ export function PlayDesigner() {
     // z-50: must outrank Navbar's sticky z-40 so this still fully covers it — see
     // the z-index note in Navbar.tsx.
     //
-    // Full screen: the field fills the viewport and the tools float over it.
-    // The play window (aspect-locked to the print sheet) sits in a scroll
-    // "world" with half a viewport of surround on every side, so the view can
-    // be moved around like a map at any zoom; FieldBackdrop draws the rest of
-    // the field behind it, so nothing reads as a box.
+    // Full screen: the play area is the canvas, and the screen is a window
+    // onto it. By default it's drawn just large enough to cover the whole
+    // screen (see `cover`), so every visible pixel is usable field and the
+    // view moves around inside it; scrolling stops at its edges. The tools
+    // float over it.
     <div className="fixed inset-0 z-50 bg-board overflow-hidden">
-      <FieldBackdrop scrollRef={canvasContainerRef} sizeKey={`${canvasSize.width}x${canvasSize.height}@${zoom}`} />
-
       <main
         ref={canvasContainerRef}
         {...viewportGestures.handlers}
-        className="absolute inset-0 overflow-auto touch-none"
+        className="absolute inset-0 overflow-auto touch-none flex"
         style={{
           scrollbarWidth: 'none',
           cursor: viewportGestures.panning ? 'grabbing' : viewportGestures.spaceHeld ? 'grab' : undefined,
         }}
       >
-        <div
-          className="relative"
-          style={{
-            width: canvasSize.width * zoom + viewport.width,
-            height: canvasSize.height * zoom + viewport.height,
-          }}
-        >
-          <div className="absolute" style={{ left: viewport.width / 2, top: viewport.height / 2 }}>
+        {/* m-auto centres the play area while it's smaller than the screen
+            (only when zoomed out toward the whole play). */}
+        <div className="m-auto shrink-0">
               <Canvas
                 ref={canvasRef}
                 id="play-canvas"
@@ -752,8 +811,8 @@ export function PlayDesigner() {
                 onPan={handlePan}
                 onPinch={handlePinch}
               onPinchEnd={handlePinchEnd}
+              visibleArea={visibleArea}
               />
-          </div>
         </div>
       </main>
 

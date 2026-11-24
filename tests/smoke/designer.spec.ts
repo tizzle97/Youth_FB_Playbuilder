@@ -177,7 +177,7 @@ test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
   const base = await page.locator('#play-canvas').boundingBox();
   await page.locator('button[title="Zoom in"]').click();
   await page.locator('button[title="Zoom in"]').click();
-  await expect(page.locator('button[title="Fit play to screen"]')).toHaveText('200%');
+  await expect(page.locator('button[title="Show the whole play"]')).toHaveText('200%');
   const zoomed = await page.locator('#play-canvas').boundingBox();
   expect(zoomed!.width / base!.width).toBeCloseTo(2, 1);
 
@@ -200,7 +200,13 @@ test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
   await page.mouse.up();
   expect(await scrollLeft()).toBeGreaterThan(before);
 
-  await page.locator('button[title="Fit play to screen"]').click();
+  // The % button toggles: the whole play (smaller than the default, which
+  // fills the screen), then back to filling the screen.
+  await page.locator('button[title="Show the whole play"]').click();
+  const whole = await page.locator('#play-canvas').boundingBox();
+  expect(whole!.width).toBeLessThan(base!.width);
+  expect(whole!.width).toBeLessThanOrEqual(390 + 1);
+  await page.locator('button[title="Fill the screen"]').click();
   const reset = await page.locator('#play-canvas').boundingBox();
   expect(reset!.width).toBeCloseTo(base!.width, 0);
 });
@@ -243,7 +249,7 @@ test('pinch-to-zoom: spreading two fingers zooms in continuously', async ({ page
   }
   await touchPoints(client, 'touchEnd', []);
 
-  const pillText = await page.locator('button[title="Fit play to screen"]').textContent();
+  const pillText = await page.locator('button[title="Show the whole play"]').textContent();
   const pct = parseInt(pillText || '100', 10);
   expect(pct).toBeGreaterThan(100);
 
@@ -290,7 +296,7 @@ test('pinch suppresses an in-progress single-finger icon drag', async ({ page })
   expect(after.playerIcons[0].y).toBeCloseTo(midDrag.playerIcons[0].y, 5);
 
   // And the pinch itself was live: zoom actually changed.
-  const pillText = await page.locator('button[title="Fit play to screen"]').textContent();
+  const pillText = await page.locator('button[title="Show the whole play"]').textContent();
   expect(parseInt(pillText || '100', 10)).toBeGreaterThan(100);
 });
 
@@ -5660,6 +5666,11 @@ test('touch: the hit radius has a 44px floor, and resolves to the nearest icon',
   await realClick(page, page.getByRole('button', { name: 'I-Formation' }));
   const icons = (await canvasState(page)).playerIcons;
   expect(icons).toHaveLength(11);
+  // The designer now fills the screen by default, which draws icons larger;
+  // the smallest on-screen icons — what this floor exists for — come from
+  // viewing the whole play on a phone.
+  await page.locator('button[title="Show the whole play"]').click();
+  await expect.poll(async () => (await page.locator('#play-canvas').boundingBox())!.width).toBeLessThan(391);
 
   const box = (await page.locator('#play-canvas').boundingBox())!;
   const pageX = (nx: number) => box.x + box.width * nx;

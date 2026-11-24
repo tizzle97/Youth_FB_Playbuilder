@@ -26,7 +26,7 @@ export function FloatingPanel({ storageKey, anchor, label, layout, collapsible, 
 
   if (collapsible && collapsed) {
     return (
-      <div ref={panelRef} style={style} className={`${shell} flex items-center`} role="toolbar" aria-label={label}>
+      <div ref={panelRef} style={style} className={`${shell} flex items-center`} role="toolbar" aria-label={label} data-floating-panel="">
         <div {...gripProps} className="tap-target flex items-center justify-center px-1.5 text-chalk/40" title={`Move ${label.toLowerCase()}`}>
           <GripVertical className="h-4 w-4" />
         </div>
@@ -45,7 +45,7 @@ export function FloatingPanel({ storageKey, anchor, label, layout, collapsible, 
 
   if (layout === 'row') {
     return (
-      <div ref={panelRef} style={style} className={`${shell} flex items-center gap-1 p-1.5 ${className}`} role="toolbar" aria-label={label}>
+      <div ref={panelRef} style={style} className={`${shell} flex items-center gap-1 p-1.5 ${className}`} role="toolbar" aria-label={label} data-floating-panel="">
         <div {...gripProps} className="tap-target flex items-center justify-center self-stretch px-0.5 text-chalk/40 hover:text-chalk/70" title={`Move ${label.toLowerCase()}`}>
           <GripVertical className="h-4 w-4" />
         </div>
@@ -55,7 +55,7 @@ export function FloatingPanel({ storageKey, anchor, label, layout, collapsible, 
   }
 
   return (
-    <div ref={panelRef} style={style} className={`${shell} flex flex-col ${className}`} role="toolbar" aria-label={label}>
+    <div ref={panelRef} style={style} className={`${shell} flex flex-col ${className}`} role="toolbar" aria-label={label} data-floating-panel="">
       <div className="flex items-center shrink-0 border-b border-chalk/10">
         <div
           {...gripProps}
