@@ -195,6 +195,43 @@ changes to billing/auth/RLS/legal/SQL from a feedback report.
   consistent PDF/print output. **Edit rendering in `renderPlayScene.ts`** —
   note `Canvas.tsx` separately draws the *in-progress* (uncommitted) route
   preview and must be kept visually in sync with the committed-path loop.
+- **The designer is full screen and moves like a map.** The 30-yard play
+  window (aspect-locked to the 1650×1275 print sheet) sits in `<main>`'s scroll
+  "world" with half a viewport of open surround on every side, so the view can
+  be moved at any zoom; the zoom-anchor maths scales from the field's origin
+  inside that margin (`(scroll + v − m)·k + m − v`), guarded by negative-checked
+  tests. Moving: two fingers or one finger on the surround (touch), Select-drag
+  on empty field, Space/middle-drag in any tool, wheel/trackpad scroll;
+  Ctrl/⌘+wheel and trackpad pinch zoom; `0` or the % button fits. Two fingers
+  only start zooming once their spread changes by `PINCH_ENGAGE` (10%) —
+  per-finger events make the spread wobble, and without it every two-finger
+  pan crept the zoom up. Gestures off the canvas live in
+  `useViewportGestures.ts`.
+  **The surround is decoration, never data:** `FieldBackdrop` draws the rest of
+  a real field (end zones, 40/50 numbers, faint outside the play window) with
+  `drawFieldSurround()` from the canvas's on-screen rect; the live canvas
+  passes `openEnds` so its top/bottom border is left off. `openEnds` must never
+  be set by anything that produces a file — `designer-fullscreen.spec.ts`
+  pins `exportImage()` hashes recorded on pre-change `main` **with webfonts
+  loaded** (yard numbers use Inter; an unloaded-font recording is a different
+  image). Tools and actions are `FloatingPanel`s (`useDraggablePanel.ts`,
+  positions in localStorage under `pbp-designer-tools-panel` /
+  `-tools-dock` / `pbp-designer-actions`): a vertical panel, or a bottom dock
+  on upright phones (`max-width: 639px`).
+- **⚠ Never tap-test the mobile designer on a Netlify deploy preview.**
+  Deploy previews inject Netlify's Drawer (`<script src="/.netlify/scripts/cdp">`),
+  which on a phone adds an **invisible 48px iframe across the bottom of the
+  screen** — exactly over the mobile toolbar's chip row (player chips,
+  Offense/Defense/Special Teams). Taps go into the iframe, so the page never
+  sees them; the row "wakes up" only when a draw tool grows the toolbar above
+  the strip. Production doesn't load the script. This is what killed PR #152
+  ("lit turf", closed 2026-09-24 after ~8 rounds of on-device bisection that
+  ruled out every code change, down to pure canvas colours — because none of
+  it was the cause) and was found 2026-11-04 by hit-testing the preview
+  (`document.elementFromPoint` at a chip → `IFRAME`). Disable the Drawer for
+  previews (Netlify → Project configuration → Build & deploy → Deploy
+  Previews → Netlify Drawer), or test on a local network dev server. #152's
+  branch (`feat/designer-lit-turf`) may well have been fine.
 - **⚠ Field geometry is a data migration, not a tweak.** `FIELD_YARDS_ABOVE_LOS
   = 17` / `FIELD_YARDS_BELOW_LOS = 13` in `renderPlayScene.ts` define the one
   universal field used by every game format. Every saved play's normalized

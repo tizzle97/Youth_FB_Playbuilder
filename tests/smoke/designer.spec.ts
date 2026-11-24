@@ -177,7 +177,7 @@ test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
   const base = await page.locator('#play-canvas').boundingBox();
   await page.locator('button[title="Zoom in"]').click();
   await page.locator('button[title="Zoom in"]').click();
-  await expect(page.locator('button[title="Reset zoom"]')).toHaveText('200%');
+  await expect(page.locator('button[title="Fit play to screen"]')).toHaveText('200%');
   const zoomed = await page.locator('#play-canvas').boundingBox();
   expect(zoomed!.width / base!.width).toBeCloseTo(2, 1);
 
@@ -200,7 +200,7 @@ test('canvas zoom: scale, place-at-zoom, pan, reset', async ({ page }) => {
   await page.mouse.up();
   expect(await scrollLeft()).toBeGreaterThan(before);
 
-  await page.locator('button[title="Reset zoom"]').click();
+  await page.locator('button[title="Fit play to screen"]').click();
   const reset = await page.locator('#play-canvas').boundingBox();
   expect(reset!.width).toBeCloseTo(base!.width, 0);
 });
@@ -243,7 +243,7 @@ test('pinch-to-zoom: spreading two fingers zooms in continuously', async ({ page
   }
   await touchPoints(client, 'touchEnd', []);
 
-  const pillText = await page.locator('button[title="Reset zoom"]').textContent();
+  const pillText = await page.locator('button[title="Fit play to screen"]').textContent();
   const pct = parseInt(pillText || '100', 10);
   expect(pct).toBeGreaterThan(100);
 
@@ -290,7 +290,7 @@ test('pinch suppresses an in-progress single-finger icon drag', async ({ page })
   expect(after.playerIcons[0].y).toBeCloseTo(midDrag.playerIcons[0].y, 5);
 
   // And the pinch itself was live: zoom actually changed.
-  const pillText = await page.locator('button[title="Reset zoom"]').textContent();
+  const pillText = await page.locator('button[title="Fit play to screen"]').textContent();
   expect(parseInt(pillText || '100', 10)).toBeGreaterThan(100);
 });
 
@@ -1004,7 +1004,8 @@ test('mobile toolbar: tools are labelled, and every one is reachable by scrollin
   await page.setViewportSize({ width: 390, height: 844 });
   await openDesigner(page);
 
-  const bar = page.locator('div.sm\\:hidden').filter({ has: page.locator('button[title="Clear All"]') }).first();
+  // The docked (bottom) floating tools panel on an upright phone.
+  const bar = page.getByRole('toolbar', { name: 'Tools' });
   // Zone / Remove Zone are defense-only, so they're not in this offense list.
   // 'Arrow' (not 'Route') is the ending-style toggle's default label — Route
   // already names the two shape buttons (Straight/Curved), so the ending
@@ -2014,7 +2015,9 @@ test('loads a saved defensive play via /designer?play= (mocked backend)', async 
   expect(state.textBoxes).toEqual([]);
 
   // Editing mode + defense roster active
-  await expect(page.getByText('(editing)')).toBeVisible();
+  // Editing in place: the floating Save button reads "Update" (the old header's
+  // "(editing)" hint went with the header).
+  await expect(page.locator('button[title="Save play"]:visible')).toContainText('Update');
   await expect(btn(page, 'Player S')).toBeVisible();
   await expect(page.getByRole('button', { name: 'defense', exact: true })).toBeDisabled();
 });
@@ -2162,7 +2165,9 @@ test('editing a play opened from the Plays page (?from=plays) returns there afte
     const bridge = (window as unknown as { __PBP_TEST__?: { getCanvasState: () => { playerIcons: unknown[] } } }).__PBP_TEST__;
     return bridge ? bridge.getCanvasState().playerIcons.length === 1 : false;
   });
-  await expect(page.getByText('(editing)')).toBeVisible();
+  // Editing in place: the floating Save button reads "Update" (the old header's
+  // "(editing)" hint went with the header).
+  await expect(page.locator('button[title="Save play"]:visible')).toContainText('Update');
 
   await page.locator('button[title="Save play"]:visible').click();
   await expect(page.getByPlaceholder('Enter play name...')).toHaveValue('Mesh');

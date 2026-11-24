@@ -598,7 +598,7 @@ const TEXT_FIT: Record<IconShape, number> = {
   star: 0.55,
 };
 
-function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) {
+function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: number, openEnds = false) {
   const pad = SIDELINE_PADDING * scale;
   ctx.save();
   ctx.fillStyle = FIELD_BG;
@@ -664,10 +664,116 @@ function drawField(ctx: CanvasRenderingContext2D, W: number, H: number, scale: n
   ctx.lineTo(W - pad, losY);
   ctx.stroke();
 
-  // Bold border, drawn last so it sits crisply over the line ends.
+  // Bold border, drawn last so it sits crisply over the line ends. With
+  // openEnds (the live designer only) the top and bottom edges are left off
+  // and the sidelines run the full height, so the field continues seamlessly
+  // into drawFieldSurround() instead of reading as a closed box.
   ctx.strokeStyle = FIELD_BORDER_COLOR;
   ctx.lineWidth = Math.max(1.5, 2 * scale);
-  ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
+  if (openEnds) {
+    ctx.beginPath();
+    ctx.moveTo(pad, 0); ctx.lineTo(pad, H);
+    ctx.moveTo(W - pad, 0); ctx.lineTo(W - pad, H);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
+  }
+  ctx.restore();
+}
+
+// The rest of a real field around the 30-yard play window, for the live
+// designer's full-screen backdrop only — never saved, printed or exported.
+// The LOS is labeled the "20" (see drawField), so the offense's own goal line
+// is 20 yards below it and the far goal line 80 yards above.
+const OWN_GOAL_YDS = 20;
+const FAR_GOAL_YDS = -80;
+const END_ZONE_YDS = 10;
+const OUT_OF_BOUNDS_BG = '#EEF0F2';
+// Everything outside the play window is drawn faint, so a coach can still see
+// which part is saved and printed without the window being boxed in.
+const SURROUND_ALPHA = 0.45;
+
+export type FieldRect = { x: number; y: number; w: number; h: number };
+
+/**
+ * Draw the field around `field` (the on-screen play window's rect, in this
+ * context's pixels) so its lines continue past the window to the edges of a
+ * W×H backdrop. Uses drawField's exact geometry — same scale, sideline inset,
+ * yards-per-pixel and LOS anchor — so the two meet seamlessly; the play
+ * window itself is covered by the interactive canvas.
+ */
+export function drawFieldSurround(ctx: CanvasRenderingContext2D, W: number, H: number, field: FieldRect) {
+  const scale = Math.min(field.w, field.h) / REF_SIZE;
+  const pad = SIDELINE_PADDING * scale;
+  const left = field.x + pad;
+  const right = field.x + field.w - pad;
+  const yardPx = field.h / TOTAL_FIELD_YARDS;
+  const losY = field.y + FIELD_YARDS_ABOVE_LOS * yardPx;
+  const yAt = (yds: number) => losY + yds * yardPx;
+  const topEnd = yAt(FAR_GOAL_YDS - END_ZONE_YDS);
+  const bottomEnd = yAt(OWN_GOAL_YDS + END_ZONE_YDS);
+  // Only yards that can be on screen, so a zoomed-in backdrop stays cheap.
+  const firstYds = Math.max(FAR_GOAL_YDS - END_ZONE_YDS, Math.floor((0 - losY) / yardPx) - 1);
+  const lastYds = Math.min(OWN_GOAL_YDS + END_ZONE_YDS, Math.ceil((H - losY) / yardPx) + 1);
+
+  ctx.save();
+  ctx.fillStyle = OUT_OF_BOUNDS_BG;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = FIELD_BG;
+  ctx.fillRect(left, topEnd, right - left, bottomEnd - topEnd);
+
+  ctx.globalAlpha = SURROUND_ALPHA;
+  ctx.lineWidth = Math.max(1, scale);
+  const tick = HASH_TICK_LEN * scale;
+  const lhx = left + (right - left) * HASH_LEFT_X_RATIO;
+  const rhx = left + (right - left) * HASH_RIGHT_X_RATIO;
+  for (let yds = firstYds; yds <= lastYds; yds++) {
+    const py = yAt(yds);
+    const inPlay = yds > FAR_GOAL_YDS && yds < OWN_GOAL_YDS;
+    if (yds % 5 === 0 && inPlay) {
+      ctx.strokeStyle = YARD_LINE_COLOR;
+      ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(right, py); ctx.stroke();
+    }
+    if (inPlay) {
+      ctx.strokeStyle = HASH_COLOR;
+      ctx.beginPath(); ctx.moveTo(lhx - tick / 2, py); ctx.lineTo(lhx + tick / 2, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rhx - tick / 2, py); ctx.lineTo(rhx + tick / 2, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left + 2 * scale, py); ctx.lineTo(left + 2 * scale + tick, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(right - 2 * scale - tick, py); ctx.lineTo(right - 2 * scale, py); ctx.stroke();
+    }
+  }
+
+  // Yard numbers every 10, as a real field reads: 30, 40, 50, 40, 30… upfield
+  // and 10 down toward the offense's own goal line.
+  ctx.fillStyle = YARD_NUMBER_COLOR;
+  ctx.font = `700 ${28 * scale}px 'Inter var', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const numberInset = left + 40 * scale;
+  for (let yds = Math.ceil(firstYds / 10) * 10; yds <= lastYds; yds += 10) {
+    const fromOwnGoal = OWN_GOAL_YDS - yds;
+    if (fromOwnGoal <= 0 || yds <= FAR_GOAL_YDS) continue;
+    const label = String(fromOwnGoal <= 50 ? fromOwnGoal : 100 - fromOwnGoal);
+    const py = yAt(yds);
+    ctx.save(); ctx.translate(numberInset, py); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+    ctx.save(); ctx.translate(right - 40 * scale, py); ctx.rotate(Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+  }
+
+  // Goal lines and end lines.
+  ctx.strokeStyle = FIELD_BORDER_COLOR;
+  ctx.lineWidth = Math.max(1.5, 2 * scale);
+  for (const yds of [FAR_GOAL_YDS - END_ZONE_YDS, FAR_GOAL_YDS, OWN_GOAL_YDS, OWN_GOAL_YDS + END_ZONE_YDS]) {
+    const py = yAt(yds);
+    if (py < -2 || py > H + 2) continue;
+    ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(right, py); ctx.stroke();
+  }
+
+  // Sidelines at full strength, continuous with the play window's own.
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, Math.max(0, topEnd)); ctx.lineTo(left, Math.min(H, bottomEnd));
+  ctx.moveTo(right, Math.max(0, topEnd)); ctx.lineTo(right, Math.min(H, bottomEnd));
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -855,6 +961,9 @@ export type RenderSceneOptions = {
   /** Size icons as if this many were on the field, rather than
    *  playerIcons.length — see renderOverlayScene for why. */
   iconCountOverride?: number;
+  /** Live designer only: leave the field's top/bottom border off so it runs
+   *  into drawFieldSurround(). Never set for anything that produces a file. */
+  openEnds?: boolean;
 };
 
 /**
@@ -888,7 +997,7 @@ export function renderScene(
 
   if (!opts.skipFieldReset) {
     ctx.clearRect(0, 0, W, H);
-    drawField(ctx, W, H, scale);
+    drawField(ctx, W, H, scale, opts.openEnds);
   }
   // Zones sit on top of the grid (translucent, so it shows through) but
   // underneath routes/icons, which should stay crisp.

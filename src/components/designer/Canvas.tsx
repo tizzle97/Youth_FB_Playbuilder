@@ -146,6 +146,8 @@ type CanvasProps = {
    *  midpoint in client (screen) px, so the parent can zoom continuously
    *  anchored under the fingers (rather than the fixed-step button pill). */
   onPinch?: (scaleRatio: number, midClientX: number, midClientY: number) => void;
+  /** The last finger of a pinch lifted. */
+  onPinchEnd?: () => void;
   id?: string;
 };
 
@@ -175,7 +177,7 @@ export type CanvasHandle = {
 // Component
 // ---------------------------------------------
 export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
-  ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, id }, ref) => {
+  ({ width, height, drawingMode, drawMode, capStyle, lineStyle, routeColorMode, deleteRouteMode, recolorRouteMode, copyRouteMode, copyRouteMirror, zoneMode, deleteZoneMode, textMode, snapEnabled, selectedPlayer, setSelectedPlayer, onDrawingComplete, onHistoryChange, onPan, onPinch, onPinchEnd, id }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [paths, setPaths] = useState<PathItem[]>([]);
@@ -324,6 +326,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
     // move event, so onPinch can report an incremental ratio; null right
     // after the second finger lands, before the first pinch move arrives.
     const pinchLastDistRef = useRef<number | null>(null);
+    // The two fingers' midpoint as of the last move event, so moving both
+    // fingers together pans the view (reported through onPan) while spreading
+    // them zooms — the same two-finger gesture a map app uses.
+    const pinchLastMidRef = useRef<{ x: number; y: number } | null>(null);
 
     const pushSnapshot = useCallback(() => {
       setUndoStack((prev) => [...prev, {
@@ -587,7 +593,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       const scale = Math.min(W, H) / REF_SIZE;
       const toPx = (p: Pt): Pt => ({ x: p.x * W, y: p.y * H });
 
-      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, textBoxes, editingTextIndex);
+      renderScene(ctx, W, H, paths, playerIcons, zones, selectedZoneIndex, textBoxes, editingTextIndex, { openEnds: true });
 
       // Alignment guides while a drag is snapped to a row/column/centerline
       if (activeGuides.x !== null || activeGuides.y !== null) {
@@ -1123,6 +1129,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
       if (activePointersRef.current.size >= 2) {
         pinchActiveRef.current = true;
         pinchLastDistRef.current = null;
+        pinchLastMidRef.current = null;
         panLastRef.current = null;
         zoneGestureRef.current = null;
         setZoneDraft(null);
@@ -1428,8 +1435,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
           const dist = Math.hypot(a.x - b.x, a.y - b.y);
           const midX = (a.x + b.x) / 2;
           const midY = (a.y + b.y) / 2;
+          if (pinchLastMidRef.current) onPan?.(midX - pinchLastMidRef.current.x, midY - pinchLastMidRef.current.y);
           if (pinchLastDistRef.current) onPinch(dist / pinchLastDistRef.current, midX, midY);
           pinchLastDistRef.current = dist;
+          pinchLastMidRef.current = { x: midX, y: midY };
         }
         return;
       }
@@ -1577,8 +1586,10 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(
         activePointersRef.current.delete(e.pointerId);
       }
       if (activePointersRef.current.size === 0) {
+        if (pinchActiveRef.current) onPinchEnd?.();
         pinchActiveRef.current = false;
         pinchLastDistRef.current = null;
+        pinchLastMidRef.current = null;
       }
       if (pinchActiveRef.current) return; // one finger lifted, one still down — stay suppressed
 
